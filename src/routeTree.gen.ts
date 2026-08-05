@@ -10,33 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicListenerTickRouteImport } from './routes/api/public/listener/tick'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicListenerTickRoute = ApiPublicListenerTickRouteImport.update({
+  id: '/api/public/listener/tick',
+  path: '/api/public/listener/tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/public/listener/tick'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/public/listener/tick'
+  id: '__root__' | '/' | '/api/public/listener/tick'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicListenerTickRoute: typeof ApiPublicListenerTickRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +58,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/listener/tick': {
+      id: '/api/public/listener/tick'
+      path: '/api/public/listener/tick'
+      fullPath: '/api/public/listener/tick'
+      preLoaderRoute: typeof ApiPublicListenerTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicListenerTickRoute: ApiPublicListenerTickRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
