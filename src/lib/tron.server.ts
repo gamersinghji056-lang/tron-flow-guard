@@ -10,14 +10,13 @@ import { networkConfig, type ChainNetwork } from "./chain";
 const REQUEST_TIMEOUT_MS = 12_000;
 
 export class ChainError extends Error {
-  constructor(
-    message: string,
-    readonly cause?: unknown,
-  ) {
+  constructor(message: string, cause?: unknown) {
     super(message);
     this.name = "ChainError";
+    if (cause !== undefined) this.cause = cause;
   }
 }
+
 
 async function chainFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
