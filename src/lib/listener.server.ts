@@ -69,7 +69,7 @@ async function log(entry: {
     events_seen: entry.eventsSeen ?? 0,
     deposits_updated: entry.depositsUpdated ?? 0,
     duration_ms: entry.durationMs ?? null,
-    metadata: entry.metadata ?? {},
+    metadata: (entry.metadata ?? {}) as never,
   });
 }
 
@@ -97,7 +97,7 @@ async function audit(action: string, entityId: string, metadata: Record<string, 
     action,
     entity_type: "deposit_request",
     entity_id: entityId,
-    metadata,
+    metadata: metadata as never,
   });
 }
 
