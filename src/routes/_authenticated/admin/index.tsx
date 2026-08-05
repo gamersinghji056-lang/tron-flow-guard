@@ -174,7 +174,10 @@ function AdminOverview() {
           description="Switching the network changes which chain the listener polls and which wallets are assigned."
           actions={
             <div className="flex items-center gap-2">
-              <Select value={network ?? undefined} onValueChange={(value) => void changeNetwork(value as ChainNetwork)}>
+              <Select
+                {...(network ? { value: network } : {})}
+                onValueChange={(value) => void changeNetwork(value as ChainNetwork)}
+              >
                 <SelectTrigger className="w-56">
                   <SelectValue placeholder="Select network" />
                 </SelectTrigger>

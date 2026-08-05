@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDepositsRouteImport } from './routes/_authenticated/deposits'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as ApiPublicListenerTickRouteImport } from './routes/api/public/listener/tick'
 
 const IndexRoute = IndexRouteImport.update({
@@ -40,6 +41,11 @@ const AuthenticatedDepositsRoute = AuthenticatedDepositsRouteImport.update({
   path: '/deposits',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const ApiPublicListenerTickRoute = ApiPublicListenerTickRouteImport.update({
   id: '/api/public/listener/tick',
   path: '/api/public/listener/tick',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deposits': typeof AuthenticatedDepositsRoute
+  '/admin/': typeof AuthenticatedAdminIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
 }
 export interface FileRoutesByTo {
@@ -58,6 +65,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deposits': typeof AuthenticatedDepositsRoute
+  '/admin': typeof AuthenticatedAdminIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
 }
 export interface FileRoutesById {
@@ -67,14 +75,26 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/deposits': typeof AuthenticatedDepositsRoute
+  '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/auth' | '/dashboard' | '/deposits' | '/api/public/listener/tick'
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/deposits'
+    | '/admin/'
+    | '/api/public/listener/tick'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/deposits' | '/api/public/listener/tick'
+  to:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/deposits'
+    | '/admin'
+    | '/api/public/listener/tick'
   id:
     | '__root__'
     | '/'
@@ -82,6 +102,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/dashboard'
     | '/_authenticated/deposits'
+    | '/_authenticated/admin/'
     | '/api/public/listener/tick'
   fileRoutesById: FileRoutesById
 }
@@ -129,6 +150,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDepositsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/api/public/listener/tick': {
       id: '/api/public/listener/tick'
       path: '/api/public/listener/tick'
@@ -142,11 +170,13 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDepositsRoute: typeof AuthenticatedDepositsRoute
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDepositsRoute: AuthenticatedDepositsRoute,
+  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
