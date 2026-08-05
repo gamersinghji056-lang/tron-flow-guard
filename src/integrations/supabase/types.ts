@@ -436,6 +436,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      credit_deposit: {
+        Args: { _deposit_id: string }
+        Returns: {
+          amount: number
+          credited: boolean
+          user_id: string
+        }[]
+      }
+      expire_stale_deposits: { Args: never; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
