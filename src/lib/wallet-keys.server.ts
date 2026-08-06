@@ -100,8 +100,8 @@ export function signTxHash(txIdHex: string, privateKeyHex: string): string {
   const key = Uint8Array.from(
     (privateKeyHex.match(/.{1,2}/g) ?? []).map((byte) => Number.parseInt(byte, 16)),
   );
-  const signature = secp256k1.sign(hash, key, { prehash: false });
-  const compact = signature.toBytes("recovered"); // 65 bytes: r || s || v
+  const compact = secp256k1.sign(hash, key, { prehash: false, format: "recovered" });
+
   const v = compact[64]!;
   const rs = compact.slice(0, 64);
   return bytesToHex(rs) + (v & 1 ? "01" : "00");
