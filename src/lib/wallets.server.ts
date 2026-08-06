@@ -118,7 +118,7 @@ export async function executeTransfer(
     _from_wallet: input.walletId,
     _to_address: input.toAddress,
     _amount: input.amount,
-    _memo: input.memo ?? undefined,
+    ...(input.memo ? { _memo: input.memo } : {}),
   });
   if (error) throw new Error(error.message.replace(/^.*?:\s*/, ""));
 
