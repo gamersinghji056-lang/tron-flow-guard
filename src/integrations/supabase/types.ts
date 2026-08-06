@@ -96,6 +96,7 @@ export type Database = {
           confirmed_at: string | null
           created_at: string
           credited: boolean
+          credited_wallet_id: string | null
           detected_at: string | null
           expected_amount: number
           expires_at: string
@@ -118,6 +119,7 @@ export type Database = {
           confirmed_at?: string | null
           created_at?: string
           credited?: boolean
+          credited_wallet_id?: string | null
           detected_at?: string | null
           expected_amount: number
           expires_at?: string
@@ -140,6 +142,7 @@ export type Database = {
           confirmed_at?: string | null
           created_at?: string
           credited?: boolean
+          credited_wallet_id?: string | null
           detected_at?: string | null
           expected_amount?: number
           expires_at?: string
@@ -157,6 +160,13 @@ export type Database = {
           wallet_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "deposit_requests_credited_wallet_id_fkey"
+            columns: ["credited_wallet_id"]
+            isOneToOne: false
+            referencedRelation: "user_wallets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "deposit_requests_wallet_id_fkey"
             columns: ["wallet_id"]
@@ -395,9 +405,146 @@ export type Database = {
         }
         Relationships: []
       }
+      user_wallets: {
+        Row: {
+          address: string
+          balance: number
+          created_at: string
+          derivation_index: number
+          id: string
+          is_archived: boolean
+          is_default: boolean
+          last_synced_at: string | null
+          name: string
+          network: Database["public"]["Enums"]["chain_network"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address: string
+          balance?: number
+          created_at?: string
+          derivation_index?: number
+          id?: string
+          is_archived?: boolean
+          is_default?: boolean
+          last_synced_at?: string | null
+          name: string
+          network?: Database["public"]["Enums"]["chain_network"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string
+          balance?: number
+          created_at?: string
+          derivation_index?: number
+          id?: string
+          is_archived?: boolean
+          is_default?: boolean
+          last_synced_at?: string | null
+          name?: string
+          network?: Database["public"]["Enums"]["chain_network"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wallet_transactions: {
+        Row: {
+          amount: number
+          balance_after: number | null
+          block_number: number | null
+          counterparty_address: string | null
+          counterparty_wallet_id: string | null
+          created_at: string
+          deposit_request_id: string | null
+          direction: Database["public"]["Enums"]["wallet_tx_direction"]
+          failure_reason: string | null
+          fee: number
+          id: string
+          kind: Database["public"]["Enums"]["wallet_tx_kind"]
+          memo: string | null
+          network: Database["public"]["Enums"]["chain_network"]
+          onchain: boolean
+          status: Database["public"]["Enums"]["wallet_tx_status"]
+          txid: string | null
+          updated_at: string
+          user_id: string
+          wallet_id: string
+        }
+        Insert: {
+          amount: number
+          balance_after?: number | null
+          block_number?: number | null
+          counterparty_address?: string | null
+          counterparty_wallet_id?: string | null
+          created_at?: string
+          deposit_request_id?: string | null
+          direction: Database["public"]["Enums"]["wallet_tx_direction"]
+          failure_reason?: string | null
+          fee?: number
+          id?: string
+          kind?: Database["public"]["Enums"]["wallet_tx_kind"]
+          memo?: string | null
+          network?: Database["public"]["Enums"]["chain_network"]
+          onchain?: boolean
+          status?: Database["public"]["Enums"]["wallet_tx_status"]
+          txid?: string | null
+          updated_at?: string
+          user_id: string
+          wallet_id: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number | null
+          block_number?: number | null
+          counterparty_address?: string | null
+          counterparty_wallet_id?: string | null
+          created_at?: string
+          deposit_request_id?: string | null
+          direction?: Database["public"]["Enums"]["wallet_tx_direction"]
+          failure_reason?: string | null
+          fee?: number
+          id?: string
+          kind?: Database["public"]["Enums"]["wallet_tx_kind"]
+          memo?: string | null
+          network?: Database["public"]["Enums"]["chain_network"]
+          onchain?: boolean
+          status?: Database["public"]["Enums"]["wallet_tx_status"]
+          txid?: string | null
+          updated_at?: string
+          user_id?: string
+          wallet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wallet_transactions_counterparty_wallet_id_fkey"
+            columns: ["counterparty_wallet_id"]
+            isOneToOne: false
+            referencedRelation: "user_wallets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wallet_transactions_deposit_request_id_fkey"
+            columns: ["deposit_request_id"]
+            isOneToOne: false
+            referencedRelation: "deposit_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wallet_transactions_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "user_wallets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wallets: {
         Row: {
           address: string
+          assigned_user_id: string | null
           created_at: string
           id: string
           is_active: boolean
@@ -405,10 +552,13 @@ export type Database = {
           label: string | null
           name: string
           network: Database["public"]["Enums"]["chain_network"]
+          notes: string | null
           updated_at: string
+          wallet_kind: Database["public"]["Enums"]["wallet_kind"]
         }
         Insert: {
           address: string
+          assigned_user_id?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -416,10 +566,13 @@ export type Database = {
           label?: string | null
           name: string
           network?: Database["public"]["Enums"]["chain_network"]
+          notes?: string | null
           updated_at?: string
+          wallet_kind?: Database["public"]["Enums"]["wallet_kind"]
         }
         Update: {
           address?: string
+          assigned_user_id?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -427,7 +580,9 @@ export type Database = {
           label?: string | null
           name?: string
           network?: Database["public"]["Enums"]["chain_network"]
+          notes?: string | null
           updated_at?: string
+          wallet_kind?: Database["public"]["Enums"]["wallet_kind"]
         }
         Relationships: []
       }
@@ -453,6 +608,20 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      wallet_transfer: {
+        Args: {
+          _amount: number
+          _from_wallet: string
+          _memo?: string
+          _to_address: string
+        }
+        Returns: {
+          fee: number
+          internal: boolean
+          out_tx_id: string
+          total: number
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "trader"
@@ -464,6 +633,10 @@ export type Database = {
         | "confirmed"
         | "failed"
         | "expired"
+      wallet_kind: "deposit" | "hot" | "cold" | "fee"
+      wallet_tx_direction: "in" | "out"
+      wallet_tx_kind: "deposit" | "transfer" | "fee" | "adjustment"
+      wallet_tx_status: "pending" | "broadcasting" | "completed" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -601,6 +774,10 @@ export const Constants = {
         "failed",
         "expired",
       ],
+      wallet_kind: ["deposit", "hot", "cold", "fee"],
+      wallet_tx_direction: ["in", "out"],
+      wallet_tx_kind: ["deposit", "transfer", "fee", "adjustment"],
+      wallet_tx_status: ["pending", "broadcasting", "completed", "failed"],
     },
   },
 } as const

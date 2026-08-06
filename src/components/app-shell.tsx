@@ -124,11 +124,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const links = [
     { to: "/dashboard", label: "Deposit", icon: LayoutDashboard },
+    { to: "/wallet", label: "Wallets", icon: Wallet2 },
     { to: "/deposits", label: "History", icon: Receipt },
     ...(isAdmin
       ? [
           { to: "/admin", label: "Admin", icon: ShieldCheck },
-          { to: "/admin/wallets", label: "Wallets", icon: Wallet2 },
+          { to: "/admin/wallets", label: "Company wallets", icon: Wallet2 },
           { to: "/admin/transactions", label: "Transactions", icon: Radio },
         ]
       : []),
