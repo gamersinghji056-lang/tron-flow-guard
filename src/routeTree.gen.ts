@@ -18,6 +18,7 @@ import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAdminTransactionsRouteImport } from './routes/_authenticated/admin/transactions'
 import { Route as AuthenticatedAdminWalletsRouteImport } from './routes/_authenticated/admin/wallets'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet.index'
+import { Route as AuthenticatedWalletWalletIdRouteImport } from './routes/_authenticated/wallet.$walletId'
 import { Route as ApiPublicListenerTickRouteImport } from './routes/api/public/listener/tick'
 
 const IndexRoute = IndexRouteImport.update({
@@ -67,6 +68,12 @@ const AuthenticatedWalletIndexRoute =
     path: '/wallet/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedWalletWalletIdRoute =
+  AuthenticatedWalletWalletIdRouteImport.update({
+    id: '/wallet/$walletId',
+    path: '/wallet/$walletId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const ApiPublicListenerTickRoute = ApiPublicListenerTickRouteImport.update({
   id: '/api/public/listener/tick',
   path: '/api/public/listener/tick',
@@ -80,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/deposits': typeof AuthenticatedDepositsRoute
   '/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
   '/admin/wallets': typeof AuthenticatedAdminWalletsRoute
+  '/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
@@ -91,6 +99,7 @@ export interface FileRoutesByTo {
   '/deposits': typeof AuthenticatedDepositsRoute
   '/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
   '/admin/wallets': typeof AuthenticatedAdminWalletsRoute
+  '/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
@@ -104,6 +113,7 @@ export interface FileRoutesById {
   '/_authenticated/deposits': typeof AuthenticatedDepositsRoute
   '/_authenticated/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
   '/_authenticated/admin/wallets': typeof AuthenticatedAdminWalletsRoute
+  '/_authenticated/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/deposits'
     | '/admin/transactions'
     | '/admin/wallets'
+    | '/wallet/$walletId'
     | '/admin/'
     | '/wallet/'
     | '/api/public/listener/tick'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/deposits'
     | '/admin/transactions'
     | '/admin/wallets'
+    | '/wallet/$walletId'
     | '/admin'
     | '/wallet'
     | '/api/public/listener/tick'
@@ -140,6 +152,7 @@ export interface FileRouteTypes {
     | '/_authenticated/deposits'
     | '/_authenticated/admin/transactions'
     | '/_authenticated/admin/wallets'
+    | '/_authenticated/wallet/$walletId'
     | '/_authenticated/admin/'
     | '/_authenticated/wallet/'
     | '/api/public/listener/tick'
@@ -217,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWalletIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/wallet/$walletId': {
+      id: '/_authenticated/wallet/$walletId'
+      path: '/wallet/$walletId'
+      fullPath: '/wallet/$walletId'
+      preLoaderRoute: typeof AuthenticatedWalletWalletIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/api/public/listener/tick': {
       id: '/api/public/listener/tick'
       path: '/api/public/listener/tick'
@@ -232,6 +252,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDepositsRoute: typeof AuthenticatedDepositsRoute
   AuthenticatedAdminTransactionsRoute: typeof AuthenticatedAdminTransactionsRoute
   AuthenticatedAdminWalletsRoute: typeof AuthenticatedAdminWalletsRoute
+  AuthenticatedWalletWalletIdRoute: typeof AuthenticatedWalletWalletIdRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
@@ -241,6 +262,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDepositsRoute: AuthenticatedDepositsRoute,
   AuthenticatedAdminTransactionsRoute: AuthenticatedAdminTransactionsRoute,
   AuthenticatedAdminWalletsRoute: AuthenticatedAdminWalletsRoute,
+  AuthenticatedWalletWalletIdRoute: AuthenticatedWalletWalletIdRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }
