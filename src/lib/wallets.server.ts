@@ -112,13 +112,13 @@ export async function archiveOwnedWallet(userId: string, walletId: string) {
 export async function executeTransfer(
   client: Client,
   userId: string,
-  input: { walletId: string; toAddress: string; amount: number; memo?: string },
+  input: { walletId: string; toAddress: string; amount: number; memo?: string | undefined },
 ) {
   const { data, error } = await client.rpc("wallet_transfer", {
     _from_wallet: input.walletId,
     _to_address: input.toAddress,
     _amount: input.amount,
-    _memo: input.memo ?? null,
+    _memo: input.memo ?? undefined,
   });
   if (error) throw new Error(error.message.replace(/^.*?:\s*/, ""));
 
