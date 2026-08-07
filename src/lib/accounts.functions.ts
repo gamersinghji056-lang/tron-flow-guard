@@ -13,7 +13,7 @@ const registerAdminInput = z.object({
   email: z.string().trim().email().max(255),
   password: z.string().min(10, "Administrator passwords must be at least 10 characters").max(72),
   fullName: z.string().trim().min(1).max(80),
-  code: z.string().trim().min(1, "Administrator code is required").max(200),
+  code: z.string().trim().max(200).optional(),
 });
 
 export const registerAdmin = createServerFn({ method: "POST" })
