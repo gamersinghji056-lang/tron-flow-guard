@@ -228,7 +228,7 @@ function AuthPage() {
 
 
         <p className="mt-4 text-center text-xs text-muted-foreground">
-          The first account created becomes the platform administrator.
+          Administrator accounts get listener control, company wallets and the transaction audit trail.
         </p>
       </div>
     </div>
