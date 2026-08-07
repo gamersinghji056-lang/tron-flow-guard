@@ -44,11 +44,12 @@ function AuthPage() {
   const { mode } = Route.useSearch();
   const navigate = useNavigate();
   const [isSignup, setIsSignup] = useState(mode === "signup");
+  const [role, setRole] = useState<"trader" | "admin">("trader");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [adminCode, setAdminCode] = useState("");
   const [pending, setPending] = useState(false);
-  const [checkEmail, setCheckEmail] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -67,19 +68,33 @@ function AuthPage() {
     setPending(true);
     try {
       if (isSignup) {
-        const { data, error } = await supabase.auth.signUp({
+        if (role === "admin") {
+          await registerAdmin({
+            data: {
+              email: parsed.data.email,
+              password: parsed.data.password,
+              fullName: parsed.data.fullName || parsed.data.email.split("@")[0]!,
+              ...(adminCode.trim() ? { code: adminCode.trim() } : {}),
+            },
+          });
+        } else {
+          const { error } = await supabase.auth.signUp({
+            email: parsed.data.email,
+            password: parsed.data.password,
+            options: {
+              emailRedirectTo: window.location.origin,
+              data: { full_name: parsed.data.fullName || null },
+            },
+          });
+          if (error) throw error;
+        }
+
+        // Email verification is disabled — sign the new account straight in.
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email: parsed.data.email,
           password: parsed.data.password,
-          options: {
-            emailRedirectTo: window.location.origin,
-            data: { full_name: parsed.data.fullName || null },
-          },
         });
-        if (error) throw error;
-        if (!data.session) {
-          setCheckEmail(true);
-          return;
-        }
+        if (signInError) throw signInError;
         navigate({ to: "/dashboard", replace: true });
         return;
       }
@@ -109,92 +124,106 @@ function AuthPage() {
         </Link>
 
         <div className="panel p-6">
-          {checkEmail ? (
-            <div className="space-y-3 text-center">
-              <h1 className="text-lg font-semibold">Confirm your email</h1>
-              <p className="text-sm text-muted-foreground">
-                We sent a confirmation link to <span className="mono">{email}</span>. Open it to
-                activate your trader account, then sign in.
-              </p>
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={() => {
-                  setCheckEmail(false);
-                  setIsSignup(false);
-                }}
-              >
-                Back to sign in
-              </Button>
+          <h1 className="text-lg font-semibold">
+            {isSignup ? "Create an account" : "Sign in to the deposit desk"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isSignup
+              ? "Accounts are active immediately — no email confirmation needed."
+              : "Enter your credentials to continue."}
+          </p>
+
+          {isSignup ? (
+            <div className="mt-4 grid grid-cols-2 gap-1 rounded-lg bg-secondary p-1">
+              {(["trader", "admin"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setRole(option)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors",
+                    role === option && "bg-background text-foreground shadow-sm",
+                  )}
+                >
+                  {option === "trader" ? "User" : "Administrator"}
+                </button>
+              ))}
             </div>
-          ) : (
-            <>
-              <h1 className="text-lg font-semibold">
-                {isSignup ? "Create your trader account" : "Sign in to the deposit desk"}
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {isSignup
-                  ? "Deposits are verified automatically — no screenshots, no TXIDs."
-                  : "Enter your credentials to continue."}
-              </p>
+          ) : null}
 
-              <form className="mt-5 space-y-4" onSubmit={submit}>
-                {isSignup ? (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="fullName">Full name</Label>
-                    <Input
-                      id="fullName"
-                      value={fullName}
-                      onChange={(event) => setFullName(event.target.value)}
-                      placeholder="Alex Trader"
-                      maxLength={80}
-                      autoComplete="name"
-                    />
-                  </div>
-                ) : null}
+          <form className="mt-5 space-y-4" onSubmit={submit}>
+            {isSignup ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="fullName">Full name</Label>
+                <Input
+                  id="fullName"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  placeholder="Alex Trader"
+                  maxLength={80}
+                  autoComplete="name"
+                />
+              </div>
+            ) : null}
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@desk.com"
-                    autoComplete="email"
-                  />
-                </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@desk.com"
+                autoComplete="email"
+              />
+            </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="At least 8 characters"
-                    autoComplete={isSignup ? "new-password" : "current-password"}
-                  />
-                </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={role === "admin" && isSignup ? "At least 10 characters" : "At least 8 characters"}
+                autoComplete={isSignup ? "new-password" : "current-password"}
+              />
+            </div>
 
-                <Button type="submit" className="w-full" disabled={pending}>
-                  {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-                  {isSignup ? "Create account" : "Sign in"}
-                </Button>
-              </form>
+            {isSignup && role === "admin" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="adminCode">Administrator code (optional)</Label>
+                <Input
+                  id="adminCode"
+                  value={adminCode}
+                  onChange={(event) => setAdminCode(event.target.value)}
+                  placeholder="Only required if configured"
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
 
-              <button
-                type="button"
-                className="mt-4 w-full text-center text-sm text-muted-foreground hover:text-foreground"
-                onClick={() => setIsSignup((prev) => !prev)}
-              >
-                {isSignup ? "Already registered? Sign in" : "New here? Create a trader account"}
-              </button>
-            </>
-          )}
+            <Button type="submit" className="w-full" disabled={pending}>
+              {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              {isSignup
+                ? role === "admin"
+                  ? "Create administrator"
+                  : "Create user account"
+                : "Sign in"}
+            </Button>
+          </form>
+
+          <button
+            type="button"
+            className="mt-4 w-full text-center text-sm text-muted-foreground hover:text-foreground"
+            onClick={() => setIsSignup((prev) => !prev)}
+          >
+            {isSignup ? "Already registered? Sign in" : "New here? Create an account"}
+          </button>
         </div>
+
 
         <p className="mt-4 text-center text-xs text-muted-foreground">
           The first account created becomes the platform administrator.
