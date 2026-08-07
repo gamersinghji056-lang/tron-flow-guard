@@ -9,7 +9,7 @@ export async function provisionAdmin(input: {
   email: string;
   password: string;
   fullName: string;
-  code?: string;
+  code?: string | undefined;
 }) {
   const expected = process.env["ADMIN_REGISTRATION_CODE"];
   // When an administrator code is configured it is mandatory. If none is set the
