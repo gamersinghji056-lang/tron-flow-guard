@@ -9,15 +9,12 @@ export async function provisionAdmin(input: {
   email: string;
   password: string;
   fullName: string;
-  code: string;
+  code?: string | undefined;
 }) {
   const expected = process.env["ADMIN_REGISTRATION_CODE"];
-  if (!expected) {
-    throw new Error(
-      "Administrator registration is not enabled. Ask the platform owner to configure the administrator code.",
-    );
-  }
-  if (input.code !== expected) {
+  // When an administrator code is configured it is mandatory. If none is set the
+  // desk runs in open demo mode and administrator sign-up is unrestricted.
+  if (expected && input.code !== expected) {
     throw new Error("Invalid administrator registration code");
   }
 
