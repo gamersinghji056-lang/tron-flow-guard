@@ -43,7 +43,7 @@ function NotificationBell() {
     void load();
 
     const channel = supabase
-      .channel("notifications-feed")
+      .channel(`notifications-feed-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "notifications" },

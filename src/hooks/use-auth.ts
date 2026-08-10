@@ -89,7 +89,7 @@ export function useAuth(): AuthState {
 
     // Keep the balance live while the listener credits deposits.
     const channel = supabase
-      .channel("auth-profile-balance")
+      .channel(`auth-profile-balance-${crypto.randomUUID()}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
         const next = payload.new as ProfileRecord;
         setState((prev) =>
