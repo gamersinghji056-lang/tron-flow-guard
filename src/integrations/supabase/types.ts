@@ -14,6 +14,189 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_permissions: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          id: string
+          permission: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          permission: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          permission?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      api_idempotency: {
+        Row: {
+          api_key_id: string | null
+          created_at: string
+          endpoint: string
+          id: string
+          idempotency_key: string
+          response: Json
+          status_code: number
+        }
+        Insert: {
+          api_key_id?: string | null
+          created_at?: string
+          endpoint: string
+          id?: string
+          idempotency_key: string
+          response?: Json
+          status_code?: number
+        }
+        Update: {
+          api_key_id?: string | null
+          created_at?: string
+          endpoint?: string
+          id?: string
+          idempotency_key?: string
+          response?: Json
+          status_code?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_idempotency_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_keys: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          key_id: string
+          last_used_at: string | null
+          name: string
+          permissions: string[]
+          request_count: number
+          revoked_at: string | null
+          secret_hash: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key_id: string
+          last_used_at?: string | null
+          name: string
+          permissions?: string[]
+          request_count?: number
+          revoked_at?: string | null
+          secret_hash: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key_id?: string
+          last_used_at?: string | null
+          name?: string
+          permissions?: string[]
+          request_count?: number
+          revoked_at?: string | null
+          secret_hash?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      api_nonces: {
+        Row: {
+          api_key_id: string | null
+          created_at: string
+          nonce: string
+        }
+        Insert: {
+          api_key_id?: string | null
+          created_at?: string
+          nonce: string
+        }
+        Update: {
+          api_key_id?: string | null
+          created_at?: string
+          nonce?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_nonces_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_request_logs: {
+        Row: {
+          api_key_id: string | null
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          ip: string | null
+          key_id: string | null
+          method: string
+          path: string
+          request_id: string | null
+          status_code: number
+        }
+        Insert: {
+          api_key_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          ip?: string | null
+          key_id?: string | null
+          method: string
+          path: string
+          request_id?: string | null
+          status_code: number
+        }
+        Update: {
+          api_key_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          ip?: string | null
+          key_id?: string | null
+          method?: string
+          path?: string
+          request_id?: string | null
+          status_code?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_request_logs_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -289,6 +472,42 @@ export type Database = {
         }
         Relationships: []
       }
+      service_health: {
+        Row: {
+          detail: string | null
+          last_error: string | null
+          last_error_at: string | null
+          last_ok_at: string | null
+          latest_block: number | null
+          metadata: Json
+          service: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          detail?: string | null
+          last_error?: string | null
+          last_error_at?: string | null
+          last_ok_at?: string | null
+          latest_block?: number | null
+          metadata?: Json
+          service: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          detail?: string | null
+          last_error?: string | null
+          last_error_at?: string | null
+          last_ok_at?: string | null
+          latest_block?: number | null
+          metadata?: Json
+          service?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       system_settings: {
         Row: {
           description: string | null
@@ -417,6 +636,7 @@ export type Database = {
           last_synced_at: string | null
           name: string
           network: Database["public"]["Enums"]["chain_network"]
+          status: string
           updated_at: string
           user_id: string
         }
@@ -431,6 +651,7 @@ export type Database = {
           last_synced_at?: string | null
           name: string
           network?: Database["public"]["Enums"]["chain_network"]
+          status?: string
           updated_at?: string
           user_id: string
         }
@@ -445,6 +666,7 @@ export type Database = {
           last_synced_at?: string | null
           name?: string
           network?: Database["public"]["Enums"]["chain_network"]
+          status?: string
           updated_at?: string
           user_id?: string
         }
@@ -546,10 +768,13 @@ export type Database = {
           address: string
           assigned_user_id: string | null
           created_at: string
+          expiry_minutes: number
           id: string
           is_active: boolean
           is_default: boolean
           label: string | null
+          max_deposit: number
+          min_deposit: number
           name: string
           network: Database["public"]["Enums"]["chain_network"]
           notes: string | null
@@ -560,10 +785,13 @@ export type Database = {
           address: string
           assigned_user_id?: string | null
           created_at?: string
+          expiry_minutes?: number
           id?: string
           is_active?: boolean
           is_default?: boolean
           label?: string | null
+          max_deposit?: number
+          min_deposit?: number
           name: string
           network?: Database["public"]["Enums"]["chain_network"]
           notes?: string | null
@@ -574,15 +802,119 @@ export type Database = {
           address?: string
           assigned_user_id?: string | null
           created_at?: string
+          expiry_minutes?: number
           id?: string
           is_active?: boolean
           is_default?: boolean
           label?: string | null
+          max_deposit?: number
+          min_deposit?: number
           name?: string
           network?: Database["public"]["Enums"]["chain_network"]
           notes?: string | null
           updated_at?: string
           wallet_kind?: Database["public"]["Enums"]["wallet_kind"]
+        }
+        Relationships: []
+      }
+      webhook_deliveries: {
+        Row: {
+          attempts: number
+          created_at: string
+          delivered_at: string | null
+          endpoint_id: string
+          event: string
+          event_key: string
+          id: string
+          last_error: string | null
+          next_retry_at: string | null
+          payload: Json
+          response_status: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          delivered_at?: string | null
+          endpoint_id: string
+          event: string
+          event_key: string
+          id?: string
+          last_error?: string | null
+          next_retry_at?: string | null
+          payload?: Json
+          response_status?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          delivered_at?: string | null
+          endpoint_id?: string
+          event?: string
+          event_key?: string
+          id?: string
+          last_error?: string | null
+          next_retry_at?: string | null
+          payload?: Json
+          response_status?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_endpoint_id_fkey"
+            columns: ["endpoint_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_endpoints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_endpoints: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          events: string[]
+          failure_count: number
+          id: string
+          last_delivery_at: string | null
+          last_error: string | null
+          secret: string
+          status: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          events?: string[]
+          failure_count?: number
+          id?: string
+          last_delivery_at?: string | null
+          last_error?: string | null
+          secret: string
+          status?: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          events?: string[]
+          failure_count?: number
+          id?: string
+          last_delivery_at?: string | null
+          last_error?: string | null
+          secret?: string
+          status?: string
+          updated_at?: string
+          url?: string
         }
         Relationships: []
       }
@@ -600,6 +932,10 @@ export type Database = {
         }[]
       }
       expire_stale_deposits: { Args: never; Returns: number }
+      has_permission: {
+        Args: { _permission: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -608,6 +944,7 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      is_super_admin: { Args: never; Returns: boolean }
       wallet_transfer: {
         Args: {
           _amount: number
@@ -624,7 +961,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "trader"
+      app_role: "admin" | "trader" | "super_admin"
       chain_network: "trc20-mainnet" | "trc20-nile"
       deposit_status:
         | "waiting"
@@ -764,7 +1101,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "trader"],
+      app_role: ["admin", "trader", "super_admin"],
       chain_network: ["trc20-mainnet", "trc20-nile"],
       deposit_status: [
         "waiting",
