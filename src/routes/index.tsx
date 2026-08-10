@@ -57,9 +57,12 @@ function Landing() {
           </span>
           <span className="font-semibold tracking-tight">TRONDESK</span>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
           <Button asChild variant="ghost" size="sm">
-            <Link to="/auth">Sign in</Link>
+            <Link to="/trader/login">Trader login</Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/admin/login">Admin login</Link>
           </Button>
         </div>
       </header>
@@ -77,17 +80,24 @@ function Landing() {
           trader automatically the moment the deposit is final.
         </p>
 
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:max-w-3xl">
           <Button asChild size="lg">
-            <Link to="/auth">
-              Open the deposit desk
+            <Link to="/trader/login">
+              Trader login
               <ArrowRight className="ml-1.5 h-4 w-4" />
             </Link>
           </Button>
           <Button asChild size="lg" variant="secondary">
-            <Link to="/auth" search={{ mode: "signup" }}>
-              Create a trader account
+            <Link to="/trader/register">Trader register</Link>
+          </Button>
+          <Button asChild size="lg" variant="outline">
+            <Link to="/admin/login">
+              <ShieldCheck className="mr-1.5 h-4 w-4" />
+              Admin login
             </Link>
+          </Button>
+          <Button asChild size="lg" variant="outline">
+            <Link to="/admin/register">Admin register</Link>
           </Button>
         </div>
 

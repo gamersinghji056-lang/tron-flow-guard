@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDepositsRouteImport } from './routes/_authenticated/deposits'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
@@ -38,6 +39,11 @@ const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
@@ -70,21 +76,21 @@ const TraderRegisterRoute = TraderRegisterRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
-  id: '/admin/',
-  path: '/admin/',
-  getParentRoute: () => AuthenticatedRouteRoute,
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
 const AuthenticatedAdminTransactionsRoute =
   AuthenticatedAdminTransactionsRouteImport.update({
-    id: '/admin/transactions',
-    path: '/admin/transactions',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/transactions',
+    path: '/transactions',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminWalletsRoute =
   AuthenticatedAdminWalletsRouteImport.update({
-    id: '/admin/wallets',
-    path: '/admin/wallets',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/wallets',
+    path: '/wallets',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedWalletIndexRoute =
   AuthenticatedWalletIndexRouteImport.update({
@@ -107,6 +113,7 @@ const ApiPublicListenerTickRoute = ApiPublicListenerTickRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deposits': typeof AuthenticatedDepositsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -141,6 +148,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/deposits': typeof AuthenticatedDepositsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -159,6 +167,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/admin'
     | '/dashboard'
     | '/deposits'
     | '/admin/login'
@@ -192,6 +201,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/admin'
     | '/_authenticated/dashboard'
     | '/_authenticated/deposits'
     | '/admin/login'
@@ -240,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -284,24 +301,24 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/admin/': {
       id: '/_authenticated/admin/'
-      path: '/admin'
+      path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/transactions': {
       id: '/_authenticated/admin/transactions'
-      path: '/admin/transactions'
+      path: '/transactions'
       fullPath: '/admin/transactions'
       preLoaderRoute: typeof AuthenticatedAdminTransactionsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/wallets': {
       id: '/_authenticated/admin/wallets'
-      path: '/admin/wallets'
+      path: '/wallets'
       fullPath: '/admin/wallets'
       preLoaderRoute: typeof AuthenticatedAdminWalletsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/wallet/': {
       id: '/_authenticated/wallet/'
@@ -327,23 +344,37 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AuthenticatedRouteRouteChildren {
-  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
-  AuthenticatedDepositsRoute: typeof AuthenticatedDepositsRoute
+interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminTransactionsRoute: typeof AuthenticatedAdminTransactionsRoute
   AuthenticatedAdminWalletsRoute: typeof AuthenticatedAdminWalletsRoute
-  AuthenticatedWalletWalletIdRoute: typeof AuthenticatedWalletWalletIdRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+}
+
+const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
+  {
+    AuthenticatedAdminTransactionsRoute: AuthenticatedAdminTransactionsRoute,
+    AuthenticatedAdminWalletsRoute: AuthenticatedAdminWalletsRoute,
+    AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+  }
+
+const AuthenticatedAdminRouteRouteWithChildren =
+  AuthenticatedAdminRouteRoute._addFileChildren(
+    AuthenticatedAdminRouteRouteChildren,
+  )
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRouteRoute: typeof AuthenticatedAdminRouteRouteWithChildren
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDepositsRoute: typeof AuthenticatedDepositsRoute
+  AuthenticatedWalletWalletIdRoute: typeof AuthenticatedWalletWalletIdRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRouteRoute: AuthenticatedAdminRouteRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDepositsRoute: AuthenticatedDepositsRoute,
-  AuthenticatedAdminTransactionsRoute: AuthenticatedAdminTransactionsRoute,
-  AuthenticatedAdminWalletsRoute: AuthenticatedAdminWalletsRoute,
   AuthenticatedWalletWalletIdRoute: AuthenticatedWalletWalletIdRoute,
-  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }
 
