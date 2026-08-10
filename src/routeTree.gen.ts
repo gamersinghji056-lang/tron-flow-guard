@@ -14,6 +14,10 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDepositsRouteImport } from './routes/_authenticated/deposits'
+import { Route as AdminLoginRouteImport } from './routes/admin.login'
+import { Route as AdminRegisterRouteImport } from './routes/admin.register'
+import { Route as TraderLoginRouteImport } from './routes/trader.login'
+import { Route as TraderRegisterRouteImport } from './routes/trader.register'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminTransactionsRouteImport } from './routes/_authenticated/admin/transactions'
 import { Route as AuthenticatedAdminWalletsRouteImport } from './routes/_authenticated/admin/wallets'
@@ -44,6 +48,26 @@ const AuthenticatedDepositsRoute = AuthenticatedDepositsRouteImport.update({
   id: '/deposits',
   path: '/deposits',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/admin/login',
+  path: '/admin/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRegisterRoute = AdminRegisterRouteImport.update({
+  id: '/admin/register',
+  path: '/admin/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TraderLoginRoute = TraderLoginRouteImport.update({
+  id: '/trader/login',
+  path: '/trader/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TraderRegisterRoute = TraderRegisterRouteImport.update({
+  id: '/trader/register',
+  path: '/trader/register',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   id: '/admin/',
@@ -85,6 +109,10 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deposits': typeof AuthenticatedDepositsRoute
+  '/admin/login': typeof AdminLoginRoute
+  '/admin/register': typeof AdminRegisterRoute
+  '/trader/login': typeof TraderLoginRoute
+  '/trader/register': typeof TraderRegisterRoute
   '/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
   '/admin/wallets': typeof AuthenticatedAdminWalletsRoute
   '/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
@@ -97,6 +125,10 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deposits': typeof AuthenticatedDepositsRoute
+  '/admin/login': typeof AdminLoginRoute
+  '/admin/register': typeof AdminRegisterRoute
+  '/trader/login': typeof TraderLoginRoute
+  '/trader/register': typeof TraderRegisterRoute
   '/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
   '/admin/wallets': typeof AuthenticatedAdminWalletsRoute
   '/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
@@ -111,6 +143,10 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/deposits': typeof AuthenticatedDepositsRoute
+  '/admin/login': typeof AdminLoginRoute
+  '/admin/register': typeof AdminRegisterRoute
+  '/trader/login': typeof TraderLoginRoute
+  '/trader/register': typeof TraderRegisterRoute
   '/_authenticated/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
   '/_authenticated/admin/wallets': typeof AuthenticatedAdminWalletsRoute
   '/_authenticated/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
@@ -125,6 +161,10 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/deposits'
+    | '/admin/login'
+    | '/admin/register'
+    | '/trader/login'
+    | '/trader/register'
     | '/admin/transactions'
     | '/admin/wallets'
     | '/wallet/$walletId'
@@ -137,6 +177,10 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/deposits'
+    | '/admin/login'
+    | '/admin/register'
+    | '/trader/login'
+    | '/trader/register'
     | '/admin/transactions'
     | '/admin/wallets'
     | '/wallet/$walletId'
@@ -150,6 +194,10 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/dashboard'
     | '/_authenticated/deposits'
+    | '/admin/login'
+    | '/admin/register'
+    | '/trader/login'
+    | '/trader/register'
     | '/_authenticated/admin/transactions'
     | '/_authenticated/admin/wallets'
     | '/_authenticated/wallet/$walletId'
@@ -162,6 +210,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  AdminLoginRoute: typeof AdminLoginRoute
+  AdminRegisterRoute: typeof AdminRegisterRoute
+  TraderLoginRoute: typeof TraderLoginRoute
+  TraderRegisterRoute: typeof TraderRegisterRoute
   ApiPublicListenerTickRoute: typeof ApiPublicListenerTickRoute
 }
 
@@ -201,6 +253,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/deposits'
       preLoaderRoute: typeof AuthenticatedDepositsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/admin/login': {
+      id: '/admin/login'
+      path: '/admin/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/register': {
+      id: '/admin/register'
+      path: '/admin/register'
+      fullPath: '/admin/register'
+      preLoaderRoute: typeof AdminRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/trader/login': {
+      id: '/trader/login'
+      path: '/trader/login'
+      fullPath: '/trader/login'
+      preLoaderRoute: typeof TraderLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/trader/register': {
+      id: '/trader/register'
+      path: '/trader/register'
+      fullPath: '/trader/register'
+      preLoaderRoute: typeof TraderRegisterRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/admin/': {
       id: '/_authenticated/admin/'
@@ -274,18 +354,12 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  AdminLoginRoute: AdminLoginRoute,
+  AdminRegisterRoute: AdminRegisterRoute,
+  TraderLoginRoute: TraderLoginRoute,
+  TraderRegisterRoute: TraderRegisterRoute,
   ApiPublicListenerTickRoute: ApiPublicListenerTickRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
