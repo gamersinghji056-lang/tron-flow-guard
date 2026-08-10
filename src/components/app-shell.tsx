@@ -43,7 +43,7 @@ function NotificationBell() {
     void load();
 
     const channel = supabase
-      .channel("notifications-feed")
+      .channel(`notifications-feed-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "notifications" },
@@ -139,7 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     await queryClient.cancelQueries();
     queryClient.clear();
     await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
+    navigate({ to: "/trader/login", replace: true });
   }
 
   return (

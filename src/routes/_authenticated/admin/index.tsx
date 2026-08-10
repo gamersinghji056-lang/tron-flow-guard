@@ -91,7 +91,7 @@ function AdminOverview() {
 
     void load();
     const channel = supabase
-      .channel("admin-listener-logs")
+      .channel(`admin-listener-logs-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "listener_logs" },

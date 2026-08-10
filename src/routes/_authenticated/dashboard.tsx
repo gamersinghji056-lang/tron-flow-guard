@@ -102,7 +102,7 @@ function useDeposits(userId: string | undefined) {
     void load();
 
     const channel = supabase
-      .channel("dashboard-deposits")
+      .channel(`dashboard-deposits-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "deposit_requests" },
