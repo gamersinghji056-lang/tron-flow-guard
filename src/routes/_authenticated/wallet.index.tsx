@@ -89,7 +89,7 @@ function WalletsPage() {
     if (!user) return;
     void load();
     const channel = supabase
-      .channel("wallet-list")
+      .channel(`wallet-list-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "user_wallets" },

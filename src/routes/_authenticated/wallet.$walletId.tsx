@@ -142,7 +142,7 @@ function WalletDetailPage() {
     void load();
     void quote({}).then((result) => setFee(result.fee));
     const channel = supabase
-      .channel(`wallet-detail-${walletId}`)
+      .channel(`wallet-detail-${walletId}-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "wallet_transactions" },

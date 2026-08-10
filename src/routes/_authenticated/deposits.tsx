@@ -69,7 +69,7 @@ function DepositHistory() {
     }
     void load();
     const channel = supabase
-      .channel("history-deposits")
+      .channel(`history-deposits-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "deposit_requests" },

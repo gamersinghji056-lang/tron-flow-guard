@@ -74,7 +74,7 @@ function AdminTransactions() {
 
     void load();
     const channel = supabase
-      .channel("admin-transactions")
+      .channel(`admin-transactions-${crypto.randomUUID()}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "transactions" }, () => void load())
       .subscribe();
 
