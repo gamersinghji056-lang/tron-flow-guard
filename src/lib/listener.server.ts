@@ -479,7 +479,7 @@ async function ingestTransfer(args: {
       exact ?? scored.sort((a, b) => (a.abs < b.abs ? -1 : a.abs > b.abs ? 1 : 0))[0] ?? null;
 
     if (chosen) {
-      matchedOrder = chosen.candidate as typeof matchedOrder;
+      matchedOrder = chosen.candidate as unknown as MatchedOrder;
       const late = new Date(chosen.candidate.expires_at).getTime() < transfer.blockTimestamp;
 
       if (chosen.abs <= args.toleranceBase) {
