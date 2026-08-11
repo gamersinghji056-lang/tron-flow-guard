@@ -96,7 +96,32 @@ export const DEPOSIT_STATUS_META: Record<
   confirmed: {
     label: "Confirmed",
     tone: "success",
-    hint: "Fully confirmed and credited to the trader balance.",
+    hint: "Fully confirmed on-chain. Crediting the trader balance.",
+  },
+  credited: {
+    label: "Credited",
+    tone: "success",
+    hint: "Confirmed on-chain and credited to the trader balance.",
+  },
+  underpaid: {
+    label: "Underpaid",
+    tone: "warning",
+    hint: "Less USDT arrived than the order requested. Held for review.",
+  },
+  overpaid: {
+    label: "Overpaid",
+    tone: "warning",
+    hint: "More USDT arrived than the order requested. Handled by the overpayment policy.",
+  },
+  late_payment: {
+    label: "Late Payment",
+    tone: "warning",
+    hint: "The transfer arrived after the order expired. Never discarded.",
+  },
+  review: {
+    label: "Under Review",
+    tone: "warning",
+    hint: "Requires an administrator decision before crediting.",
   },
   failed: { label: "Failed", tone: "destructive", hint: "Verification failed. See the reason." },
   expired: { label: "Expired", tone: "muted", hint: "No transfer arrived before the deadline." },
