@@ -444,13 +444,15 @@ async function ingestTransfer(args: {
       : 0;
 
   // Match a deposit order only for company P2P deposit wallets.
-  let matchedOrder: {
+  interface MatchedOrder {
     id: string;
     user_id: string;
     order_ref: string;
     expected_amount: string | number;
     expires_at: string;
-  } | null = null;
+  }
+  let matchedOrder: MatchedOrder | null = null;
+
   let orderStatus: string = "detected";
   let creditAmount = transfer.amount;
   let holdReason: string | null = null;
