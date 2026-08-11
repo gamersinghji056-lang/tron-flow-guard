@@ -1,6 +1,16 @@
 import { cn } from "@/lib/utils";
 import { DEPOSIT_STATUS_META, type DepositStatus } from "@/lib/chain";
-import { CheckCircle2, Clock, Loader2, Radar, TriangleAlert, XCircle } from "lucide-react";
+import {
+  BadgeCheck,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Radar,
+  ScaleIcon,
+  TimerOff,
+  TriangleAlert,
+  XCircle,
+} from "lucide-react";
 
 const TONE_CLASSES: Record<string, string> = {
   muted: "bg-muted text-muted-foreground border-border",
@@ -15,6 +25,11 @@ const ICONS: Record<DepositStatus, typeof Clock> = {
   detected: Radar,
   confirming: Loader2,
   confirmed: CheckCircle2,
+  credited: BadgeCheck,
+  underpaid: ScaleIcon,
+  overpaid: ScaleIcon,
+  late_payment: TimerOff,
+  review: TriangleAlert,
   failed: XCircle,
   expired: TriangleAlert,
 };
