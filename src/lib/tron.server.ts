@@ -57,8 +57,11 @@ export interface Trc20Transfer {
   txid: string;
   from: string;
   to: string;
-  /** Human amount, already scaled by token decimals. */
+  /** Human amount, already scaled by token decimals. Display only. */
   amount: number;
+  /** Exact on-chain base units. All money comparisons MUST use this. */
+  baseUnits: bigint;
+  decimals: number;
   rawValue: string;
   tokenContract: string;
   tokenSymbol: string;
@@ -88,17 +91,26 @@ export async function getLatestBlock(network: ChainNetwork): Promise<number> {
   return height;
 }
 
-/** Incoming TRC20 USDT transfers for a wallet, newest first. */
+/**
+ * Incoming TRC20 USDT transfers for a wallet, newest first.
+ *
+ * Queries the address' own transfer history rather than a block stream, which
+ * is what makes missed-transaction recovery possible: a transfer that arrived
+ * while the listener was down is still returned on the next poll. Pass
+ * `minTimestamp` to widen the sweep during reconciliation.
+ */
 export async function getIncomingUsdtTransfers(
   network: ChainNetwork,
   address: string,
-  limit = 50,
+  options: { limit?: number; minTimestamp?: number } = {},
 ): Promise<Trc20Transfer[]> {
   const config = networkConfig(network);
-  const url =
+  const limit = Math.min(options.limit ?? 50, 200);
+  let url =
     `${config.apiBase}/v1/accounts/${address}/transactions/trc20` +
     `?only_to=true&limit=${limit}&order_by=block_timestamp,desc` +
     `&contract_address=${config.usdtContract}`;
+  if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
 
   const payload = await chainFetch<{ data?: Trc20ApiRow[]; success?: boolean }>(url);
   const rows = Array.isArray(payload.data) ? payload.data : [];
@@ -108,11 +120,19 @@ export async function getIncomingUsdtTransfers(
     .map((row) => {
       const decimals = row.token_info?.decimals ?? config.tokenDecimals;
       const rawValue = row.value ?? "0";
+      let baseUnits = 0n;
+      try {
+        baseUnits = BigInt(rawValue);
+      } catch {
+        baseUnits = 0n;
+      }
       return {
         txid: row.transaction_id as string,
         from: row.from ?? "",
         to: row.to as string,
-        amount: Number(rawValue) / 10 ** decimals,
+        amount: Number(baseUnits) / 10 ** decimals,
+        baseUnits,
+        decimals,
         rawValue,
         tokenContract: row.token_info?.address ?? "",
         tokenSymbol: row.token_info?.symbol ?? config.tokenSymbol,
@@ -121,6 +141,21 @@ export async function getIncomingUsdtTransfers(
       } satisfies Trc20Transfer;
     });
 }
+
+/** True when the address exists as an activated account on this chain. */
+export async function isAddressActivated(
+  network: ChainNetwork,
+  address: string,
+): Promise<boolean> {
+  const { apiBase } = networkConfig(network);
+  try {
+    const data = await chainFetch<{ data?: unknown[] }>(`${apiBase}/v1/accounts/${address}`);
+    return Array.isArray(data.data) && data.data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 
 export interface OnChainTransactionInfo {
   blockNumber: number | null;
