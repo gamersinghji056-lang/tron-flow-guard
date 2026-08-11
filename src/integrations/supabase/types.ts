@@ -401,6 +401,51 @@ export type Database = {
         }
         Relationships: []
       }
+      listener_state: {
+        Row: {
+          addresses_monitored: number
+          chain_head_block: number | null
+          consecutive_failures: number
+          created_at: string
+          last_error: string | null
+          last_error_at: string | null
+          last_poll_at: string | null
+          last_processed_block: number
+          last_success_at: string | null
+          network: Database["public"]["Enums"]["chain_network"]
+          reconcile_cursor: string | null
+          updated_at: string
+        }
+        Insert: {
+          addresses_monitored?: number
+          chain_head_block?: number | null
+          consecutive_failures?: number
+          created_at?: string
+          last_error?: string | null
+          last_error_at?: string | null
+          last_poll_at?: string | null
+          last_processed_block?: number
+          last_success_at?: string | null
+          network: Database["public"]["Enums"]["chain_network"]
+          reconcile_cursor?: string | null
+          updated_at?: string
+        }
+        Update: {
+          addresses_monitored?: number
+          chain_head_block?: number | null
+          consecutive_failures?: number
+          created_at?: string
+          last_error?: string | null
+          last_error_at?: string | null
+          last_poll_at?: string | null
+          last_processed_block?: number
+          last_success_at?: string | null
+          network?: Database["public"]["Enums"]["chain_network"]
+          reconcile_cursor?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           audience: string
@@ -626,46 +671,70 @@ export type Database = {
       }
       user_wallets: {
         Row: {
+          activated_on_chain: boolean
           address: string
+          backup_confirmed_at: string | null
           balance: number
           created_at: string
+          custody: string
           derivation_index: number
+          first_seen_txid: string | null
           id: string
           is_archived: boolean
           is_default: boolean
           last_synced_at: string | null
+          monitored: boolean
           name: string
           network: Database["public"]["Enums"]["chain_network"]
+          onchain_balance: number | null
+          onchain_checked_at: string | null
+          public_key: string | null
           status: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          activated_on_chain?: boolean
           address: string
+          backup_confirmed_at?: string | null
           balance?: number
           created_at?: string
+          custody?: string
           derivation_index?: number
+          first_seen_txid?: string | null
           id?: string
           is_archived?: boolean
           is_default?: boolean
           last_synced_at?: string | null
+          monitored?: boolean
           name: string
           network?: Database["public"]["Enums"]["chain_network"]
+          onchain_balance?: number | null
+          onchain_checked_at?: string | null
+          public_key?: string | null
           status?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          activated_on_chain?: boolean
           address?: string
+          backup_confirmed_at?: string | null
           balance?: number
           created_at?: string
+          custody?: string
           derivation_index?: number
+          first_seen_txid?: string | null
           id?: string
           is_archived?: boolean
           is_default?: boolean
           last_synced_at?: string | null
+          monitored?: boolean
           name?: string
           network?: Database["public"]["Enums"]["chain_network"]
+          onchain_balance?: number | null
+          onchain_checked_at?: string | null
+          public_key?: string | null
           status?: string
           updated_at?: string
           user_id?: string
@@ -931,6 +1000,20 @@ export type Database = {
           user_id: string
         }[]
       }
+      credit_wallet_onchain_deposit: {
+        Args: {
+          _amount: number
+          _block_number: number
+          _from_address: string
+          _network: Database["public"]["Enums"]["chain_network"]
+          _txid: string
+          _wallet_id: string
+        }
+        Returns: {
+          balance_after: number
+          credited: boolean
+        }[]
+      }
       expire_stale_deposits: { Args: never; Returns: number }
       has_permission: {
         Args: { _permission: string; _user_id: string }
@@ -970,6 +1053,11 @@ export type Database = {
         | "confirmed"
         | "failed"
         | "expired"
+        | "underpaid"
+        | "overpaid"
+        | "late_payment"
+        | "review"
+        | "credited"
       wallet_kind: "deposit" | "hot" | "cold" | "fee"
       wallet_tx_direction: "in" | "out"
       wallet_tx_kind: "deposit" | "transfer" | "fee" | "adjustment"
@@ -1110,6 +1198,11 @@ export const Constants = {
         "confirmed",
         "failed",
         "expired",
+        "underpaid",
+        "overpaid",
+        "late_payment",
+        "review",
+        "credited",
       ],
       wallet_kind: ["deposit", "hot", "cold", "fee"],
       wallet_tx_direction: ["in", "out"],
