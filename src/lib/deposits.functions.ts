@@ -110,17 +110,27 @@ export const createDepositRequest = createServerFn({ method: "POST" })
     };
   });
 
-/** Signed-in trigger for an immediate listener pass (idempotent). */
+/**
+ * Signed-in trigger for an immediate listener pass (idempotent).
+ *
+ * `fast` polls only addresses with live orders/recent activity — used by the
+ * short-interval heartbeat on deposit screens. `manual` runs a full sweep.
+ */
 export const triggerListenerTick = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
+  .inputValidator((input: unknown) =>
+    z.object({ mode: z.enum(["fast", "manual", "reconcile"]).default("manual") }).parse(input ?? {}),
+  )
+  .handler(async ({ data }) => {
     const { runListenerTick } = await import("@/lib/listener.server");
-    const result = await runListenerTick("manual");
+    const result = await runListenerTick(data.mode === "manual" ? "manual" : data.mode);
     return {
       ok: result.ok,
       latestBlock: result.latestBlock,
       depositsUpdated: result.depositsUpdated,
       newEvents: result.newEvents,
+      durationMs: result.durationMs,
       errors: result.errors,
     };
   });
+
