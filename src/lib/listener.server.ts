@@ -23,7 +23,12 @@
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { DEFAULT_NETWORK, networkConfig, type ChainNetwork } from "./chain";
-import { listMonitoredAddresses, type MonitoredAddress } from "./monitor.server";
+import {
+  listHotAddresses,
+  listMonitoredAddresses,
+  type MonitoredAddress,
+} from "./monitor.server";
+
 import {
   getIncomingUsdtTransfers,
   getLatestBlock,
@@ -215,7 +220,8 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
   const gapMs = lastSuccessMs ? Date.now() - lastSuccessMs : Number.MAX_SAFE_INTEGER;
   // A gap over 5 minutes (or an explicit request) means transfers may have been
   // missed while the service was down — widen the history sweep to recover them.
-  const reconcile = trigger === "reconcile" || gapMs > 5 * 60_000;
+  const fast = trigger === "fast";
+  const reconcile = trigger === "reconcile" || (!fast && gapMs > 5 * 60_000);
   result.reconciled = reconcile;
   const sweepOptions = reconcile
     ? {
@@ -223,7 +229,8 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
         // 30-minute safety buffer behind the last known-good poll.
         ...(lastSuccessMs ? { minTimestamp: Math.max(0, lastSuccessMs - 30 * 60_000) } : {}),
       }
-    : { limit: 50 };
+    : { limit: fast ? 15 : 50 };
+
 
   await persistState(network, { last_poll_at: new Date().toISOString() });
 
@@ -261,10 +268,25 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
   }
 
   // ── C. every monitored address on this network ─────────────────────────────
-  const monitored = await listMonitoredAddresses(network, { includePersonal: monitorPersonal });
-  result.addressesMonitored = monitored.length;
+  // A `fast` pass polls only "hot" addresses (live orders / recently used
+  // wallets) so detection latency stays flat as wallet count grows. Full passes
+  // still sweep every address, which is what recovers anything missed.
+  const allMonitored = await listMonitoredAddresses(network, {
+    includePersonal: monitorPersonal,
+  });
+  let monitored = allMonitored;
+  if (fast) {
+    const hot = await listHotAddresses(network, { includePersonal: monitorPersonal });
+    if (hot.length) monitored = hot;
+  }
+  result.addressesMonitored = allMonitored.length;
 
-  for (const target of monitored) {
+  // Addresses are polled concurrently: TronGrid latency dominates a pass, so
+  // sequential polling was the main source of the slow "Waiting" window.
+  const CONCURRENCY = 6;
+  const queue = [...monitored];
+
+  async function pollOne(target: MonitoredAddress) {
     result.addressesPolled += 1;
     let transfers: Trc20Transfer[] = [];
     try {
@@ -273,13 +295,13 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
       );
     } catch (error) {
       result.ok = false;
-      errors.push(
-        `${target.address}: ${error instanceof Error ? error.message : "poll failed"}`,
-      );
-      continue;
+      errors.push(`${target.address}: ${error instanceof Error ? error.message : "poll failed"}`);
+      return;
     }
     result.eventsSeen += transfers.length;
 
+    // Transfers for one address stay sequential: ingestion is the money path
+    // and must not race itself on the same deposit order.
     for (const transfer of transfers) {
       try {
         await ingestTransfer({
@@ -296,12 +318,21 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
           result,
         });
       } catch (error) {
-        errors.push(
-          `${transfer.txid}: ${error instanceof Error ? error.message : "ingest failed"}`,
-        );
+        errors.push(`${transfer.txid}: ${error instanceof Error ? error.message : "ingest failed"}`);
       }
     }
   }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      for (;;) {
+        const next = queue.shift();
+        if (!next) return;
+        await pollOne(next);
+      }
+    }),
+  );
+
 
   // ── E. confirmations + credit ──────────────────────────────────────────────
   await settleConfirmedTransactions({
