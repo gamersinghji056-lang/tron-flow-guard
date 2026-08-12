@@ -220,7 +220,8 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
   const gapMs = lastSuccessMs ? Date.now() - lastSuccessMs : Number.MAX_SAFE_INTEGER;
   // A gap over 5 minutes (or an explicit request) means transfers may have been
   // missed while the service was down — widen the history sweep to recover them.
-  const reconcile = trigger === "reconcile" || gapMs > 5 * 60_000;
+  const fast = trigger === "fast";
+  const reconcile = trigger === "reconcile" || (!fast && gapMs > 5 * 60_000);
   result.reconciled = reconcile;
   const sweepOptions = reconcile
     ? {
@@ -228,7 +229,8 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
         // 30-minute safety buffer behind the last known-good poll.
         ...(lastSuccessMs ? { minTimestamp: Math.max(0, lastSuccessMs - 30 * 60_000) } : {}),
       }
-    : { limit: 50 };
+    : { limit: fast ? 15 : 50 };
+
 
   await persistState(network, { last_poll_at: new Date().toISOString() });
 
