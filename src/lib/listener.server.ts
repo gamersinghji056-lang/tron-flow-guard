@@ -23,7 +23,12 @@
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { DEFAULT_NETWORK, networkConfig, type ChainNetwork } from "./chain";
-import { listMonitoredAddresses, type MonitoredAddress } from "./monitor.server";
+import {
+  listHotAddresses,
+  listMonitoredAddresses,
+  type MonitoredAddress,
+} from "./monitor.server";
+
 import {
   getIncomingUsdtTransfers,
   getLatestBlock,
