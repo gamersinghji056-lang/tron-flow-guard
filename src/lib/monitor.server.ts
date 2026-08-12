@@ -187,3 +187,39 @@ export async function readListenerHealth(network?: ChainNetwork): Promise<Listen
 
   return { ...base, status: "live", reason: null };
 }
+
+/**
+ * Addresses with something actually happening right now: a live deposit order
+ * awaiting funds/confirmations, or a personal wallet touched in the last hour.
+ *
+ * The fast listener pass polls only these, so detection latency does not grow
+ * with the total number of registered wallets.
+ */
+export async function listHotAddresses(
+  network: ChainNetwork,
+  options: { includePersonal?: boolean } = {},
+): Promise<MonitoredAddress[]> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const all = await listMonitoredAddresses(network, options);
+
+  const { data: liveDeposits } = await supabaseAdmin
+    .from("deposit_requests")
+    .select("wallet_id")
+    .eq("network", network)
+    .in("status", ["waiting", "detected", "confirming", "review", "underpaid", "overpaid"]);
+
+  const hotWallets = new Set((liveDeposits ?? []).map((row) => row.wallet_id));
+
+  const sinceIso = new Date(Date.now() - 60 * 60_000).toISOString();
+  const { data: recentWallets } = await supabaseAdmin
+    .from("user_wallets")
+    .select("id")
+    .eq("network", network)
+    .eq("is_archived", false)
+    .eq("monitored", true)
+    .or(`created_at.gte.${sinceIso},last_synced_at.gte.${sinceIso}`);
+
+  for (const row of recentWallets ?? []) hotWallets.add(row.id);
+
+  return all.filter((entry) => hotWallets.has(entry.id));
+}
