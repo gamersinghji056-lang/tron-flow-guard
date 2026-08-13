@@ -359,6 +359,76 @@ export type Database = {
           },
         ]
       }
+      ledger_entries: {
+        Row: {
+          amount: number
+          balance_after: number
+          balance_before: number
+          bucket: string
+          created_at: string
+          currency: string
+          deposit_request_id: string | null
+          entry_type: Database["public"]["Enums"]["ledger_entry_type"]
+          id: string
+          memo: string | null
+          order_id: string | null
+          user_id: string
+          wallet_id: string | null
+        }
+        Insert: {
+          amount: number
+          balance_after?: number
+          balance_before?: number
+          bucket?: string
+          created_at?: string
+          currency?: string
+          deposit_request_id?: string | null
+          entry_type: Database["public"]["Enums"]["ledger_entry_type"]
+          id?: string
+          memo?: string | null
+          order_id?: string | null
+          user_id: string
+          wallet_id?: string | null
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          balance_before?: number
+          bucket?: string
+          created_at?: string
+          currency?: string
+          deposit_request_id?: string | null
+          entry_type?: Database["public"]["Enums"]["ledger_entry_type"]
+          id?: string
+          memo?: string | null
+          order_id?: string | null
+          user_id?: string
+          wallet_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ledger_entries_deposit_request_id_fkey"
+            columns: ["deposit_request_id"]
+            isOneToOne: false
+            referencedRelation: "deposit_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ledger_entries_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "p2p_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ledger_entries_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "user_wallets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listener_logs: {
         Row: {
           created_at: string
@@ -446,6 +516,54 @@ export type Database = {
         }
         Relationships: []
       }
+      merchants: {
+        Row: {
+          completed_orders: number
+          created_at: string
+          display_name: string
+          fee_percent: number
+          id: string
+          max_order_inr: number
+          merchant_code: string
+          min_order_inr: number
+          risk_note: string | null
+          status: Database["public"]["Enums"]["merchant_status"]
+          total_orders: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          completed_orders?: number
+          created_at?: string
+          display_name: string
+          fee_percent?: number
+          id?: string
+          max_order_inr?: number
+          merchant_code: string
+          min_order_inr?: number
+          risk_note?: string | null
+          status?: Database["public"]["Enums"]["merchant_status"]
+          total_orders?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          completed_orders?: number
+          created_at?: string
+          display_name?: string
+          fee_percent?: number
+          id?: string
+          max_order_inr?: number
+          merchant_code?: string
+          min_order_inr?: number
+          risk_note?: string | null
+          status?: Database["public"]["Enums"]["merchant_status"]
+          total_orders?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           audience: string
@@ -490,6 +608,347 @@ export type Database = {
           },
         ]
       }
+      p2p_advertisements: {
+        Row: {
+          asset: string
+          available_usdt: number
+          created_at: string
+          fiat: string
+          id: string
+          is_active: boolean
+          max_order_inr: number
+          merchant_id: string
+          min_order_inr: number
+          payment_methods: string[]
+          price_inr: number
+          side: Database["public"]["Enums"]["p2p_side"]
+          terms: string | null
+          updated_at: string
+        }
+        Insert: {
+          asset?: string
+          available_usdt?: number
+          created_at?: string
+          fiat?: string
+          id?: string
+          is_active?: boolean
+          max_order_inr?: number
+          merchant_id: string
+          min_order_inr?: number
+          payment_methods?: string[]
+          price_inr: number
+          side?: Database["public"]["Enums"]["p2p_side"]
+          terms?: string | null
+          updated_at?: string
+        }
+        Update: {
+          asset?: string
+          available_usdt?: number
+          created_at?: string
+          fiat?: string
+          id?: string
+          is_active?: boolean
+          max_order_inr?: number
+          merchant_id?: string
+          min_order_inr?: number
+          payment_methods?: string[]
+          price_inr?: number
+          side?: Database["public"]["Enums"]["p2p_side"]
+          terms?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "p2p_advertisements_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      p2p_disputes: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          order_id: string
+          priority: Database["public"]["Enums"]["dispute_priority"]
+          raised_by: string | null
+          reason: string
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: Database["public"]["Enums"]["dispute_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          order_id: string
+          priority?: Database["public"]["Enums"]["dispute_priority"]
+          raised_by?: string | null
+          reason: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: Database["public"]["Enums"]["dispute_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          order_id?: string
+          priority?: Database["public"]["Enums"]["dispute_priority"]
+          raised_by?: string | null
+          reason?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: Database["public"]["Enums"]["dispute_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "p2p_disputes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "p2p_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      p2p_messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          is_system: boolean
+          order_id: string
+          read_at: string | null
+          sender_id: string | null
+          sender_role: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          is_system?: boolean
+          order_id: string
+          read_at?: string | null
+          sender_id?: string | null
+          sender_role?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          is_system?: boolean
+          order_id?: string
+          read_at?: string | null
+          sender_id?: string | null
+          sender_role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "p2p_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "p2p_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      p2p_order_events: {
+        Row: {
+          actor_id: string | null
+          actor_type: string
+          created_at: string
+          from_status: Database["public"]["Enums"]["p2p_order_status"] | null
+          id: string
+          note: string | null
+          order_id: string
+          to_status: Database["public"]["Enums"]["p2p_order_status"] | null
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_type?: string
+          created_at?: string
+          from_status?: Database["public"]["Enums"]["p2p_order_status"] | null
+          id?: string
+          note?: string | null
+          order_id: string
+          to_status?: Database["public"]["Enums"]["p2p_order_status"] | null
+        }
+        Update: {
+          actor_id?: string | null
+          actor_type?: string
+          created_at?: string
+          from_status?: Database["public"]["Enums"]["p2p_order_status"] | null
+          id?: string
+          note?: string | null
+          order_id?: string
+          to_status?: Database["public"]["Enums"]["p2p_order_status"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "p2p_order_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "p2p_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      p2p_orders: {
+        Row: {
+          advertisement_id: string | null
+          buyer_user_id: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          completed_at: string | null
+          confirm_deadline: string | null
+          created_at: string
+          escrow_locked: boolean
+          escrow_settled: boolean
+          fee_usdt: number
+          id: string
+          merchant_id: string | null
+          order_ref: string
+          paid_amount_inr: number | null
+          paid_at: string | null
+          payment_deadline: string | null
+          payment_method: string
+          payout_holder_name: string | null
+          payout_upi_id: string | null
+          price_inr: number
+          proof_url: string | null
+          seller_id: string
+          side: Database["public"]["Enums"]["p2p_side"]
+          status: Database["public"]["Enums"]["p2p_order_status"]
+          total_inr: number
+          updated_at: string
+          usdt_amount: number
+          utr_reference: string | null
+        }
+        Insert: {
+          advertisement_id?: string | null
+          buyer_user_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          confirm_deadline?: string | null
+          created_at?: string
+          escrow_locked?: boolean
+          escrow_settled?: boolean
+          fee_usdt?: number
+          id?: string
+          merchant_id?: string | null
+          order_ref?: string
+          paid_amount_inr?: number | null
+          paid_at?: string | null
+          payment_deadline?: string | null
+          payment_method?: string
+          payout_holder_name?: string | null
+          payout_upi_id?: string | null
+          price_inr: number
+          proof_url?: string | null
+          seller_id: string
+          side?: Database["public"]["Enums"]["p2p_side"]
+          status?: Database["public"]["Enums"]["p2p_order_status"]
+          total_inr: number
+          updated_at?: string
+          usdt_amount: number
+          utr_reference?: string | null
+        }
+        Update: {
+          advertisement_id?: string | null
+          buyer_user_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          confirm_deadline?: string | null
+          created_at?: string
+          escrow_locked?: boolean
+          escrow_settled?: boolean
+          fee_usdt?: number
+          id?: string
+          merchant_id?: string | null
+          order_ref?: string
+          paid_amount_inr?: number | null
+          paid_at?: string | null
+          payment_deadline?: string | null
+          payment_method?: string
+          payout_holder_name?: string | null
+          payout_upi_id?: string | null
+          price_inr?: number
+          proof_url?: string | null
+          seller_id?: string
+          side?: Database["public"]["Enums"]["p2p_side"]
+          status?: Database["public"]["Enums"]["p2p_order_status"]
+          total_inr?: number
+          updated_at?: string
+          usdt_amount?: number
+          utr_reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "p2p_orders_advertisement_id_fkey"
+            columns: ["advertisement_id"]
+            isOneToOne: false
+            referencedRelation: "p2p_advertisements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "p2p_orders_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_methods: {
+        Row: {
+          bank_name: string | null
+          created_at: string
+          holder_name: string
+          id: string
+          is_default: boolean
+          kind: string
+          updated_at: string
+          upi_id: string
+          user_id: string
+          verified: boolean
+        }
+        Insert: {
+          bank_name?: string | null
+          created_at?: string
+          holder_name: string
+          id?: string
+          is_default?: boolean
+          kind?: string
+          updated_at?: string
+          upi_id: string
+          user_id: string
+          verified?: boolean
+        }
+        Update: {
+          bank_name?: string | null
+          created_at?: string
+          holder_name?: string
+          id?: string
+          is_default?: boolean
+          kind?: string
+          updated_at?: string
+          upi_id?: string
+          user_id?: string
+          verified?: boolean
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           balance: number
@@ -497,6 +956,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          locked_balance: number
           updated_at: string
         }
         Insert: {
@@ -505,6 +965,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          locked_balance?: number
           updated_at?: string
         }
         Update: {
@@ -513,6 +974,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          locked_balance?: number
           updated_at?: string
         }
         Relationships: []
@@ -992,6 +1454,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_resolve_dispute: {
+        Args: { _action: string; _dispute_id: string; _reason?: string }
+        Returns: boolean
+      }
       credit_deposit: {
         Args: { _deposit_id: string }
         Returns: {
@@ -1028,6 +1494,42 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      p2p_cancel_order: {
+        Args: { _order_id: string; _reason?: string }
+        Returns: boolean
+      }
+      p2p_confirm_payment_received: {
+        Args: { _order_id: string }
+        Returns: {
+          fee: number
+          released: number
+        }[]
+      }
+      p2p_create_sell_order: {
+        Args: {
+          _advertisement_id: string
+          _payment_method_id: string
+          _usdt: number
+        }
+        Returns: {
+          order_id: string
+          order_ref: string
+          total_inr: number
+        }[]
+      }
+      p2p_mark_payment_sent: {
+        Args: {
+          _amount: number
+          _order_id: string
+          _proof_url?: string
+          _utr: string
+        }
+        Returns: boolean
+      }
+      p2p_raise_dispute: {
+        Args: { _details?: string; _order_id: string; _reason: string }
+        Returns: string
+      }
       wallet_transfer: {
         Args: {
           _amount: number
@@ -1041,6 +1543,19 @@ export type Database = {
           out_tx_id: string
           total: number
         }[]
+      }
+      write_ledger: {
+        Args: {
+          _after: number
+          _amount: number
+          _before: number
+          _bucket: string
+          _memo: string
+          _order_id: string
+          _type: Database["public"]["Enums"]["ledger_entry_type"]
+          _user_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
@@ -1058,6 +1573,33 @@ export type Database = {
         | "late_payment"
         | "review"
         | "credited"
+      dispute_priority: "low" | "medium" | "high" | "critical"
+      dispute_status: "open" | "evidence_requested" | "resolved" | "rejected"
+      ledger_entry_type:
+        | "deposit"
+        | "withdrawal"
+        | "p2p_buy"
+        | "p2p_sell"
+        | "fee"
+        | "escrow_lock"
+        | "escrow_release"
+        | "escrow_refund"
+        | "transfer_in"
+        | "transfer_out"
+        | "adjustment"
+      merchant_status: "pending" | "approved" | "suspended"
+      p2p_order_status:
+        | "created"
+        | "escrow_locked"
+        | "payment_pending"
+        | "payment_sent"
+        | "payment_received"
+        | "completed"
+        | "cancelled"
+        | "expired"
+        | "disputed"
+        | "admin_review"
+      p2p_side: "buy" | "sell"
       wallet_kind: "deposit" | "hot" | "cold" | "fee"
       wallet_tx_direction: "in" | "out"
       wallet_tx_kind: "deposit" | "transfer" | "fee" | "adjustment"
@@ -1204,6 +1746,35 @@ export const Constants = {
         "review",
         "credited",
       ],
+      dispute_priority: ["low", "medium", "high", "critical"],
+      dispute_status: ["open", "evidence_requested", "resolved", "rejected"],
+      ledger_entry_type: [
+        "deposit",
+        "withdrawal",
+        "p2p_buy",
+        "p2p_sell",
+        "fee",
+        "escrow_lock",
+        "escrow_release",
+        "escrow_refund",
+        "transfer_in",
+        "transfer_out",
+        "adjustment",
+      ],
+      merchant_status: ["pending", "approved", "suspended"],
+      p2p_order_status: [
+        "created",
+        "escrow_locked",
+        "payment_pending",
+        "payment_sent",
+        "payment_received",
+        "completed",
+        "cancelled",
+        "expired",
+        "disputed",
+        "admin_review",
+      ],
+      p2p_side: ["buy", "sell"],
       wallet_kind: ["deposit", "hot", "cold", "fee"],
       wallet_tx_direction: ["in", "out"],
       wallet_tx_kind: ["deposit", "transfer", "fee", "adjustment"],
