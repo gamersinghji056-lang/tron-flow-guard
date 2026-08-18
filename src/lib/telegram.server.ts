@@ -360,7 +360,13 @@ export async function registerAndLinkTelegramMiniApp(input: {
 }
 
 export async function issueTelegramSupabaseSession(initData: string, handoffToken?: string) {
-  const { verified, account, userId } = await requireLinkedTelegramUser(initData);
+  const { verified, account } = await readTelegramAccount(initData);
+  if (!account)
+    throw new TelegramAuthError("telegram_not_linked", "Telegram account is not linked");
+  if (account.status !== "active") {
+    throw new TelegramAuthError("telegram_disabled", "Telegram access is disabled");
+  }
+  const userId = account.user_id;
   let handoffConsumed = false;
   if (handoffToken) {
     const handoff = await consumeTelegramAppHandoff({
@@ -369,6 +375,9 @@ export async function issueTelegramSupabaseSession(initData: string, handoffToke
       userId,
     });
     handoffConsumed = Boolean(handoff);
+  }
+  if (!(await hasActiveTelegramSession(verified.telegramUser.id))) {
+    await createTelegramAppSession(account, "mini_app_reconnect");
   }
   const { data: userResult, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
   const email = userResult.user?.email;

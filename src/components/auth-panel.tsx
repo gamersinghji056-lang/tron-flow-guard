@@ -161,7 +161,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
         ? { to: "/trader/register", label: "New here? Create a trader account" }
         : { to: "/trader/login", label: "Already registered? Sign in" }
       : mode === "login"
-        ? { to: "/admin/register", label: "Need an administrator account? Register" }
+        ? null
         : { to: "/admin/login", label: "Already an administrator? Sign in" };
 
   return (
@@ -267,12 +267,14 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
             </form>
           )}
 
-          <Link
-            to={other.to}
-            className="mt-4 block text-center text-sm text-muted-foreground hover:text-foreground"
-          >
-            {other.label}
-          </Link>
+          {other ? (
+            <Link
+              to={other.to}
+              className="mt-4 block text-center text-sm text-muted-foreground hover:text-foreground"
+            >
+              {other.label}
+            </Link>
+          ) : null}
         </div>
 
         <p className="mt-4 text-center text-xs text-muted-foreground">

@@ -44,6 +44,7 @@ import {
   setWalletTransactionPassword,
 } from "@/lib/wallets.functions";
 import { formatUsdt, shortenHash } from "@/lib/chain";
+import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
 import { selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
 
 export const Route = createFileRoute("/mini-app")({
@@ -258,6 +259,7 @@ function TelegramMiniApp() {
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [selectedWalletId, setSelectedWalletId] = useState("");
+  const [bootstrapError, setBootstrapError] = useState("");
   const [miniWalletName, setMiniWalletName] = useState("Mini Wallet");
   const [miniImportPhrase, setMiniImportPhrase] = useState("");
   const [miniWalletPassword, setMiniWalletPassword] = useState("");
@@ -270,9 +272,10 @@ function TelegramMiniApp() {
     setLoading(true);
     try {
       const verified = await verifyLaunch({ data: { initData: launch } });
-      setLinked(Boolean(verified.authorized));
+      setBootstrapError("");
+      setLinked(Boolean(verified.linked));
       const { data: sessionData } = await supabase.auth.getSession();
-      if (verified.authorized && (handoff || !sessionData.session)) {
+      if (verified.linked && (handoff || !sessionData.session || !verified.authorized)) {
         const session = await createTelegramSession({
           data: { initData: launch, handoff: handoff || undefined },
         });
@@ -288,7 +291,7 @@ function TelegramMiniApp() {
       } else {
         setHasSession(Boolean(sessionData.session));
       }
-      if (!verified.authorized) return;
+      if (!verified.linked) return;
 
       if (nextTab === "p2p") {
         const p2p = await loadP2p({ data: { initData: launch } });
@@ -304,6 +307,7 @@ function TelegramMiniApp() {
         setOverview(home as Overview);
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Telegram verification failed";
       console.info("[telegram-mini] secure launch diagnostics", {
         sdkInitialized: true,
         initDataPresent: Boolean(launch),
@@ -311,11 +315,29 @@ function TelegramMiniApp() {
         handoffPresent: Boolean(handoff),
         validationResult: "failed",
       });
-      toast.error(error instanceof Error ? error.message : "Telegram verification failed");
-      setLinked(false);
+      if (isMiniAppSessionError(message)) {
+        setBootstrapError("Session expired");
+        setLinked(false);
+        setHasSession(false);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setLoading(false);
     }
+  }
+
+  async function retryBootstrap() {
+    setBootstrapError("");
+    setLoading(true);
+    const launch = await getTelegramLaunch();
+    setInitData(launch.initData);
+    setLaunchChecked(true);
+    if (!launch.initData) {
+      setLoading(false);
+      return;
+    }
+    await refresh(normalizeTab(search.tab as Tab), launch.initData, handoffToken || search.handoff);
   }
 
   useEffect(() => {
@@ -367,7 +389,7 @@ function TelegramMiniApp() {
   useEffect(() => {
     if (!linked || !initData) return;
     const channel = supabase
-      .channel(`telegram-mini-${crypto.randomUUID()}`)
+      .channel(createMiniAppClientId("telegram-mini"))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "deposit_requests" },
@@ -494,7 +516,7 @@ function TelegramMiniApp() {
         data: {
           toAddress: withdrawAddress,
           amount,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createMiniAppClientId("withdrawal"),
         },
       });
       toast.success("Withdrawal request created");
@@ -651,6 +673,22 @@ function TelegramMiniApp() {
             >
               OPEN BOT
             </a>
+          }
+        />
+      </MiniFrame>
+    );
+  }
+
+  if (bootstrapError) {
+    return (
+      <MiniFrame>
+        <EmptyState
+          title="Session expired"
+          body="Reconnect securely with Telegram to continue."
+          action={
+            <Button className="mt-4" onClick={() => void retryBootstrap()}>
+              Reconnect securely
+            </Button>
           }
         />
       </MiniFrame>

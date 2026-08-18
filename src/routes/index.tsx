@@ -96,9 +96,6 @@ function Landing() {
               Admin login
             </Link>
           </Button>
-          <Button asChild size="lg" variant="outline">
-            <Link to="/admin/register">Admin register</Link>
-          </Button>
         </div>
 
         <div className="mt-14 grid gap-4 sm:grid-cols-2">

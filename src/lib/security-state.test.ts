@@ -29,6 +29,7 @@ import {
   normalizeTelegramDeepLink,
   validateTelegramInitData,
 } from "./telegram-auth.ts";
+import { createMiniAppClientId, miniAppErrorHomeHref } from "./mini-app-runtime.ts";
 import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
@@ -324,6 +325,12 @@ describe("admin registration hardening", () => {
       /self-registration is disabled/,
     );
   });
+
+  it("requires the server-side administrator code for elevated registration", () => {
+    assert.throws(() => assertAdminRegistrationCode(undefined, "server-only"), /Invalid/);
+    assert.throws(() => assertAdminRegistrationCode("wrong", "server-only"), /Invalid/);
+    assert.doesNotThrow(() => assertAdminRegistrationCode("server-only", "server-only"));
+  });
 });
 
 describe("Telegram initData security", () => {
@@ -459,5 +466,28 @@ describe("Telegram bot auth flow", () => {
       "https://example.test/mini-app?tab=wallet&handoff=opaque-token",
     );
     assert.equal("url" in button, false);
+  });
+});
+
+describe("Telegram Mini App runtime safety", () => {
+  it("keeps root error recovery inside the Mini App", () => {
+    assert.equal(miniAppErrorHomeHref("/mini-app"), "/mini-app");
+    assert.equal(miniAppErrorHomeHref("/mini-app?tab=wallet"), "/mini-app");
+    assert.equal(miniAppErrorHomeHref("/dashboard"), "/");
+  });
+
+  it("does not require crypto.randomUUID for Mini App client ids", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: { getRandomValues: undefined, randomUUID: undefined },
+    });
+    try {
+      const id = createMiniAppClientId("telegram-mini");
+      assert.match(id, /^telegram-mini-/);
+      assert.ok(id.length > "telegram-mini-".length);
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
+    }
   });
 });
