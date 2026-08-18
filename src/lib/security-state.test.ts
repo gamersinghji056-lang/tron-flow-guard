@@ -33,6 +33,18 @@ import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
 } from "./tron-personal-wallet.ts";
+import { isTronAddress, parseTokenBalanceHex } from "./chain.ts";
+import { decryptMnemonic, encryptMnemonic } from "./wallet-crypto.ts";
+import {
+  addressesAreSeparated,
+  canAccessWalletSecret,
+  filterWalletHistory,
+  gasSponsorshipUsable,
+  onChainSendEnabled,
+  selectActiveWallet,
+  userOwnsWallet,
+  walletDisplayBalance,
+} from "./wallet-state.ts";
 import {
   hashTransactionPassword,
   shouldLockTransactionPassword,
@@ -189,6 +201,99 @@ describe("personal TRON wallet recovery", () => {
     const first = deriveTronWalletFromMnemonic(createPersonalWalletMnemonic());
     const second = deriveTronWalletFromMnemonic(createPersonalWalletMnemonic());
     assert.notEqual(first.address, second.address);
+  });
+
+  it("imports the same recovery phrase to the same TRON address", () => {
+    const mnemonic = createPersonalWalletMnemonic();
+    const created = deriveTronWalletFromMnemonic(mnemonic);
+    const imported = deriveTronWalletFromMnemonic(mnemonic);
+    assert.equal(imported.address, created.address);
+    assert.equal(isTronAddress(imported.address), true);
+  });
+
+  it("encrypts and decrypts recovery phrases with the transaction password", () => {
+    const mnemonic = createPersonalWalletMnemonic();
+    const encrypted = encryptMnemonic(mnemonic, "wallet-password-1");
+    assert.notEqual(encrypted.encryptedMnemonic, mnemonic);
+    assert.equal(decryptMnemonic({ ...encrypted, password: "wallet-password-1" }), mnemonic);
+    assert.throws(
+      () => decryptMnemonic({ ...encrypted, password: "wrong-password" }),
+      /Unsupported state|authenticate/i,
+    );
+  });
+});
+
+describe("wallet ownership and selected-wallet state", () => {
+  const wallets = [
+    {
+      id: "wallet-a",
+      user_id: "user-a",
+      address: "TA111111111111111111111111111111111",
+      balance: 5,
+      onchain_balance: 42,
+      custody: "non_custodial",
+      is_default: false,
+    },
+    {
+      id: "wallet-b",
+      user_id: "user-a",
+      address: "TB111111111111111111111111111111111",
+      balance: 8,
+      onchain_balance: 1,
+      custody: "custodial",
+      is_default: true,
+    },
+  ];
+  const firstWallet = wallets[0]!;
+  const secondWallet = wallets[1]!;
+
+  it("uses selected/default wallet and denies cross-user secret access", () => {
+    assert.equal(selectActiveWallet(wallets, "wallet-a")?.id, "wallet-a");
+    assert.equal(selectActiveWallet(wallets)?.id, "wallet-b");
+    assert.equal(userOwnsWallet(firstWallet, "user-a"), true);
+    assert.equal(userOwnsWallet(firstWallet, "user-b"), false);
+    assert.equal(canAccessWalletSecret(firstWallet, "user-a"), true);
+    assert.equal(canAccessWalletSecret(firstWallet, "user-b"), false);
+  });
+
+  it("filters history to the selected wallet only", () => {
+    const rows = [
+      { id: "tx-a", wallet_id: "wallet-a" },
+      { id: "tx-b", wallet_id: "wallet-b" },
+      { id: "tx-c", wallet_id: "wallet-a" },
+    ];
+    assert.deepEqual(
+      filterWalletHistory(rows, "wallet-a").map((row) => row.id),
+      ["tx-a", "tx-c"],
+    );
+  });
+
+  it("keeps personal receive and platform deposit addresses separated", () => {
+    assert.equal(
+      addressesAreSeparated(firstWallet.address, "TC111111111111111111111111111111111"),
+      true,
+    );
+    assert.equal(addressesAreSeparated(firstWallet.address, firstWallet.address), false);
+  });
+
+  it("uses on-chain balance for non-custodial wallets and blocks fake sends", () => {
+    assert.equal(walletDisplayBalance(firstWallet), 42);
+    assert.equal(walletDisplayBalance(secondWallet), 8);
+    assert.equal(onChainSendEnabled(firstWallet), false);
+    assert.equal(onChainSendEnabled(secondWallet), true);
+  });
+
+  it("models GasFree as unavailable unless sponsorship is configured", () => {
+    assert.equal(gasSponsorshipUsable("unavailable"), false);
+    assert.equal(gasSponsorshipUsable("available"), true);
+    assert.equal(gasSponsorshipUsable("limited"), true);
+  });
+
+  it("parses TRC20 constant-call USDT balances", () => {
+    assert.equal(
+      parseTokenBalanceHex("0000000000000000000000000000000000000000000000000000000005f5e100", 6),
+      100,
+    );
   });
 });
 

@@ -74,6 +74,12 @@ export function formatUsdt(value: number | string | null | undefined): string {
   return amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 }
 
+export function parseTokenBalanceHex(hex: string | undefined, decimals: number): number {
+  if (!hex) return 0;
+  const baseUnits = BigInt(`0x${hex}`);
+  return Number(baseUnits) / 10 ** decimals;
+}
+
 export const DEPOSIT_STATUS_META: Record<
   DepositStatus,
   { label: string; tone: "muted" | "info" | "warning" | "success" | "destructive"; hint: string }

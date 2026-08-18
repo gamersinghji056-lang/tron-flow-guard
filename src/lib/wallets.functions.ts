@@ -137,6 +137,14 @@ export const archiveWallet = createServerFn({ method: "POST" })
     return archiveOwnedWallet(context.userId, data.walletId);
   });
 
+export const refreshWalletBalance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => walletIdInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { refreshPersonalWalletOnChainBalance } = await import("@/lib/wallets.server");
+    return refreshPersonalWalletOnChainBalance(context.userId, data.walletId);
+  });
+
 export const sendTransfer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => transferInput.parse(data))

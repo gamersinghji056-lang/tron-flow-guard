@@ -6,7 +6,7 @@
  * behind the `onchain_broadcast_enabled` system setting so the demo can run
  * entirely on the internal ledger until the operator funds the hot wallets.
  */
-import { networkConfig, type ChainNetwork } from "@/lib/chain";
+import { networkConfig, parseTokenBalanceHex, type ChainNetwork } from "@/lib/chain";
 import { deriveWallet, signTxHash } from "@/lib/wallet-keys.server";
 
 function base58Decode(value: string): Uint8Array {
@@ -123,13 +123,23 @@ export async function readTrc20Balance(
   if (apiKey) headers["TRON-PRO-API-KEY"] = apiKey;
 
   try {
-    const res = await fetch(
-      `${config.apiBase}/v1/accounts/${address}/transactions/trc20?limit=1&contract_address=${config.usdtContract}`,
-      { headers },
-    );
+    const res = await fetch(`${config.apiBase}/wallet/triggerconstantcontract`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        owner_address: toHexAddress(address),
+        contract_address: toHexAddress(config.usdtContract),
+        function_selector: "balanceOf(address)",
+        parameter: pad32(toHexAddress(address).slice(2)),
+      }),
+    });
     if (!res.ok) return null;
-    const body = (await res.json()) as { success?: boolean };
-    return body.success === false ? null : 0;
+    const body = (await res.json()) as {
+      result?: { result?: boolean };
+      constant_result?: string[];
+    };
+    if (body.result?.result === false) return null;
+    return parseTokenBalanceHex(body.constant_result?.[0], config.tokenDecimals);
   } catch {
     return null;
   }

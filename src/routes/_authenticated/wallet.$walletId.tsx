@@ -10,13 +10,20 @@ import {
   ExternalLink,
   KeyRound,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { quoteTransfer, revealRecoveryPhrase, sendTransfer } from "@/lib/wallets.functions";
+import {
+  quoteTransfer,
+  refreshWalletBalance,
+  revealRecoveryPhrase,
+  sendTransfer,
+} from "@/lib/wallets.functions";
 import { formatUsdt, isTronAddress, networkConfig, shortenHash } from "@/lib/chain";
 import type { ChainNetwork } from "@/lib/chain";
+import { onChainSendEnabled, walletDisplayBalance } from "@/lib/wallet-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +46,8 @@ interface WalletDetail {
   address: string;
   network: ChainNetwork;
   balance: number;
+  onchain_balance?: number | null;
+  onchain_checked_at?: string | null;
   is_default: boolean;
   wallet_type?: "standard" | "gasfree";
   custody?: string;
@@ -67,6 +76,7 @@ function WalletDetailPage() {
   const send = useServerFn(sendTransfer);
   const quote = useServerFn(quoteTransfer);
   const reveal = useServerFn(revealRecoveryPhrase);
+  const refreshBalance = useServerFn(refreshWalletBalance);
 
   const [wallet, setWallet] = useState<WalletDetail | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
@@ -80,6 +90,9 @@ function WalletDetailPage() {
   const [revealPassword, setRevealPassword] = useState("");
   const [recoveryPhrase, setRecoveryPhrase] = useState("");
   const [sending, setSending] = useState(false);
+  const [refreshingBalance, setRefreshingBalance] = useState(false);
+  const [activityPage, setActivityPage] = useState(0);
+  const pageSize = 25;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,7 +100,7 @@ function WalletDetailPage() {
       supabase
         .from("user_wallets" as never)
         .select(
-          "id, name, address, network, balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
+          "id, name, address, network, balance, onchain_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
         )
         .eq("id", walletId as never)
         .maybeSingle(),
@@ -98,7 +111,7 @@ function WalletDetailPage() {
         )
         .eq("wallet_id", walletId)
         .order("created_at", { ascending: false })
-        .limit(100),
+        .range(activityPage * pageSize, activityPage * pageSize + pageSize),
     ]);
 
     if (error) toast.error("Unable to load wallet.");
@@ -106,6 +119,7 @@ function WalletDetailPage() {
       const detail = {
         ...(walletRow as unknown as WalletDetail),
         balance: Number((walletRow as unknown as WalletDetail).balance ?? 0),
+        onchain_balance: Number((walletRow as unknown as WalletDetail).onchain_balance ?? 0),
       };
       setWallet(detail);
       QRCode.toDataURL(detail.address, { width: 320, margin: 1 })
@@ -120,7 +134,7 @@ function WalletDetailPage() {
       })) as LedgerRow[],
     );
     setLoading(false);
-  }, [walletId]);
+  }, [activityPage, walletId]);
 
   useEffect(() => {
     void load();
@@ -146,12 +160,17 @@ function WalletDetailPage() {
   const config = networkConfig(wallet?.network);
   const parsedAmount = Number(amount);
   const total = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount + fee : 0;
+  const sendEnabled = onChainSendEnabled(wallet);
+  const displayBalance = walletDisplayBalance(wallet);
+  const visibleLedger = ledger.slice(0, pageSize);
+  const hasNextActivityPage = ledger.length > pageSize;
   const canSend =
+    sendEnabled &&
     isTronAddress(toAddress) &&
     parsedAmount > 0 &&
     Boolean(transactionPassword) &&
     !!wallet &&
-    total <= wallet.balance &&
+    total <= displayBalance &&
     !sending;
 
   async function submitSend(event: React.FormEvent) {
@@ -205,6 +224,20 @@ function WalletDetailPage() {
     }
   }
 
+  async function refreshOnChainBalance() {
+    if (!wallet) return;
+    setRefreshingBalance(true);
+    try {
+      await refreshBalance({ data: { walletId: wallet.id } });
+      toast.success("On-chain balance refreshed");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not refresh balance");
+    } finally {
+      setRefreshingBalance(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="panel grid h-56 place-items-center">
@@ -243,8 +276,18 @@ function WalletDetailPage() {
             {wallet.wallet_type === "gasfree" ? "GasFree" : "Standard"} {config.shortLabel}
           </p>
           <p className="mono text-2xl font-semibold text-primary">
-            {formatUsdt(wallet.balance)} USDT
+            {formatUsdt(displayBalance)} USDT
           </p>
+          {wallet.custody === "non_custodial" ? (
+            <button
+              className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => void refreshOnChainBalance()}
+              disabled={refreshingBalance}
+            >
+              <RefreshCw className={`h-3 w-3 ${refreshingBalance ? "animate-spin" : ""}`} />
+              Refresh chain balance
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -372,7 +415,13 @@ function WalletDetailPage() {
                 required
               />
             </Field>
-            {parsedAmount > 0 && total > wallet.balance ? (
+            {!sendEnabled ? (
+              <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
+                On-chain sending is not enabled yet. This wallet uses an encrypted recovery phrase,
+                but there is no safe browser-to-chain signing and broadcast flow wired for it.
+              </p>
+            ) : null}
+            {parsedAmount > 0 && total > displayBalance ? (
               <p className="text-xs text-destructive">
                 Insufficient balance. You need {formatUsdt(total)} USDT including fee.
               </p>
@@ -381,10 +430,12 @@ function WalletDetailPage() {
               {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
               Send USDT
             </Button>
-            <p className="text-xs text-muted-foreground">
-              External on-chain broadcasts remain disabled until the administrator enables safe
-              signing/broadcast infrastructure. No fake TXID is created.
-            </p>
+            {!sendEnabled ? null : (
+              <p className="text-xs text-muted-foreground">
+                External on-chain broadcasts remain disabled until the administrator enables safe
+                signing/broadcast infrastructure. No fake TXID is created.
+              </p>
+            )}
           </form>
         </TabsContent>
 
@@ -421,7 +472,7 @@ function WalletDetailPage() {
             </div>
           ) : (
             <div className="panel divide-y divide-border/70">
-              {ledger.map((row) => (
+              {visibleLedger.map((row) => (
                 <div key={row.id} className="flex items-center gap-3 p-4">
                   <span
                     className={
@@ -478,6 +529,27 @@ function WalletDetailPage() {
                   </div>
                 </div>
               ))}
+              <div className="flex items-center justify-between px-4 py-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={activityPage === 0}
+                  onClick={() => setActivityPage((page) => Math.max(0, page - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="text-xs text-muted-foreground">Page {activityPage + 1}</span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!hasNextActivityPage}
+                  onClick={() => setActivityPage((page) => page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </TabsContent>

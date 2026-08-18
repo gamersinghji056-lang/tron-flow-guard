@@ -25,6 +25,7 @@ import {
 } from "@/lib/wallets.functions";
 import { DEFAULT_NETWORK, formatUsdt, networkConfig, shortenHash } from "@/lib/chain";
 import type { ChainNetwork } from "@/lib/chain";
+import { selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,6 +52,7 @@ interface WalletRow {
   address: string;
   network: ChainNetwork;
   balance: number;
+  onchain_balance?: number | null;
   is_default: boolean;
   created_at: string;
   wallet_type?: "standard" | "gasfree";
@@ -73,6 +75,7 @@ function WalletsPage() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [createdPhrase, setCreatedPhrase] = useState("");
+  const [createdAddress, setCreatedAddress] = useState("");
   const [form, setForm] = useState({
     name: "Main Wallet",
     network: DEFAULT_NETWORK,
@@ -89,7 +92,7 @@ function WalletsPage() {
     const { data, error } = await supabase
       .from("user_wallets" as never)
       .select(
-        "id, name, address, network, balance, is_default, created_at, wallet_type, custody, backup_status, gas_sponsorship_status",
+        "id, name, address, network, balance, onchain_balance, is_default, created_at, wallet_type, custody, backup_status, gas_sponsorship_status",
       )
       .eq("is_archived", false as never)
       .order("selected_at", { ascending: false, nullsFirst: false })
@@ -121,8 +124,14 @@ function WalletsPage() {
     };
   }, [user, load]);
 
-  const total = useMemo(() => wallets.reduce((sum, wallet) => sum + wallet.balance, 0), [wallets]);
-  const activeWallet = wallets.find((wallet) => wallet.is_default) ?? wallets[0] ?? null;
+  const total = useMemo(
+    () =>
+      Number(profile?.balance ?? 0) +
+      Number(profile?.locked_balance ?? 0) +
+      Number((profile as { pending_balance?: number } | null)?.pending_balance ?? 0),
+    [profile],
+  );
+  const activeWallet = selectActiveWallet(wallets);
 
   async function submitPassword(event: React.FormEvent) {
     event.preventDefault();
@@ -160,7 +169,9 @@ function WalletsPage() {
         },
       });
       const phrase = (result as { recoveryPhrase?: string }).recoveryPhrase ?? "";
+      const address = (result as { wallet?: { address?: string } }).wallet?.address ?? "";
       setCreatedPhrase(phrase);
+      setCreatedAddress(address);
       toast.success("Wallet created");
       await load();
     } catch (error) {
@@ -292,12 +303,16 @@ function WalletsPage() {
           open={createOpen}
           setOpen={(next) => {
             setCreateOpen(next);
-            if (!next) setCreatedPhrase("");
+            if (!next) {
+              setCreatedPhrase("");
+              setCreatedAddress("");
+            }
           }}
           form={form}
           setForm={setForm}
           pending={pending}
           createdPhrase={createdPhrase}
+          createdAddress={createdAddress}
           onSubmit={submitCreate}
         />
         <WalletDialog
@@ -321,7 +336,7 @@ function WalletsPage() {
           icon={ArrowDownLeft}
           label="Receive"
         />
-        <QuickLink to="/assets" icon={ShieldCheck} label="Deposit" />
+        <QuickLink to="/deposits" icon={ShieldCheck} label="PLATFORM DEPOSIT" />
       </section>
 
       <section className="panel overflow-hidden">
@@ -338,15 +353,23 @@ function WalletsPage() {
         ) : wallets.length === 0 ? (
           <div className="grid place-items-center gap-3 p-12 text-center">
             <Wallet2 className="h-8 w-8 text-muted-foreground" />
+            <p className="font-medium">No personal wallet yet</p>
             <p className="text-sm text-muted-foreground">
               Create a standard wallet or import an existing recovery phrase.
             </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={() => setCreateOpen(true)}>CREATE WALLET</Button>
+              <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                IMPORT WALLET
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="divide-y">
             {wallets.map((wallet) => {
               const config = networkConfig(wallet.network);
               const active = wallet.id === activeWallet?.id;
+              const walletBalance = walletDisplayBalance(wallet);
               return (
                 <button
                   key={wallet.id}
@@ -358,7 +381,10 @@ function WalletsPage() {
                       {wallet.name}
                       {active ? <Star className="h-3.5 w-3.5 fill-primary text-primary" /> : null}
                     </p>
-                    <p className="mono mt-1 text-xs break-all text-muted-foreground">
+                    <p
+                      className="mono mt-1 text-xs break-all text-muted-foreground"
+                      title={wallet.address}
+                    >
                       {shortenHash(wallet.address, 10)}
                     </p>
                   </div>
@@ -368,7 +394,7 @@ function WalletsPage() {
                     <p className="text-xs text-muted-foreground">{wallet.custody ?? "personal"}</p>
                   </div>
                   <div className="text-sm">
-                    <p className="mono">{formatUsdt(wallet.balance)} USDT</p>
+                    <p className="mono">{formatUsdt(walletBalance)} USDT</p>
                     <p className="text-xs text-muted-foreground">
                       Backup: {(wallet.backup_status ?? "not_backed_up").replaceAll("_", " ")}
                     </p>
@@ -416,6 +442,7 @@ function WalletDialog({
   setForm,
   pending,
   createdPhrase,
+  createdAddress,
   importPhrase,
   setImportPhrase,
   onSubmit,
@@ -441,6 +468,7 @@ function WalletDialog({
   >;
   pending: boolean;
   createdPhrase?: string;
+  createdAddress?: string;
   importPhrase?: string;
   setImportPhrase?: (value: string) => void;
   onSubmit: (event: React.FormEvent) => void;
@@ -464,6 +492,24 @@ function WalletDialog({
         </DialogHeader>
         {createdPhrase ? (
           <div className="space-y-4">
+            {createdAddress ? (
+              <div className="rounded-lg border p-3">
+                <p className="text-sm font-medium">Wallet address</p>
+                <p className="mono mt-2 break-all text-sm">{createdAddress}</p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="mt-2"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(createdAddress);
+                    toast.success("Address copied");
+                  }}
+                >
+                  <Copy className="mr-1.5 h-3.5 w-3.5" />
+                  Copy
+                </Button>
+              </div>
+            ) : null}
             <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
               <p className="text-sm font-medium">Back up this recovery phrase now</p>
               <p className="mt-2 select-all rounded-md bg-background p-3 font-mono text-sm">

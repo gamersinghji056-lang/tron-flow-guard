@@ -4,6 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, Wallet2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { formatUsdt } from "@/lib/chain";
+import { walletDisplayBalance } from "@/lib/wallet-state";
 import { Button } from "@/components/ui/button";
 import { SectionHeader, StatCard } from "@/components/stat-card";
 
@@ -16,6 +17,8 @@ interface WalletRow {
   id: string;
   name: string;
   balance: number;
+  onchain_balance?: number | null;
+  custody?: string | null;
   network: string;
   address: string;
 }
@@ -42,7 +45,7 @@ function AssetsPage() {
     const [{ data: walletRows }, { data: txRows }] = await Promise.all([
       supabase
         .from("user_wallets")
-        .select("id, name, balance, network, address")
+        .select("id, name, balance, onchain_balance, custody, network, address")
         .eq("is_archived", false)
         .order("is_default", { ascending: false }),
       supabase
@@ -69,7 +72,10 @@ function AssetsPage() {
     void load();
   }, []);
 
-  const walletTotal = useMemo(() => wallets.reduce((sum, row) => sum + row.balance, 0), [wallets]);
+  const walletTotal = useMemo(
+    () => wallets.reduce((sum, row) => sum + walletDisplayBalance(row), 0),
+    [wallets],
+  );
   const available = Number(profile?.balance ?? 0);
   const locked = Number((profile as ProfileWithLocks | null)?.locked_balance ?? 0);
 
@@ -131,7 +137,9 @@ function AssetsPage() {
                         {wallet.address}
                       </p>
                     </div>
-                    <p className="mono text-primary">{formatUsdt(wallet.balance)} USDT</p>
+                    <p className="mono text-primary">
+                      {formatUsdt(walletDisplayBalance(wallet))} USDT
+                    </p>
                   </div>
                 </div>
               ))

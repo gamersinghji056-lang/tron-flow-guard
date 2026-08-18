@@ -104,11 +104,10 @@ export async function provisionPersonalWallet(params: {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { createPersonalWalletMnemonic, deriveTronWalletFromMnemonic } =
     await import("@/lib/tron-personal-wallet");
-  const { hasTransactionPassword, encryptMnemonic } = await import("@/lib/wallet-security.server");
+  const { encryptMnemonic, verifyTransactionPasswordOrThrow } =
+    await import("@/lib/wallet-security.server");
 
-  if (!(await hasTransactionPassword(params.userId))) {
-    throw new Error("Set a transaction password before creating a personal wallet");
-  }
+  await verifyTransactionPasswordOrThrow(params.userId, params.transactionPassword);
 
   const mnemonic = createPersonalWalletMnemonic();
   const derived = deriveTronWalletFromMnemonic(mnemonic);
@@ -142,7 +141,7 @@ export async function provisionPersonalWallet(params: {
       selected_at: params.makeDefault || isFirst ? new Date().toISOString() : null,
     } as never)
     .select(
-      "id, name, address, network, balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+      "id, name, address, network, balance, onchain_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
     )
     .single();
   if (error) throw new Error(error.message);
@@ -196,15 +195,35 @@ export async function importPersonalWallet(params: {
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { deriveTronWalletFromMnemonic } = await import("@/lib/tron-personal-wallet");
-  const { hasTransactionPassword, encryptMnemonic } = await import("@/lib/wallet-security.server");
+  const { encryptMnemonic, verifyTransactionPasswordOrThrow } =
+    await import("@/lib/wallet-security.server");
 
-  if (!(await hasTransactionPassword(params.userId))) {
-    throw new Error("Set a transaction password before importing a personal wallet");
-  }
+  await verifyTransactionPasswordOrThrow(params.userId, params.transactionPassword);
 
   const derived = deriveTronWalletFromMnemonic(params.mnemonic);
   const encrypted = encryptMnemonic(derived.mnemonic, params.transactionPassword);
   const gasStatus = params.walletType === "gasfree" ? await readGasfreeStatus() : "unavailable";
+
+  const { data: duplicate, error: duplicateError } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select(
+      "id, name, address, network, balance, onchain_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+    )
+    .eq("user_id", params.userId as never)
+    .eq("network", params.network as never)
+    .eq("address", derived.address as never)
+    .eq("is_archived", false as never)
+    .maybeSingle();
+  if (duplicateError) throw new Error(duplicateError.message);
+  if (duplicate) {
+    if (params.makeDefault) {
+      await supabaseAdmin
+        .from("user_wallets" as never)
+        .update({ is_default: true, selected_at: new Date().toISOString() } as never)
+        .eq("id", (duplicate as { id: string }).id as never);
+    }
+    return { wallet: duplicate, existing: true };
+  }
 
   const { data: existing, error: countError } = await supabaseAdmin
     .from("user_wallets" as never)
@@ -233,7 +252,7 @@ export async function importPersonalWallet(params: {
       selected_at: params.makeDefault || isFirst ? new Date().toISOString() : null,
     } as never)
     .select(
-      "id, name, address, network, balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+      "id, name, address, network, balance, onchain_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
     )
     .single();
   if (error) throw new Error(error.message);
@@ -355,6 +374,36 @@ export async function archiveOwnedWallet(userId: string, walletId: string) {
   return { ok: true };
 }
 
+export async function refreshPersonalWalletOnChainBalance(userId: string, walletId: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { readTrc20Balance } = await import("@/lib/tron-transfer.server");
+
+  const { data: wallet, error } = await supabaseAdmin
+    .from("user_wallets")
+    .select("id, user_id, address, network, custody, is_archived")
+    .eq("id", walletId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!wallet || wallet.user_id !== userId || wallet.is_archived)
+    throw new Error("Wallet not found");
+
+  const balance = await readTrc20Balance(wallet.network, wallet.address);
+  if (balance === null) throw new Error("Could not refresh on-chain USDT balance");
+
+  const checkedAt = new Date().toISOString();
+  const { error: updateError } = await supabaseAdmin
+    .from("user_wallets")
+    .update({
+      onchain_balance: balance,
+      onchain_checked_at: checkedAt,
+      last_synced_at: checkedAt,
+    })
+    .eq("id", wallet.id);
+  if (updateError) throw new Error(updateError.message);
+
+  return { walletId: wallet.id, balance, checkedAt };
+}
+
 export async function executeTransfer(
   client: Client,
   userId: string,
@@ -368,6 +417,18 @@ export async function executeTransfer(
 ) {
   const { verifyTransactionPasswordOrThrow } = await import("@/lib/wallet-security.server");
   await verifyTransactionPasswordOrThrow(userId, input.transactionPassword ?? "");
+
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: sourceWallet, error: sourceError } = await supabaseAdmin
+    .from("user_wallets")
+    .select("id, user_id, custody")
+    .eq("id", input.walletId)
+    .maybeSingle();
+  if (sourceError) throw new Error(sourceError.message);
+  if (!sourceWallet || sourceWallet.user_id !== userId) throw new Error("Wallet not found");
+  if (sourceWallet.custody === "non_custodial") {
+    throw new Error("On-chain sending is not enabled yet.");
+  }
 
   const { data, error } = await client.rpc("wallet_transfer", {
     _from_wallet: input.walletId,
@@ -392,7 +453,6 @@ export async function executeTransfer(
   if (result.internal) return result;
 
   // External destination: attempt a real on-chain broadcast when enabled.
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const enabled = (await readSetting("onchain_broadcast_enabled")) === true;
 
   if (!enabled) {

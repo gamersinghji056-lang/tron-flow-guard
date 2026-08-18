@@ -37,7 +37,14 @@ import {
 import { createP2pOrderFromAd } from "@/lib/p2p.functions";
 import { createDirectSellOrder } from "@/lib/direct-sell.functions";
 import { createWithdrawalRequest } from "@/lib/withdrawals.functions";
+import {
+  createWallet,
+  importWallet,
+  setDefaultWallet,
+  setWalletTransactionPassword,
+} from "@/lib/wallets.functions";
 import { formatUsdt, shortenHash } from "@/lib/chain";
+import { selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
 
 export const Route = createFileRoute("/mini-app")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -159,7 +166,9 @@ interface WalletRow {
   address?: string | null;
   network?: string | null;
   balance?: number | string | null;
+  onchain_balance?: number | string | null;
   is_default?: boolean | null;
+  custody?: string | null;
   wallet_type?: string | null;
   backup_status?: string | null;
   gas_sponsorship_status?: string | null;
@@ -216,6 +225,10 @@ function TelegramMiniApp() {
   const takeP2pAd = useServerFn(createP2pOrderFromAd);
   const createDirectSell = useServerFn(createDirectSellOrder);
   const createWithdrawal = useServerFn(createWithdrawalRequest);
+  const createPersonalWallet = useServerFn(createWallet);
+  const importPersonalWallet = useServerFn(importWallet);
+  const setMiniDefaultWallet = useServerFn(setDefaultWallet);
+  const setMiniTransactionPassword = useServerFn(setWalletTransactionPassword);
 
   const [tab, setTab] = useState<PrimaryTab>(normalizeTab(search.tab as Tab));
   const [authMode, setAuthMode] = useState<"login" | "register">(
@@ -235,6 +248,7 @@ function TelegramMiniApp() {
     network?: string;
   } | null>(null);
   const [qr, setQr] = useState("");
+  const [personalQr, setPersonalQr] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -243,6 +257,12 @@ function TelegramMiniApp() {
   const [directSellAmount, setDirectSellAmount] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [selectedWalletId, setSelectedWalletId] = useState("");
+  const [miniWalletName, setMiniWalletName] = useState("Mini Wallet");
+  const [miniImportPhrase, setMiniImportPhrase] = useState("");
+  const [miniWalletPassword, setMiniWalletPassword] = useState("");
+  const [miniPassword, setMiniPassword] = useState("");
+  const [miniPasswordConfirm, setMiniPasswordConfirm] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function refresh(nextTab: PrimaryTab = tab, launch = initData, handoff = handoffToken) {
@@ -328,6 +348,21 @@ function TelegramMiniApp() {
     }
     void QRCode.toDataURL(depositAddress.address, { width: 240, margin: 1 }).then(setQr);
   }, [depositAddress?.address]);
+
+  const miniWallets = overview?.wallets ?? [];
+  const selectedWallet = selectActiveWallet(miniWallets, selectedWalletId);
+
+  useEffect(() => {
+    if (!selectedWallet?.address) {
+      setPersonalQr("");
+      return;
+    }
+    void QRCode.toDataURL(selectedWallet.address, { width: 240, margin: 1 }).then(setPersonalQr);
+  }, [selectedWallet?.address]);
+
+  useEffect(() => {
+    if (!selectedWalletId && selectedWallet?.id) setSelectedWalletId(selectedWallet.id);
+  }, [selectedWallet?.id, selectedWalletId]);
 
   useEffect(() => {
     if (!linked || !initData) return;
@@ -470,6 +505,100 @@ function TelegramMiniApp() {
       toast.error(error instanceof Error ? error.message : "Could not request withdrawal");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitMiniPassword(event: React.FormEvent) {
+    event.preventDefault();
+    if (!hasSession) {
+      toast.error("Login once in the Mini App to update wallet security");
+      return;
+    }
+    if (miniPassword !== miniPasswordConfirm) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setBusy(true);
+    try {
+      await setMiniTransactionPassword({ data: { password: miniPassword } });
+      setMiniPassword("");
+      setMiniPasswordConfirm("");
+      toast.success("Transaction password saved");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save transaction password");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitMiniCreateWallet(event: React.FormEvent) {
+    event.preventDefault();
+    if (!hasSession) {
+      toast.error("Login once in the Mini App to create wallets");
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await createPersonalWallet({
+        data: {
+          name: miniWalletName,
+          network: "trc20-nile",
+          walletType: "standard",
+          makeDefault: true,
+          transactionPassword: miniWalletPassword,
+        },
+      });
+      const walletId = (created as { wallet?: { id?: string } }).wallet?.id;
+      if (walletId) setSelectedWalletId(walletId);
+      setMiniWalletPassword("");
+      toast.success("Wallet created");
+      await refresh("wallet");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create wallet");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitMiniImportWallet(event: React.FormEvent) {
+    event.preventDefault();
+    if (!hasSession) {
+      toast.error("Login once in the Mini App to import wallets");
+      return;
+    }
+    setBusy(true);
+    try {
+      const imported = await importPersonalWallet({
+        data: {
+          name: miniWalletName,
+          network: "trc20-nile",
+          walletType: "standard",
+          makeDefault: true,
+          transactionPassword: miniWalletPassword,
+          mnemonic: miniImportPhrase,
+        },
+      });
+      const walletId = (imported as { wallet?: { id?: string } }).wallet?.id;
+      if (walletId) setSelectedWalletId(walletId);
+      setMiniWalletPassword("");
+      setMiniImportPhrase("");
+      toast.success("Wallet imported");
+      await refresh("wallet");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not import wallet");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function activateMiniWallet(wallet: WalletRow) {
+    if (!wallet.id) return;
+    setSelectedWalletId(wallet.id);
+    try {
+      await setMiniDefaultWallet({ data: { walletId: wallet.id } });
+      await refresh("wallet");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not switch wallet");
     }
   }
 
@@ -675,7 +804,40 @@ function TelegramMiniApp() {
           <>
             <Header title="Wallet" subtitle="USDT balances, deposits and withdrawals" />
             <BalancePanel total={totalAssets} profile={profile} />
-            <ListPanel title="Receive TRC20">
+            <ListPanel title="PERSONAL WALLET RECEIVE">
+              {selectedWallet?.address ? (
+                <div className="flex items-center gap-3">
+                  <div className="grid h-28 w-28 place-items-center rounded-lg bg-white p-2">
+                    {personalQr ? (
+                      <img src={personalQr} alt="Personal wallet QR" className="h-full w-full" />
+                    ) : (
+                      <QrCode className="h-8 w-8 text-black" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground">
+                      {selectedWallet.name ?? "Wallet"} - {selectedWallet.network ?? "TRC20"}
+                    </p>
+                    <p className="mono mt-1 break-all text-sm">{selectedWallet.address}</p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="mt-2"
+                      onClick={() => {
+                        if (selectedWallet.address)
+                          void navigator.clipboard.writeText(selectedWallet.address);
+                      }}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <EmptyLine>No personal wallet yet</EmptyLine>
+              )}
+            </ListPanel>
+            <ListPanel title="PLATFORM DEPOSIT">
               <div className="flex items-center gap-3">
                 <div className="grid h-28 w-28 place-items-center rounded-lg bg-white p-2">
                   {qr ? (
@@ -704,6 +866,58 @@ function TelegramMiniApp() {
                 </div>
               </div>
             </ListPanel>
+            <form className="panel space-y-3 p-4" onSubmit={submitMiniPassword}>
+              <p className="text-sm font-medium">Set transaction password</p>
+              <Input
+                value={miniPassword}
+                onChange={(event) => setMiniPassword(event.target.value)}
+                placeholder="Password"
+                type="password"
+              />
+              <Input
+                value={miniPasswordConfirm}
+                onChange={(event) => setMiniPasswordConfirm(event.target.value)}
+                placeholder="Confirm password"
+                type="password"
+              />
+              <Button className="w-full" variant="secondary" disabled={busy}>
+                Save password
+              </Button>
+            </form>
+            <form className="panel space-y-3 p-4" onSubmit={submitMiniCreateWallet}>
+              <p className="text-sm font-medium">Create personal wallet</p>
+              <Input
+                value={miniWalletName}
+                onChange={(event) => setMiniWalletName(event.target.value)}
+                placeholder="Wallet name"
+              />
+              <Input
+                value={miniWalletPassword}
+                onChange={(event) => setMiniWalletPassword(event.target.value)}
+                placeholder="Transaction password"
+                type="password"
+              />
+              <Button className="w-full" disabled={busy}>
+                Create wallet
+              </Button>
+            </form>
+            <form className="panel space-y-3 p-4" onSubmit={submitMiniImportWallet}>
+              <p className="text-sm font-medium">Import with recovery phrase</p>
+              <Input
+                value={miniImportPhrase}
+                onChange={(event) => setMiniImportPhrase(event.target.value)}
+                placeholder="Recovery phrase"
+              />
+              <Input
+                value={miniWalletPassword}
+                onChange={(event) => setMiniWalletPassword(event.target.value)}
+                placeholder="Transaction password"
+                type="password"
+              />
+              <Button className="w-full" variant="secondary" disabled={busy}>
+                Import wallet
+              </Button>
+            </form>
             <form className="panel space-y-3 p-4" onSubmit={submitDeposit}>
               <p className="text-sm font-medium">Create deposit request</p>
               <Input
@@ -740,11 +954,16 @@ function TelegramMiniApp() {
             </ListPanel>
             <ListPanel title="My Wallets">
               {overview?.wallets?.length ? (
-                overview.wallets.map((wallet) => <WalletItem key={wallet.id} wallet={wallet} />)
+                overview.wallets.map((wallet) => (
+                  <WalletItem
+                    key={wallet.id}
+                    wallet={wallet}
+                    active={wallet.id === selectedWallet?.id}
+                    onSelect={() => void activateMiniWallet(wallet)}
+                  />
+                ))
               ) : (
-                <EmptyLine>
-                  No personal wallets yet. Use the website wallet page to create or import one.
-                </EmptyLine>
+                <EmptyLine>No personal wallet yet</EmptyLine>
               )}
             </ListPanel>
           </>
@@ -1010,9 +1229,24 @@ function DepositItem({ deposit }: { deposit: DepositRow }) {
   );
 }
 
-function WalletItem({ wallet }: { wallet: WalletRow }) {
+function WalletItem({
+  wallet,
+  active,
+  onSelect,
+}: {
+  wallet: WalletRow;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const balance = walletDisplayBalance(wallet);
   return (
-    <div className="rounded-lg border border-border bg-card/70 p-3">
+    <button
+      type="button"
+      className={`w-full rounded-lg border border-border bg-card/70 p-3 text-left ${
+        active ? "ring-1 ring-primary" : ""
+      }`}
+      onClick={onSelect}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium">
@@ -1022,7 +1256,7 @@ function WalletItem({ wallet }: { wallet: WalletRow }) {
             {(wallet.wallet_type ?? "standard").toUpperCase()} - {wallet.network ?? "TRC20"}
           </p>
         </div>
-        <p className="mono text-sm font-semibold">{money(wallet.balance)}</p>
+        <p className="mono text-sm font-semibold">{money(balance)}</p>
       </div>
       <p className="mono mt-2 text-xs break-all text-muted-foreground">
         {shortenHash(wallet.address, 10)}
@@ -1032,7 +1266,7 @@ function WalletItem({ wallet }: { wallet: WalletRow }) {
           Gas sponsorship: {wallet.gas_sponsorship_status ?? "unavailable"}
         </p>
       ) : null}
-    </div>
+    </button>
   );
 }
 
