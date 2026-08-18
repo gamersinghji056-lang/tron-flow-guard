@@ -58,8 +58,7 @@ export async function broadcastTrc20Transfer(params: {
   }
 
   const units = BigInt(Math.round(params.amount * 10 ** config.tokenDecimals));
-  const parameter =
-    pad32(toHexAddress(params.toAddress).slice(2)) + pad32(units.toString(16));
+  const parameter = pad32(toHexAddress(params.toAddress).slice(2)) + pad32(units.toString(16));
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const apiKey = process.env["TRONGRID_API_KEY"];

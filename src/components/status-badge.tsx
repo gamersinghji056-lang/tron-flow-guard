@@ -38,16 +38,30 @@ export function StatusBadge({
   status,
   className,
 }: {
-  status: DepositStatus;
+  status: DepositStatus | string;
   className?: string;
 }) {
-  const meta = DEPOSIT_STATUS_META[status];
-  const Icon = ICONS[status];
+  const depositStatus = status as DepositStatus;
+  const meta = DEPOSIT_STATUS_META[depositStatus] ?? {
+    label: String(status).replaceAll("_", " ").toUpperCase(),
+    hint: String(status),
+    tone:
+      String(status).includes("completed") || String(status).includes("confirmed")
+        ? "success"
+        : String(status).includes("failed") ||
+            String(status).includes("cancelled") ||
+            String(status).includes("disputed")
+          ? "destructive"
+          : String(status).includes("pending") || String(status).includes("review")
+            ? "warning"
+            : "info",
+  };
+  const Icon = ICONS[depositStatus] ?? Clock;
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap",
-        TONE_CLASSES[meta.tone],
+        TONE_CLASSES[meta.tone] ?? TONE_CLASSES["info"],
         className,
       )}
       title={meta.hint}
@@ -64,13 +78,21 @@ export function LiveDot({ online }: { online: boolean | null }) {
       <span
         className={cn(
           "absolute inline-flex h-full w-full rounded-full",
-          online === false ? "bg-destructive" : online === null ? "bg-muted-foreground" : "bg-success animate-pulse-ring",
+          online === false
+            ? "bg-destructive"
+            : online === null
+              ? "bg-muted-foreground"
+              : "bg-success animate-pulse-ring",
         )}
       />
       <span
         className={cn(
           "relative inline-flex h-2.5 w-2.5 rounded-full",
-          online === false ? "bg-destructive" : online === null ? "bg-muted-foreground" : "bg-success",
+          online === false
+            ? "bg-destructive"
+            : online === null
+              ? "bg-muted-foreground"
+              : "bg-success",
         )}
       />
     </span>

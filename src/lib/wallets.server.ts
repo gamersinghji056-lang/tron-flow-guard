@@ -88,6 +88,252 @@ export async function provisionWallet(params: {
   return { ...wallet, balance: Number(wallet.balance) };
 }
 
+async function readGasfreeStatus() {
+  const value = await readSetting("gasfree_sponsorship_status");
+  return value === "available" || value === "limited" ? value : "unavailable";
+}
+
+export async function provisionPersonalWallet(params: {
+  userId: string;
+  name: string;
+  network: ChainNetwork;
+  walletType: "standard" | "gasfree";
+  makeDefault: boolean;
+  transactionPassword: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { createPersonalWalletMnemonic, deriveTronWalletFromMnemonic } =
+    await import("@/lib/tron-personal-wallet");
+  const { hasTransactionPassword, encryptMnemonic } = await import("@/lib/wallet-security.server");
+
+  if (!(await hasTransactionPassword(params.userId))) {
+    throw new Error("Set a transaction password before creating a personal wallet");
+  }
+
+  const mnemonic = createPersonalWalletMnemonic();
+  const derived = deriveTronWalletFromMnemonic(mnemonic);
+  const encrypted = encryptMnemonic(mnemonic, params.transactionPassword);
+  const gasStatus = params.walletType === "gasfree" ? await readGasfreeStatus() : "unavailable";
+
+  const { data: existing, error: countError } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("id")
+    .eq("user_id", params.userId)
+    .eq("is_archived", false);
+  if (countError) throw new Error(countError.message);
+  const isFirst = !existing || existing.length === 0;
+
+  const { data: wallet, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .insert({
+      user_id: params.userId,
+      name: params.name,
+      network: params.network,
+      address: derived.address,
+      public_key: derived.publicKeyHex,
+      custody: "non_custodial",
+      wallet_type: params.walletType,
+      backup_status: "not_backed_up",
+      derivation_path: derived.derivationPath,
+      gas_sponsorship_status: gasStatus,
+      monitored: true,
+      derivation_index: 0,
+      is_default: params.makeDefault || isFirst,
+      selected_at: params.makeDefault || isFirst ? new Date().toISOString() : null,
+    } as never)
+    .select(
+      "id, name, address, network, balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+    )
+    .single();
+  if (error) throw new Error(error.message);
+
+  const row = wallet as unknown as { id: string; name: string; address: string };
+  const { error: secretError } = await supabaseAdmin
+    .from("personal_wallet_secrets" as never)
+    .insert({
+      wallet_id: row.id,
+      user_id: params.userId,
+      encrypted_mnemonic: encrypted.encryptedMnemonic,
+      iv: encrypted.iv,
+      auth_tag: encrypted.authTag,
+      kdf_salt: encrypted.kdfSalt,
+      derivation_path: derived.derivationPath,
+    } as never);
+  if (secretError) throw new Error(secretError.message);
+
+  await supabaseAdmin.from("notifications").insert({
+    user_id: params.userId,
+    audience: "trader",
+    title: "Wallet created",
+    body: `${row.name} was created. Back up the recovery phrase before receiving funds.`,
+    severity: "warning",
+  });
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: params.userId,
+    actor_type: "user",
+    action: "wallet.personal_created",
+    entity_type: "user_wallet",
+    entity_id: row.id,
+    metadata: {
+      address: row.address,
+      network: params.network,
+      wallet_type: params.walletType,
+      derivation_path: derived.derivationPath,
+    },
+  });
+
+  return { wallet, recoveryPhrase: mnemonic };
+}
+
+export async function importPersonalWallet(params: {
+  userId: string;
+  name: string;
+  network: ChainNetwork;
+  walletType: "standard" | "gasfree";
+  mnemonic: string;
+  makeDefault: boolean;
+  transactionPassword: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { deriveTronWalletFromMnemonic } = await import("@/lib/tron-personal-wallet");
+  const { hasTransactionPassword, encryptMnemonic } = await import("@/lib/wallet-security.server");
+
+  if (!(await hasTransactionPassword(params.userId))) {
+    throw new Error("Set a transaction password before importing a personal wallet");
+  }
+
+  const derived = deriveTronWalletFromMnemonic(params.mnemonic);
+  const encrypted = encryptMnemonic(derived.mnemonic, params.transactionPassword);
+  const gasStatus = params.walletType === "gasfree" ? await readGasfreeStatus() : "unavailable";
+
+  const { data: existing, error: countError } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("id")
+    .eq("user_id", params.userId)
+    .eq("is_archived", false);
+  if (countError) throw new Error(countError.message);
+  const isFirst = !existing || existing.length === 0;
+
+  const { data: wallet, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .insert({
+      user_id: params.userId,
+      name: params.name,
+      network: params.network,
+      address: derived.address,
+      public_key: derived.publicKeyHex,
+      custody: "non_custodial",
+      wallet_type: params.walletType,
+      backup_status: "imported",
+      derivation_path: derived.derivationPath,
+      gas_sponsorship_status: gasStatus,
+      monitored: true,
+      derivation_index: 0,
+      is_default: params.makeDefault || isFirst,
+      selected_at: params.makeDefault || isFirst ? new Date().toISOString() : null,
+    } as never)
+    .select(
+      "id, name, address, network, balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+    )
+    .single();
+  if (error) throw new Error(error.message);
+
+  const row = wallet as unknown as { id: string; name: string; address: string };
+  const { error: secretError } = await supabaseAdmin
+    .from("personal_wallet_secrets" as never)
+    .insert({
+      wallet_id: row.id,
+      user_id: params.userId,
+      encrypted_mnemonic: encrypted.encryptedMnemonic,
+      iv: encrypted.iv,
+      auth_tag: encrypted.authTag,
+      kdf_salt: encrypted.kdfSalt,
+      derivation_path: derived.derivationPath,
+    } as never);
+  if (secretError) throw new Error(secretError.message);
+
+  await supabaseAdmin.from("notifications").insert({
+    user_id: params.userId,
+    audience: "trader",
+    title: "Wallet imported",
+    body: `${row.name} was imported from a recovery phrase.`,
+    severity: "success",
+  });
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: params.userId,
+    actor_type: "user",
+    action: "wallet.personal_imported",
+    entity_type: "user_wallet",
+    entity_id: row.id,
+    metadata: {
+      address: row.address,
+      network: params.network,
+      wallet_type: params.walletType,
+      derivation_path: derived.derivationPath,
+    },
+  });
+
+  return { wallet };
+}
+
+export async function revealWalletRecoveryPhrase(params: {
+  userId: string;
+  walletId: string;
+  transactionPassword: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { decryptMnemonic, verifyTransactionPasswordOrThrow } =
+    await import("@/lib/wallet-security.server");
+  await verifyTransactionPasswordOrThrow(params.userId, params.transactionPassword);
+
+  const { data: wallet, error: walletError } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("id, user_id, backup_status")
+    .eq("id", params.walletId)
+    .maybeSingle();
+  if (walletError) throw new Error(walletError.message);
+  const walletRow = wallet as unknown as { id: string; user_id: string } | null;
+  if (!walletRow || walletRow.user_id !== params.userId) throw new Error("Wallet not found");
+
+  const { data: secret, error } = await supabaseAdmin
+    .from("personal_wallet_secrets" as never)
+    .select("encrypted_mnemonic, iv, auth_tag, kdf_salt")
+    .eq("wallet_id", params.walletId as never)
+    .eq("user_id", params.userId as never)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!secret) throw new Error("Recovery phrase is not available for this wallet");
+
+  const row = secret as {
+    encrypted_mnemonic: string;
+    iv: string;
+    auth_tag: string;
+    kdf_salt: string;
+  };
+  await supabaseAdmin
+    .from("user_wallets")
+    .update({ backup_status: "backed_up", backup_confirmed_at: new Date().toISOString() } as never)
+    .eq("id", params.walletId);
+
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: params.userId,
+    actor_type: "user",
+    action: "wallet.recovery_phrase_revealed",
+    entity_type: "user_wallet",
+    entity_id: params.walletId,
+  });
+
+  return {
+    recoveryPhrase: decryptMnemonic({
+      encryptedMnemonic: row.encrypted_mnemonic,
+      iv: row.iv,
+      authTag: row.auth_tag,
+      kdfSalt: row.kdf_salt,
+      password: params.transactionPassword,
+    }),
+  };
+}
+
 export async function archiveOwnedWallet(userId: string, walletId: string) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: wallet, error } = await supabaseAdmin
@@ -112,8 +358,17 @@ export async function archiveOwnedWallet(userId: string, walletId: string) {
 export async function executeTransfer(
   client: Client,
   userId: string,
-  input: { walletId: string; toAddress: string; amount: number; memo?: string | undefined },
+  input: {
+    walletId: string;
+    toAddress: string;
+    amount: number;
+    memo?: string | undefined;
+    transactionPassword?: string | undefined;
+  },
 ) {
+  const { verifyTransactionPasswordOrThrow } = await import("@/lib/wallet-security.server");
+  await verifyTransactionPasswordOrThrow(userId, input.transactionPassword ?? "");
+
   const { data, error } = await client.rpc("wallet_transfer", {
     _from_wallet: input.walletId,
     _to_address: input.toAddress,

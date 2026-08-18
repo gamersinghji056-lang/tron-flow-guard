@@ -2,14 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import QRCode from "qrcode";
-import {
-  Copy,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-  Wallet2,
-} from "lucide-react";
+import { Copy, ExternalLink, Loader2, RefreshCw, ShieldCheck, Wallet2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { createDepositRequest } from "@/lib/deposits.functions";
@@ -212,7 +205,9 @@ function DashboardPage() {
         />
         <StatCard
           label="Open requests"
-          value={deposits.filter((r) => ["waiting", "detected", "confirming"].includes(r.status)).length}
+          value={
+            deposits.filter((r) => ["waiting", "detected", "confirming"].includes(r.status)).length
+          }
           loading={loading}
           hint="Awaiting on-chain settlement"
         />
@@ -224,7 +219,9 @@ function DashboardPage() {
               {heartbeat.online === false ? "Degraded" : heartbeat.online ? "Live" : "Idle"}
             </span>
           }
-          hint={heartbeat.lastBlock ? `Block ${heartbeat.lastBlock.toLocaleString()}` : "No pass yet"}
+          hint={
+            heartbeat.lastBlock ? `Block ${heartbeat.lastBlock.toLocaleString()}` : "No pass yet"
+          }
         />
       </div>
 
@@ -260,7 +257,9 @@ function DashboardPage() {
             <p className="font-medium text-foreground">Verification rules enforced on-chain</p>
             <ul className="space-y-1">
               <li>· Receiver must be the assigned company wallet</li>
-              <li>· Token contract must be {chain.tokenSymbol} on {chain.label}</li>
+              <li>
+                · Token contract must be {chain.tokenSymbol} on {chain.label}
+              </li>
               <li>· Transaction receipt must be SUCCESS</li>
               <li>· TXID must be unique (replay protected)</li>
               <li>· {active?.required_confirmations ?? 16} block confirmations required</li>

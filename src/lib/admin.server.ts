@@ -4,14 +4,22 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { isTronAddress, type ChainNetwork } from "@/lib/chain";
 
 type Client = SupabaseClient<Database>;
 
+export interface RecentP2pOrderRow {
+  id: string;
+  order_ref: string | null;
+  status: string | null;
+  usdt_amount: number | string | null;
+  total_inr: number | string | null;
+  created_at: string;
+}
+
 export async function requireAdmin(client: Client, userId: string) {
-  const { data, error } = await client.rpc("has_role", {
-    _user_id: userId,
-    _role: "admin",
-  });
+  void userId;
+  const { data, error } = await client.rpc("is_admin");
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Forbidden: administrator access required");
   return true;
@@ -58,11 +66,7 @@ export async function fetchTraders(): Promise<TraderSummary[]> {
   }));
 }
 
-export async function assignWallet(
-  walletId: string,
-  traderId: string | null,
-  actorId: string,
-) {
+export async function assignWallet(walletId: string, traderId: string | null, actorId: string) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const { data: wallet, error } = await supabaseAdmin
@@ -121,4 +125,213 @@ export async function writeSettings(input: {
     if (error) throw new Error(error.message);
   }
   return { ok: true, updated: rows.length };
+}
+
+export async function fetchAdminDashboard() {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const since24h = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+
+  const [
+    profileRes,
+    activeUserRes,
+    depositsRes,
+    transactionsRes,
+    p2pActiveRes,
+    p2pCompletedRes,
+    disputesRes,
+    directSellRes,
+    walletTxRes,
+    healthRes,
+    recentOrdersRes,
+  ] = await Promise.all([
+    supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }),
+    supabaseAdmin
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .gte("updated_at", since24h),
+    supabaseAdmin.from("deposit_requests").select("status, received_amount, expected_amount"),
+    supabaseAdmin.from("transactions").select("amount, processed, created_at").eq("verified", true),
+    supabaseAdmin
+      .from("p2p_orders" as never)
+      .select("id", { count: "exact", head: true })
+      .in("status", ["payment_pending", "payment_sent", "disputed", "admin_review"] as never),
+    supabaseAdmin
+      .from("p2p_orders" as never)
+      .select("id, usdt_amount, created_at", { count: "exact" })
+      .eq("status", "completed" as never),
+    supabaseAdmin
+      .from("p2p_disputes" as never)
+      .select("id", { count: "exact", head: true })
+      .in("status", ["open", "evidence_requested"] as never),
+    supabaseAdmin
+      .from("direct_sell_orders" as never)
+      .select("id", { count: "exact", head: true })
+      .in("status", [
+        "waiting_for_usdt",
+        "usdt_detected",
+        "usdt_confirming",
+        "usdt_confirmed",
+        "inr_payment_pending",
+        "payment_assigned",
+        "inr_payment_sent",
+        "manual_review",
+        "partial_payment",
+        "overpayment",
+      ] as never),
+    supabaseAdmin.from("wallet_transactions").select("direction, kind, amount, fee, created_at"),
+    supabaseAdmin
+      .from("service_health")
+      .select("*")
+      .in("service", ["blockchain-listener", "blockchain-worker"]),
+    supabaseAdmin
+      .from("p2p_orders" as never)
+      .select("id, order_ref, status, usdt_amount, total_inr, created_at")
+      .order("created_at", { ascending: false })
+      .limit(8),
+  ]);
+
+  const deposits = depositsRes.data ?? [];
+  const walletTx = walletTxRes.data ?? [];
+  const p2pCompleted = (p2pCompletedRes.data ?? []) as unknown as {
+    usdt_amount: number | string;
+    created_at: string;
+  }[];
+
+  const healthRows = (healthRes.data ?? []) as unknown as {
+    service: string;
+    status: string;
+    detail: string | null;
+    latest_block: number | null;
+    updated_at: string;
+    metadata: Record<string, unknown> | null;
+  }[];
+  const worker = healthRows.find((row) => row.service === "blockchain-worker");
+  const listener = healthRows.find((row) => row.service === "blockchain-listener");
+
+  return {
+    totalUsers: profileRes.count ?? 0,
+    activeUsers24h: activeUserRes.count ?? 0,
+    pendingDeposits: deposits.filter((row) =>
+      [
+        "waiting",
+        "detected",
+        "confirming",
+        "review",
+        "underpaid",
+        "overpaid",
+        "late_payment",
+      ].includes(String(row.status)),
+    ).length,
+    creditedDeposits: deposits.filter((row) => row.status === "credited").length,
+    totalUsdtDeposited: deposits
+      .filter((row) => row.status === "credited")
+      .reduce((sum, row) => sum + Number(row.received_amount ?? row.expected_amount ?? 0), 0),
+    totalUsdtWithdrawn: walletTx
+      .filter((row) => row.direction === "out" && row.kind === "transfer")
+      .reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+    feesRevenue: walletTx.reduce((sum, row) => sum + Number(row.fee ?? 0), 0),
+    p2pVolume24h: p2pCompleted
+      .filter((row) => new Date(row.created_at).getTime() >= new Date(since24h).getTime())
+      .reduce((sum, row) => sum + Number(row.usdt_amount ?? 0), 0),
+    activeP2pOrders: p2pActiveRes.count ?? 0,
+    completedOrders: p2pCompletedRes.count ?? 0,
+    openDisputes: disputesRes.count ?? 0,
+    pendingDirectSellOrders: directSellRes.count ?? 0,
+    confirmedTransactions: transactionsRes.data?.filter((row) => row.processed).length ?? 0,
+    blockchainHealth: {
+      status:
+        worker?.status === "ok" && listener?.status === "ok"
+          ? "healthy"
+          : worker || listener
+            ? "degraded"
+            : "offline",
+      reason: worker?.detail ?? listener?.detail ?? "No worker heartbeat recorded",
+      latestBlock: listener?.latest_block ?? null,
+      workerUpdatedAt: worker?.updated_at ?? null,
+      listenerUpdatedAt: listener?.updated_at ?? null,
+      workerMetadata: worker?.metadata ? JSON.stringify(worker.metadata) : null,
+      listenerMetadata: listener?.metadata ? JSON.stringify(listener.metadata) : null,
+    },
+    recentP2pOrders: (recentOrdersRes.data ?? []) as unknown as RecentP2pOrderRow[],
+  };
+}
+
+export async function createCompanyWallet(input: {
+  name: string;
+  address: string;
+  network: ChainNetwork;
+  actorId: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  if (!isTronAddress(input.address)) throw new Error("Enter a valid TRON address");
+
+  const { data, error } = await supabaseAdmin
+    .from("wallets")
+    .insert({
+      name: input.name,
+      address: input.address,
+      network: input.network,
+      is_active: true,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: input.actorId,
+    actor_type: "admin",
+    action: "wallet.created",
+    entity_type: "wallet",
+    entity_id: data.id,
+    metadata: { address: input.address, network: input.network },
+  });
+  return { ok: true, id: data.id };
+}
+
+export async function updateCompanyWalletStatus(input: {
+  walletId: string;
+  isActive: boolean;
+  actorId: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await supabaseAdmin
+    .from("wallets")
+    .update({ is_active: input.isActive })
+    .eq("id", input.walletId);
+  if (error) throw new Error(error.message);
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: input.actorId,
+    actor_type: "admin",
+    action: input.isActive ? "wallet.enabled" : "wallet.disabled",
+    entity_type: "wallet",
+    entity_id: input.walletId,
+  });
+  return { ok: true };
+}
+
+export async function setDefaultCompanyWallet(input: {
+  walletId: string;
+  network: ChainNetwork;
+  actorId: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  await supabaseAdmin
+    .from("wallets")
+    .update({ is_default: false })
+    .eq("network", input.network)
+    .neq("id", input.walletId);
+  const { error } = await supabaseAdmin
+    .from("wallets")
+    .update({ is_default: true, is_active: true })
+    .eq("id", input.walletId);
+  if (error) throw new Error(error.message);
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: input.actorId,
+    actor_type: "admin",
+    action: "wallet.default_changed",
+    entity_type: "wallet",
+    entity_id: input.walletId,
+    metadata: { network: input.network },
+  });
+  return { ok: true };
 }

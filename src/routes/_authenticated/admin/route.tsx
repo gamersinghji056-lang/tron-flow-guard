@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { getAccess } from "@/lib/access.functions";
+import { AdminOpsShell } from "@/components/admin-ops-shell";
 
 /**
  * Administrator subtree gate. The role is resolved by a *server* function that
@@ -17,5 +18,9 @@ export const Route = createFileRoute("/_authenticated/admin")({
       throw redirect({ to: "/dashboard", replace: true });
     }
   },
-  component: () => <Outlet />,
+  component: () => (
+    <AdminOpsShell>
+      <Outlet />
+    </AdminOpsShell>
+  ),
 });

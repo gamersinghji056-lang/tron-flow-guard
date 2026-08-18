@@ -1,0 +1,358 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  createPlaintextApiKey,
+  hasApiScope,
+  hashApiSecret,
+  parsePlaintextApiKey,
+  verifyApiSecret,
+} from "./api-crypto.ts";
+import { assertAdminRegistrationCode } from "./admin-registration.ts";
+import { canTransitionDirectSell } from "./direct-sell-state.ts";
+import { canTransitionP2pOrder, normalizeP2pMarketplaceAd } from "./p2p-state.ts";
+import {
+  calculateP2pSellerFee,
+  calculatePercentFee,
+  isP2pAutoReleaseEligible,
+} from "./trade-fees.ts";
+import {
+  clearWithdrawalIdempotencyForTests,
+  rememberWithdrawalIdempotency,
+} from "./withdrawal-state.ts";
+import {
+  formatWebhookSignature,
+  signWebhookBody,
+  verifyWebhookSignature,
+} from "./webhook-crypto.ts";
+import {
+  createSignedTelegramInitDataForTest,
+  normalizeTelegramDeepLink,
+  validateTelegramInitData,
+} from "./telegram-auth.ts";
+import {
+  createPersonalWalletMnemonic,
+  deriveTronWalletFromMnemonic,
+} from "./tron-personal-wallet.ts";
+import {
+  hashTransactionPassword,
+  shouldLockTransactionPassword,
+  verifyTransactionPasswordHash,
+} from "./transaction-password.ts";
+import {
+  appendTelegramHandoff,
+  canConsumeTelegramHandoff,
+  createTelegramWebAppButton,
+  isCredentialMessageStep,
+  isTelegramAuthStateExpired,
+  nextTelegramAuthStep,
+  shouldLockTelegramAuth,
+  telegramAuthEmailPrompt,
+  telegramAuthPasswordPrompt,
+  telegramAuthSuccessMessage,
+} from "./telegram-bot-flow.ts";
+
+describe("API key crypto", () => {
+  it("parses and verifies generated keys", () => {
+    const key = createPlaintextApiKey();
+    const parsed = parsePlaintextApiKey(key.plaintext);
+    assert.ok(parsed);
+    assert.equal(parsed.keyId, key.keyId);
+    assert.ok(verifyApiSecret(parsed.secret, hashApiSecret(key.secret)));
+    assert.equal(verifyApiSecret("wrong", hashApiSecret(key.secret)), false);
+  });
+
+  it("enforces scopes", () => {
+    assert.equal(hasApiScope(["deposit:create"], "deposit:create"), true);
+    assert.equal(hasApiScope(["deposit:read"], "deposit:create"), false);
+    assert.equal(hasApiScope(["*"], "direct_sell:create"), true);
+  });
+});
+
+describe("webhook signatures", () => {
+  it("signs and verifies payloads", () => {
+    const body = JSON.stringify({ event_id: "evt_1", data: { ok: true } });
+    const timestamp = "1786819200";
+    const signature = formatWebhookSignature(signWebhookBody("secret", timestamp, body));
+    assert.equal(verifyWebhookSignature("secret", timestamp, body, signature), true);
+    assert.equal(verifyWebhookSignature("secret", timestamp, `${body} `, signature), false);
+  });
+});
+
+describe("P2P state machine", () => {
+  it("allows legal transitions and rejects double release/completion", () => {
+    assert.equal(canTransitionP2pOrder("payment_pending", "payment_submitted"), true);
+    assert.equal(canTransitionP2pOrder("payment_submitted", "payment_received"), true);
+    assert.equal(canTransitionP2pOrder("completed", "completed"), false);
+    assert.equal(canTransitionP2pOrder("completed", "refunded"), false);
+  });
+
+  it("normalizes marketplace rows without relying on embedded merchant shape", () => {
+    const ad = normalizeP2pMarketplaceAd({
+      id: "ad-1",
+      side: "sell",
+      price_inr: "103.20",
+      available_usdt: "1000",
+      min_order_inr: "500",
+      max_order_inr: "50000",
+      payment_methods: null,
+    });
+    assert.equal(ad.asset, "USDT");
+    assert.equal(ad.fiat, "INR");
+    assert.equal(ad.price_inr, 103.2);
+    assert.deepEqual(ad.payment_methods, ["upi"]);
+  });
+
+  it("calculates configurable seller and vendor fees", () => {
+    assert.equal(
+      calculateP2pSellerFee(100, {
+        sellerFixedUsdt: 1.5,
+        sellerPercent: 0.5,
+        buyerPercent: 0,
+        minFeeUsdt: 0,
+        maxFeeUsdt: 0,
+      }),
+      2,
+    );
+    assert.equal(
+      calculateP2pSellerFee(1000, {
+        sellerFixedUsdt: 1.5,
+        sellerPercent: 1,
+        buyerPercent: 0,
+        minFeeUsdt: 0,
+        maxFeeUsdt: 5,
+      }),
+      5,
+    );
+    assert.equal(calculatePercentFee(100, 0.5), 0.5);
+  });
+
+  it("requires proof, UTR, deadline and no dispute for auto-release", () => {
+    const now = new Date("2026-08-16T10:00:00.000Z");
+    assert.equal(
+      isP2pAutoReleaseEligible({
+        status: "payment_submitted",
+        deadline: new Date("2026-08-16T09:59:00.000Z"),
+        now,
+        hasUtr: true,
+        hasPaidAmount: true,
+        hasProof: true,
+        disputed: false,
+        escrowLocked: true,
+        escrowSettled: false,
+      }),
+      true,
+    );
+    assert.equal(
+      isP2pAutoReleaseEligible({
+        status: "payment_submitted",
+        deadline: new Date("2026-08-16T09:59:00.000Z"),
+        now,
+        hasUtr: true,
+        hasPaidAmount: true,
+        hasProof: true,
+        disputed: true,
+        escrowLocked: true,
+        escrowSettled: false,
+      }),
+      false,
+    );
+  });
+});
+
+describe("direct sell state machine", () => {
+  it("separates blockchain confirmation from payment settlement", () => {
+    assert.equal(canTransitionDirectSell("usdt_confirmed", "inr_payment_pending"), true);
+    assert.equal(canTransitionDirectSell("usdt_confirmed", "completed"), false);
+    assert.equal(canTransitionDirectSell("inr_payment_sent", "completed"), true);
+  });
+});
+
+describe("withdrawal idempotency helper", () => {
+  it("rejects duplicate user keys", () => {
+    clearWithdrawalIdempotencyForTests();
+    assert.equal(rememberWithdrawalIdempotency("user-a", "key-1"), true);
+    assert.equal(rememberWithdrawalIdempotency("user-a", "key-1"), false);
+    assert.equal(rememberWithdrawalIdempotency("user-b", "key-1"), true);
+  });
+});
+
+describe("personal TRON wallet recovery", () => {
+  it("derives the same TRON address from the same recovery phrase", () => {
+    const mnemonic = createPersonalWalletMnemonic();
+    const first = deriveTronWalletFromMnemonic(mnemonic);
+    const second = deriveTronWalletFromMnemonic(mnemonic);
+    assert.equal(first.address, second.address);
+    assert.match(first.address, /^T[1-9A-HJ-NP-Za-km-z]{33}$/);
+  });
+
+  it("derives different addresses from different recovery phrases", () => {
+    const first = deriveTronWalletFromMnemonic(createPersonalWalletMnemonic());
+    const second = deriveTronWalletFromMnemonic(createPersonalWalletMnemonic());
+    assert.notEqual(first.address, second.address);
+  });
+});
+
+describe("transaction password primitives", () => {
+  it("accepts the correct password and rejects the wrong password", () => {
+    const hashed = hashTransactionPassword("correct horse battery staple");
+    assert.equal(
+      verifyTransactionPasswordHash(
+        "correct horse battery staple",
+        hashed.salt,
+        hashed.passwordHash,
+      ),
+      true,
+    );
+    assert.equal(verifyTransactionPasswordHash("wrong", hashed.salt, hashed.passwordHash), false);
+  });
+
+  it("locks after repeated failed attempts", () => {
+    assert.equal(shouldLockTransactionPassword(4), false);
+    assert.equal(shouldLockTransactionPassword(5), true);
+  });
+});
+
+describe("admin registration hardening", () => {
+  it("is disabled when ADMIN_REGISTRATION_CODE is absent", async () => {
+    assert.throws(
+      () => assertAdminRegistrationCode(undefined, undefined),
+      /self-registration is disabled/,
+    );
+  });
+});
+
+describe("Telegram initData security", () => {
+  const botToken = "123456:test-token";
+  const now = 1_786_819_200;
+
+  it("accepts valid signed Telegram initData", () => {
+    const initData = createSignedTelegramInitDataForTest({
+      botToken,
+      authDate: now,
+      user: { id: 987654321, first_name: "Test", username: "tester" },
+      startParam: "wallet",
+    });
+    const verified = validateTelegramInitData(initData, botToken, { nowSeconds: now });
+    assert.equal(verified.telegramUser.id, 987654321);
+    assert.equal(verified.telegramUser.username, "tester");
+    assert.equal(verified.startParam, "wallet");
+  });
+
+  it("rejects invalid signatures", () => {
+    const initData = createSignedTelegramInitDataForTest({
+      botToken,
+      authDate: now,
+      user: { id: 123, first_name: "Bad" },
+    }).replace("Bad", "Tampered");
+    assert.throws(
+      () => validateTelegramInitData(initData, botToken, { nowSeconds: now }),
+      /signature is invalid/,
+    );
+  });
+
+  it("rejects expired initData", () => {
+    const initData = createSignedTelegramInitDataForTest({
+      botToken,
+      authDate: now - 900,
+      user: { id: 123, first_name: "Old" },
+    });
+    assert.throws(
+      () => validateTelegramInitData(initData, botToken, { nowSeconds: now, maxAgeSeconds: 600 }),
+      /expired/,
+    );
+  });
+
+  it("normalizes deep links safely", () => {
+    assert.equal(normalizeTelegramDeepLink("wallet"), "/wallet");
+    assert.equal(normalizeTelegramDeepLink("mini-app/orders"), "/mini-app/orders");
+    assert.equal(normalizeTelegramDeepLink("//evil.example"), "/mini-app");
+    assert.equal(normalizeTelegramDeepLink("../admin"), "/mini-app");
+  });
+});
+
+describe("Telegram bot auth flow", () => {
+  it("uses distinct WTRON wording for login and registration", () => {
+    assert.equal(telegramAuthEmailPrompt("login"), "Enter your registered email address.");
+    assert.equal(
+      telegramAuthEmailPrompt("register"),
+      "Enter the email address you want to use for your WTRON account.",
+    );
+    assert.equal(telegramAuthPasswordPrompt("login"), "Enter your password.");
+    assert.equal(telegramAuthPasswordPrompt("register"), "Create your password");
+    assert.equal(telegramAuthSuccessMessage("login"), "Login successful.");
+    assert.equal(
+      telegramAuthSuccessMessage("register"),
+      "Registration successful. Your WTRON account is ready.",
+    );
+  });
+
+  it("advances login and registration steps without storing confirmation in DB", () => {
+    assert.equal(nextTelegramAuthStep("login", "email"), "password");
+    assert.equal(nextTelegramAuthStep("login", "password"), null);
+    assert.equal(nextTelegramAuthStep("register", "password"), "confirm_password");
+    assert.equal(isCredentialMessageStep("confirm_password"), true);
+  });
+
+  it("expires temporary auth state quickly", () => {
+    assert.equal(isTelegramAuthStateExpired(new Date(1_000).toISOString(), 2_000), true);
+    assert.equal(isTelegramAuthStateExpired(new Date(3_000).toISOString(), 2_000), false);
+    assert.equal(isTelegramAuthStateExpired("not-a-date", 2_000), true);
+  });
+
+  it("locks after the configured failed-attempt threshold", () => {
+    assert.equal(shouldLockTelegramAuth(4, 5), false);
+    assert.equal(shouldLockTelegramAuth(5, 5), true);
+  });
+
+  it("requires one-time Mini App handoff tokens to be pending, bound and fresh", () => {
+    const expiresAt = new Date(10_000).toISOString();
+    assert.equal(
+      canConsumeTelegramHandoff(
+        { status: "pending", expiresAt, telegramUserId: 123, userId: "user-a" },
+        123,
+        "user-a",
+        9_000,
+      ),
+      true,
+    );
+    assert.equal(
+      canConsumeTelegramHandoff(
+        { status: "used", expiresAt, telegramUserId: 123, userId: "user-a" },
+        123,
+        "user-a",
+        9_000,
+      ),
+      false,
+    );
+    assert.equal(
+      canConsumeTelegramHandoff(
+        { status: "pending", expiresAt, telegramUserId: 123, userId: "user-a" },
+        999,
+        "user-a",
+        9_000,
+      ),
+      false,
+    );
+    assert.equal(
+      canConsumeTelegramHandoff(
+        { status: "pending", expiresAt, telegramUserId: 123, userId: "user-a" },
+        123,
+        "user-a",
+        11_000,
+      ),
+      false,
+    );
+  });
+
+  it("builds Telegram Web App buttons and preserves handoff query parameters", () => {
+    const path = appendTelegramHandoff("/mini-app?tab=wallet", "opaque-token");
+    assert.equal(path, "/mini-app?tab=wallet&handoff=opaque-token");
+    const button = createTelegramWebAppButton("OPEN MINI APP", `https://example.test${path}`);
+    assert.equal(button.text, "OPEN MINI APP");
+    assert.equal(
+      button.web_app.url,
+      "https://example.test/mini-app?tab=wallet&handoff=opaque-token",
+    );
+    assert.equal("url" in button, false);
+  });
+});

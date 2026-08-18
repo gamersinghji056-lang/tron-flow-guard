@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2, Plus, Star, Trash2 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Loader2, Plus, Power, Star } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  addCompanyWallet,
+  makeCompanyWalletDefault,
+  setCompanyWalletActive,
+} from "@/lib/admin.functions";
 import { isTronAddress, NETWORKS, networkConfig, type ChainNetwork } from "@/lib/chain";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,19 +28,12 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/admin/wallets")({
   head: () => ({
     meta: [
-      { title: "Company wallets — TRONDESK admin" },
+      { title: "Company wallets - TRONDESK admin" },
       {
         name: "description",
         content:
           "Manage the TRC20 company wallets the blockchain listener monitors for incoming USDT deposits.",
       },
-      { property: "og:title", content: "Company wallets — TRONDESK admin" },
-      {
-        property: "og:description",
-        content: "Add, activate and set the default receiving wallet per TRON network.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: AdminWallets,
@@ -52,6 +51,9 @@ interface WalletRow {
 
 function AdminWallets() {
   const { isAdmin, loading } = useAuth();
+  const addCompanyWalletFn = useServerFn(addCompanyWallet);
+  const setCompanyWalletActiveFn = useServerFn(setCompanyWalletActive);
+  const makeCompanyWalletDefaultFn = useServerFn(makeCompanyWalletDefault);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -78,62 +80,48 @@ function AdminWallets() {
       return;
     }
     if (!isTronAddress(address)) {
-      toast.error("Enter a valid TRON (base58) address");
+      toast.error("Enter a valid TRON address");
       return;
     }
+
     setPending(true);
-    const { error } = await supabase.from("wallets").insert({
-      name: name.trim(),
-      address: address.trim(),
-      network,
-      is_active: true,
-      is_default: !wallets.some((w) => w.network === network && w.is_default),
-    });
-    setPending(false);
-    if (error) {
-      toast.error(error.message.includes("duplicate") ? "That address already exists" : error.message);
-      return;
+    try {
+      await addCompanyWalletFn({ data: { name: name.trim(), address: address.trim(), network } });
+      setName("");
+      setAddress("");
+      toast.success("Wallet added. The listener will include it on the next pass.");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add company wallet");
+    } finally {
+      setPending(false);
     }
-    setName("");
-    setAddress("");
-    toast.success("Wallet added — the listener will include it on the next pass");
-    void load();
   }
 
   async function toggleActive(wallet: WalletRow, next: boolean) {
-    const { error } = await supabase.from("wallets").update({ is_active: next }).eq("id", wallet.id);
-    if (error) toast.error(error.message);
-    else void load();
+    try {
+      await setCompanyWalletActiveFn({ data: { walletId: wallet.id, isActive: next } });
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update wallet status");
+    }
   }
 
   async function makeDefault(wallet: WalletRow) {
-    await supabase
-      .from("wallets")
-      .update({ is_default: false })
-      .eq("network", wallet.network)
-      .neq("id", wallet.id);
-    const { error } = await supabase
-      .from("wallets")
-      .update({ is_default: true, is_active: true })
-      .eq("id", wallet.id);
-    if (error) toast.error(error.message);
-    else {
+    try {
+      await makeCompanyWalletDefaultFn({ data: { walletId: wallet.id, network: wallet.network } });
       toast.success(`${wallet.name} is now the default receiving wallet`);
-      void load();
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not set default wallet");
     }
   }
 
-  async function remove(wallet: WalletRow) {
-    const { error } = await supabase.from("wallets").delete().eq("id", wallet.id);
-    if (error) {
-      toast.error("This wallet is referenced by deposits — deactivate it instead.");
-      return;
-    }
-    toast.success("Wallet removed");
-    void load();
+  async function deactivate(wallet: WalletRow) {
+    await toggleActive(wallet, false);
   }
 
-  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (loading) return <p className="text-sm text-muted-foreground">Loading...</p>;
   if (!isAdmin) {
     return (
       <div className="panel p-6">
@@ -169,7 +157,7 @@ function AdminWallets() {
               id="wallet-address"
               value={address}
               onChange={(event) => setAddress(event.target.value)}
-              placeholder="TXYZ…"
+              placeholder="TXYZ..."
               className="mono"
               maxLength={40}
             />
@@ -250,7 +238,9 @@ function AdminWallets() {
                         onClick={() => void makeDefault(wallet)}
                         className={cn(
                           "inline-flex items-center gap-1.5 text-xs",
-                          wallet.is_default ? "text-warning" : "text-muted-foreground hover:text-foreground",
+                          wallet.is_default
+                            ? "text-warning"
+                            : "text-muted-foreground hover:text-foreground",
                         )}
                       >
                         <Star className={cn("h-3.5 w-3.5", wallet.is_default && "fill-current")} />
@@ -258,8 +248,14 @@ function AdminWallets() {
                       </button>
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <Button variant="ghost" size="icon" onClick={() => void remove(wallet)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void deactivate(wallet)}
+                        disabled={!wallet.is_active}
+                        title="Deactivate wallet"
+                      >
+                        <Power className="h-4 w-4 text-destructive" />
                       </Button>
                     </td>
                   </tr>

@@ -12,19 +12,64 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as MiniAppRouteImport } from './routes/mini-app'
 import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
+import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
+import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
+import { Route as AuthenticatedBankAccountsRouteImport } from './routes/_authenticated/bank-accounts'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDepositsRouteImport } from './routes/_authenticated/deposits'
+import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
+import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
+import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
+import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
+import { Route as AuthenticatedP2pRouteImport } from './routes/_authenticated/p2p'
+import { Route as AuthenticatedPaymentMethodsRouteImport } from './routes/_authenticated/payment-methods'
+import { Route as AuthenticatedProfileSecurityRouteImport } from './routes/_authenticated/profile-security'
+import { Route as AuthenticatedReferralRouteImport } from './routes/_authenticated/referral'
+import { Route as AuthenticatedTradeRouteImport } from './routes/_authenticated/trade'
+import { Route as AuthenticatedWithdrawRouteImport } from './routes/_authenticated/withdraw'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminRegisterRouteImport } from './routes/admin.register'
 import { Route as TraderLoginRouteImport } from './routes/trader.login'
 import { Route as TraderRegisterRouteImport } from './routes/trader.register'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminAdsRouteImport } from './routes/_authenticated/admin/ads'
+import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin/analytics'
+import { Route as AuthenticatedAdminApiManagementRouteImport } from './routes/_authenticated/admin/api-management'
+import { Route as AuthenticatedAdminAuditLogsRouteImport } from './routes/_authenticated/admin/audit-logs'
+import { Route as AuthenticatedAdminBlockchainMonitorRouteImport } from './routes/_authenticated/admin/blockchain-monitor'
+import { Route as AuthenticatedAdminDepositsRouteImport } from './routes/_authenticated/admin/deposits'
+import { Route as AuthenticatedAdminDirectSellRouteImport } from './routes/_authenticated/admin/direct-sell'
+import { Route as AuthenticatedAdminDisputesRouteImport } from './routes/_authenticated/admin/disputes'
+import { Route as AuthenticatedAdminFeesRouteImport } from './routes/_authenticated/admin/fees'
+import { Route as AuthenticatedAdminLedgerRouteImport } from './routes/_authenticated/admin/ledger'
+import { Route as AuthenticatedAdminP2pOrdersRouteImport } from './routes/_authenticated/admin/p2p-orders'
+import { Route as AuthenticatedAdminPaymentMethodsRouteImport } from './routes/_authenticated/admin/payment-methods'
+import { Route as AuthenticatedAdminPaymentOperationsRouteImport } from './routes/_authenticated/admin/payment-operations'
+import { Route as AuthenticatedAdminReferralsRouteImport } from './routes/_authenticated/admin/referrals'
+import { Route as AuthenticatedAdminRiskSecurityRouteImport } from './routes/_authenticated/admin/risk-security'
+import { Route as AuthenticatedAdminSystemSettingsRouteImport } from './routes/_authenticated/admin/system-settings'
+import { Route as AuthenticatedAdminTelegramRouteImport } from './routes/_authenticated/admin/telegram'
+import { Route as AuthenticatedAdminTradingVendorsRouteImport } from './routes/_authenticated/admin/trading-vendors'
 import { Route as AuthenticatedAdminTransactionsRouteImport } from './routes/_authenticated/admin/transactions'
+import { Route as AuthenticatedAdminUserWalletsRouteImport } from './routes/_authenticated/admin/user-wallets'
+import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminWalletsRouteImport } from './routes/_authenticated/admin/wallets'
+import { Route as AuthenticatedAdminWebhooksRouteImport } from './routes/_authenticated/admin/webhooks'
+import { Route as AuthenticatedAdminWithdrawalsRouteImport } from './routes/_authenticated/admin/withdrawals'
+import { Route as AuthenticatedOrdersOrderIdRouteImport } from './routes/_authenticated/orders.$orderId'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet.index'
 import { Route as AuthenticatedWalletWalletIdRouteImport } from './routes/_authenticated/wallet.$walletId'
+import { Route as ApiV1BalanceRouteImport } from './routes/api/v1/balance'
+import { Route as ApiV1DepositsRouteImport } from './routes/api/v1/deposits'
+import { Route as ApiV1DirectSellRouteImport } from './routes/api/v1/direct-sell'
+import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiPublicListenerTickRouteImport } from './routes/api/public/listener/tick'
+import { Route as ApiV1DepositsIdRouteImport } from './routes/api/v1/deposits.$id'
+import { Route as ApiV1DirectSellIdRouteImport } from './routes/api/v1/direct-sell.$id'
+import { Route as ApiV1TransactionsIdRouteImport } from './routes/api/v1/transactions.$id'
+import { Route as ApiV1DepositsIdStatusRouteImport } from './routes/api/v1/deposits.$id.status'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,11 +85,32 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MiniAppRoute = MiniAppRouteImport.update({
+  id: '/mini-app',
+  path: '/mini-app',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
   id: '/admin',
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAssetsRoute = AuthenticatedAssetsRouteImport.update({
+  id: '/assets',
+  path: '/assets',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedBankAccountsRoute =
+  AuthenticatedBankAccountsRouteImport.update({
+    id: '/bank-accounts',
+    path: '/bank-accounts',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -53,6 +119,59 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
 const AuthenticatedDepositsRoute = AuthenticatedDepositsRouteImport.update({
   id: '/deposits',
   path: '/deposits',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMoreRoute = AuthenticatedMoreRouteImport.update({
+  id: '/more',
+  path: '/more',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedNotificationsRoute =
+  AuthenticatedNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedOrdersRoute = AuthenticatedOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedP2pRoute = AuthenticatedP2pRouteImport.update({
+  id: '/p2p',
+  path: '/p2p',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPaymentMethodsRoute =
+  AuthenticatedPaymentMethodsRouteImport.update({
+    id: '/payment-methods',
+    path: '/payment-methods',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedProfileSecurityRoute =
+  AuthenticatedProfileSecurityRouteImport.update({
+    id: '/profile-security',
+    path: '/profile-security',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedReferralRoute = AuthenticatedReferralRouteImport.update({
+  id: '/referral',
+  path: '/referral',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedTradeRoute = AuthenticatedTradeRouteImport.update({
+  id: '/trade',
+  path: '/trade',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWithdrawRoute = AuthenticatedWithdrawRouteImport.update({
+  id: '/withdraw',
+  path: '/withdraw',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
@@ -80,17 +199,152 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
+const AuthenticatedAdminAdsRoute = AuthenticatedAdminAdsRouteImport.update({
+  id: '/ads',
+  path: '/ads',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
+const AuthenticatedAdminAnalyticsRoute =
+  AuthenticatedAdminAnalyticsRouteImport.update({
+    id: '/analytics',
+    path: '/analytics',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminApiManagementRoute =
+  AuthenticatedAdminApiManagementRouteImport.update({
+    id: '/api-management',
+    path: '/api-management',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminAuditLogsRoute =
+  AuthenticatedAdminAuditLogsRouteImport.update({
+    id: '/audit-logs',
+    path: '/audit-logs',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminBlockchainMonitorRoute =
+  AuthenticatedAdminBlockchainMonitorRouteImport.update({
+    id: '/blockchain-monitor',
+    path: '/blockchain-monitor',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminDepositsRoute =
+  AuthenticatedAdminDepositsRouteImport.update({
+    id: '/deposits',
+    path: '/deposits',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminDirectSellRoute =
+  AuthenticatedAdminDirectSellRouteImport.update({
+    id: '/direct-sell',
+    path: '/direct-sell',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminDisputesRoute =
+  AuthenticatedAdminDisputesRouteImport.update({
+    id: '/disputes',
+    path: '/disputes',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminFeesRoute = AuthenticatedAdminFeesRouteImport.update({
+  id: '/fees',
+  path: '/fees',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
+const AuthenticatedAdminLedgerRoute =
+  AuthenticatedAdminLedgerRouteImport.update({
+    id: '/ledger',
+    path: '/ledger',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminP2pOrdersRoute =
+  AuthenticatedAdminP2pOrdersRouteImport.update({
+    id: '/p2p-orders',
+    path: '/p2p-orders',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminPaymentMethodsRoute =
+  AuthenticatedAdminPaymentMethodsRouteImport.update({
+    id: '/payment-methods',
+    path: '/payment-methods',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminPaymentOperationsRoute =
+  AuthenticatedAdminPaymentOperationsRouteImport.update({
+    id: '/payment-operations',
+    path: '/payment-operations',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminReferralsRoute =
+  AuthenticatedAdminReferralsRouteImport.update({
+    id: '/referrals',
+    path: '/referrals',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminRiskSecurityRoute =
+  AuthenticatedAdminRiskSecurityRouteImport.update({
+    id: '/risk-security',
+    path: '/risk-security',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminSystemSettingsRoute =
+  AuthenticatedAdminSystemSettingsRouteImport.update({
+    id: '/system-settings',
+    path: '/system-settings',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminTelegramRoute =
+  AuthenticatedAdminTelegramRouteImport.update({
+    id: '/telegram',
+    path: '/telegram',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminTradingVendorsRoute =
+  AuthenticatedAdminTradingVendorsRouteImport.update({
+    id: '/trading-vendors',
+    path: '/trading-vendors',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminTransactionsRoute =
   AuthenticatedAdminTransactionsRouteImport.update({
     id: '/transactions',
     path: '/transactions',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
+const AuthenticatedAdminUserWalletsRoute =
+  AuthenticatedAdminUserWalletsRouteImport.update({
+    id: '/user-wallets',
+    path: '/user-wallets',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
 const AuthenticatedAdminWalletsRoute =
   AuthenticatedAdminWalletsRouteImport.update({
     id: '/wallets',
     path: '/wallets',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminWebhooksRoute =
+  AuthenticatedAdminWebhooksRouteImport.update({
+    id: '/webhooks',
+    path: '/webhooks',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminWithdrawalsRoute =
+  AuthenticatedAdminWithdrawalsRouteImport.update({
+    id: '/withdrawals',
+    path: '/withdrawals',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedOrdersOrderIdRoute =
+  AuthenticatedOrdersOrderIdRouteImport.update({
+    id: '/$orderId',
+    path: '/$orderId',
+    getParentRoute: () => AuthenticatedOrdersRoute,
   } as any)
 const AuthenticatedWalletIndexRoute =
   AuthenticatedWalletIndexRouteImport.update({
@@ -104,127 +358,443 @@ const AuthenticatedWalletWalletIdRoute =
     path: '/wallet/$walletId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ApiV1BalanceRoute = ApiV1BalanceRouteImport.update({
+  id: '/api/v1/balance',
+  path: '/api/v1/balance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1DepositsRoute = ApiV1DepositsRouteImport.update({
+  id: '/api/v1/deposits',
+  path: '/api/v1/deposits',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1DirectSellRoute = ApiV1DirectSellRouteImport.update({
+  id: '/api/v1/direct-sell',
+  path: '/api/v1/direct-sell',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1HealthRoute = ApiV1HealthRouteImport.update({
+  id: '/api/v1/health',
+  path: '/api/v1/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicListenerTickRoute = ApiPublicListenerTickRouteImport.update({
   id: '/api/public/listener/tick',
   path: '/api/public/listener/tick',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1DepositsIdRoute = ApiV1DepositsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiV1DepositsRoute,
+} as any)
+const ApiV1DirectSellIdRoute = ApiV1DirectSellIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiV1DirectSellRoute,
+} as any)
+const ApiV1TransactionsIdRoute = ApiV1TransactionsIdRouteImport.update({
+  id: '/api/v1/transactions/$id',
+  path: '/api/v1/transactions/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1DepositsIdStatusRoute = ApiV1DepositsIdStatusRouteImport.update({
+  id: '/status',
+  path: '/status',
+  getParentRoute: () => ApiV1DepositsIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/mini-app': typeof MiniAppRoute
   '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
+  '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/assets': typeof AuthenticatedAssetsRoute
+  '/bank-accounts': typeof AuthenticatedBankAccountsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deposits': typeof AuthenticatedDepositsRoute
+  '/history': typeof AuthenticatedHistoryRoute
+  '/more': typeof AuthenticatedMoreRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
+  '/orders': typeof AuthenticatedOrdersRouteWithChildren
+  '/p2p': typeof AuthenticatedP2pRoute
+  '/payment-methods': typeof AuthenticatedPaymentMethodsRoute
+  '/profile-security': typeof AuthenticatedProfileSecurityRoute
+  '/referral': typeof AuthenticatedReferralRoute
+  '/trade': typeof AuthenticatedTradeRoute
+  '/withdraw': typeof AuthenticatedWithdrawRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
+  '/admin/ads': typeof AuthenticatedAdminAdsRoute
+  '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
+  '/admin/api-management': typeof AuthenticatedAdminApiManagementRoute
+  '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
+  '/admin/blockchain-monitor': typeof AuthenticatedAdminBlockchainMonitorRoute
+  '/admin/deposits': typeof AuthenticatedAdminDepositsRoute
+  '/admin/direct-sell': typeof AuthenticatedAdminDirectSellRoute
+  '/admin/disputes': typeof AuthenticatedAdminDisputesRoute
+  '/admin/fees': typeof AuthenticatedAdminFeesRoute
+  '/admin/ledger': typeof AuthenticatedAdminLedgerRoute
+  '/admin/p2p-orders': typeof AuthenticatedAdminP2pOrdersRoute
+  '/admin/payment-methods': typeof AuthenticatedAdminPaymentMethodsRoute
+  '/admin/payment-operations': typeof AuthenticatedAdminPaymentOperationsRoute
+  '/admin/referrals': typeof AuthenticatedAdminReferralsRoute
+  '/admin/risk-security': typeof AuthenticatedAdminRiskSecurityRoute
+  '/admin/system-settings': typeof AuthenticatedAdminSystemSettingsRoute
+  '/admin/telegram': typeof AuthenticatedAdminTelegramRoute
+  '/admin/trading-vendors': typeof AuthenticatedAdminTradingVendorsRoute
   '/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
+  '/admin/user-wallets': typeof AuthenticatedAdminUserWalletsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/admin/wallets': typeof AuthenticatedAdminWalletsRoute
+  '/admin/webhooks': typeof AuthenticatedAdminWebhooksRoute
+  '/admin/withdrawals': typeof AuthenticatedAdminWithdrawalsRoute
+  '/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
   '/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
+  '/api/v1/balance': typeof ApiV1BalanceRoute
+  '/api/v1/deposits': typeof ApiV1DepositsRouteWithChildren
+  '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
+  '/api/v1/health': typeof ApiV1HealthRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
+  '/api/v1/deposits/$id': typeof ApiV1DepositsIdRouteWithChildren
+  '/api/v1/direct-sell/$id': typeof ApiV1DirectSellIdRoute
+  '/api/v1/transactions/$id': typeof ApiV1TransactionsIdRoute
+  '/api/v1/deposits/$id/status': typeof ApiV1DepositsIdStatusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/mini-app': typeof MiniAppRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/assets': typeof AuthenticatedAssetsRoute
+  '/bank-accounts': typeof AuthenticatedBankAccountsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deposits': typeof AuthenticatedDepositsRoute
+  '/history': typeof AuthenticatedHistoryRoute
+  '/more': typeof AuthenticatedMoreRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
+  '/orders': typeof AuthenticatedOrdersRouteWithChildren
+  '/p2p': typeof AuthenticatedP2pRoute
+  '/payment-methods': typeof AuthenticatedPaymentMethodsRoute
+  '/profile-security': typeof AuthenticatedProfileSecurityRoute
+  '/referral': typeof AuthenticatedReferralRoute
+  '/trade': typeof AuthenticatedTradeRoute
+  '/withdraw': typeof AuthenticatedWithdrawRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
+  '/admin/ads': typeof AuthenticatedAdminAdsRoute
+  '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
+  '/admin/api-management': typeof AuthenticatedAdminApiManagementRoute
+  '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
+  '/admin/blockchain-monitor': typeof AuthenticatedAdminBlockchainMonitorRoute
+  '/admin/deposits': typeof AuthenticatedAdminDepositsRoute
+  '/admin/direct-sell': typeof AuthenticatedAdminDirectSellRoute
+  '/admin/disputes': typeof AuthenticatedAdminDisputesRoute
+  '/admin/fees': typeof AuthenticatedAdminFeesRoute
+  '/admin/ledger': typeof AuthenticatedAdminLedgerRoute
+  '/admin/p2p-orders': typeof AuthenticatedAdminP2pOrdersRoute
+  '/admin/payment-methods': typeof AuthenticatedAdminPaymentMethodsRoute
+  '/admin/payment-operations': typeof AuthenticatedAdminPaymentOperationsRoute
+  '/admin/referrals': typeof AuthenticatedAdminReferralsRoute
+  '/admin/risk-security': typeof AuthenticatedAdminRiskSecurityRoute
+  '/admin/system-settings': typeof AuthenticatedAdminSystemSettingsRoute
+  '/admin/telegram': typeof AuthenticatedAdminTelegramRoute
+  '/admin/trading-vendors': typeof AuthenticatedAdminTradingVendorsRoute
   '/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
+  '/admin/user-wallets': typeof AuthenticatedAdminUserWalletsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/admin/wallets': typeof AuthenticatedAdminWalletsRoute
+  '/admin/webhooks': typeof AuthenticatedAdminWebhooksRoute
+  '/admin/withdrawals': typeof AuthenticatedAdminWithdrawalsRoute
+  '/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
   '/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
+  '/api/v1/balance': typeof ApiV1BalanceRoute
+  '/api/v1/deposits': typeof ApiV1DepositsRouteWithChildren
+  '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
+  '/api/v1/health': typeof ApiV1HealthRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
+  '/api/v1/deposits/$id': typeof ApiV1DepositsIdRouteWithChildren
+  '/api/v1/direct-sell/$id': typeof ApiV1DirectSellIdRoute
+  '/api/v1/transactions/$id': typeof ApiV1TransactionsIdRoute
+  '/api/v1/deposits/$id/status': typeof ApiV1DepositsIdStatusRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/mini-app': typeof MiniAppRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
+  '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
+  '/_authenticated/assets': typeof AuthenticatedAssetsRoute
+  '/_authenticated/bank-accounts': typeof AuthenticatedBankAccountsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/deposits': typeof AuthenticatedDepositsRoute
+  '/_authenticated/history': typeof AuthenticatedHistoryRoute
+  '/_authenticated/more': typeof AuthenticatedMoreRoute
+  '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
+  '/_authenticated/orders': typeof AuthenticatedOrdersRouteWithChildren
+  '/_authenticated/p2p': typeof AuthenticatedP2pRoute
+  '/_authenticated/payment-methods': typeof AuthenticatedPaymentMethodsRoute
+  '/_authenticated/profile-security': typeof AuthenticatedProfileSecurityRoute
+  '/_authenticated/referral': typeof AuthenticatedReferralRoute
+  '/_authenticated/trade': typeof AuthenticatedTradeRoute
+  '/_authenticated/withdraw': typeof AuthenticatedWithdrawRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
+  '/_authenticated/admin/ads': typeof AuthenticatedAdminAdsRoute
+  '/_authenticated/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
+  '/_authenticated/admin/api-management': typeof AuthenticatedAdminApiManagementRoute
+  '/_authenticated/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
+  '/_authenticated/admin/blockchain-monitor': typeof AuthenticatedAdminBlockchainMonitorRoute
+  '/_authenticated/admin/deposits': typeof AuthenticatedAdminDepositsRoute
+  '/_authenticated/admin/direct-sell': typeof AuthenticatedAdminDirectSellRoute
+  '/_authenticated/admin/disputes': typeof AuthenticatedAdminDisputesRoute
+  '/_authenticated/admin/fees': typeof AuthenticatedAdminFeesRoute
+  '/_authenticated/admin/ledger': typeof AuthenticatedAdminLedgerRoute
+  '/_authenticated/admin/p2p-orders': typeof AuthenticatedAdminP2pOrdersRoute
+  '/_authenticated/admin/payment-methods': typeof AuthenticatedAdminPaymentMethodsRoute
+  '/_authenticated/admin/payment-operations': typeof AuthenticatedAdminPaymentOperationsRoute
+  '/_authenticated/admin/referrals': typeof AuthenticatedAdminReferralsRoute
+  '/_authenticated/admin/risk-security': typeof AuthenticatedAdminRiskSecurityRoute
+  '/_authenticated/admin/system-settings': typeof AuthenticatedAdminSystemSettingsRoute
+  '/_authenticated/admin/telegram': typeof AuthenticatedAdminTelegramRoute
+  '/_authenticated/admin/trading-vendors': typeof AuthenticatedAdminTradingVendorsRoute
   '/_authenticated/admin/transactions': typeof AuthenticatedAdminTransactionsRoute
+  '/_authenticated/admin/user-wallets': typeof AuthenticatedAdminUserWalletsRoute
+  '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/admin/wallets': typeof AuthenticatedAdminWalletsRoute
+  '/_authenticated/admin/webhooks': typeof AuthenticatedAdminWebhooksRoute
+  '/_authenticated/admin/withdrawals': typeof AuthenticatedAdminWithdrawalsRoute
+  '/_authenticated/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
   '/_authenticated/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
+  '/api/v1/balance': typeof ApiV1BalanceRoute
+  '/api/v1/deposits': typeof ApiV1DepositsRouteWithChildren
+  '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
+  '/api/v1/health': typeof ApiV1HealthRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
+  '/api/v1/deposits/$id': typeof ApiV1DepositsIdRouteWithChildren
+  '/api/v1/direct-sell/$id': typeof ApiV1DirectSellIdRoute
+  '/api/v1/transactions/$id': typeof ApiV1TransactionsIdRoute
+  '/api/v1/deposits/$id/status': typeof ApiV1DepositsIdStatusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
+    | '/mini-app'
     | '/admin'
+    | '/analytics'
+    | '/assets'
+    | '/bank-accounts'
     | '/dashboard'
     | '/deposits'
+    | '/history'
+    | '/more'
+    | '/notifications'
+    | '/orders'
+    | '/p2p'
+    | '/payment-methods'
+    | '/profile-security'
+    | '/referral'
+    | '/trade'
+    | '/withdraw'
     | '/admin/login'
     | '/admin/register'
     | '/trader/login'
     | '/trader/register'
+    | '/admin/ads'
+    | '/admin/analytics'
+    | '/admin/api-management'
+    | '/admin/audit-logs'
+    | '/admin/blockchain-monitor'
+    | '/admin/deposits'
+    | '/admin/direct-sell'
+    | '/admin/disputes'
+    | '/admin/fees'
+    | '/admin/ledger'
+    | '/admin/p2p-orders'
+    | '/admin/payment-methods'
+    | '/admin/payment-operations'
+    | '/admin/referrals'
+    | '/admin/risk-security'
+    | '/admin/system-settings'
+    | '/admin/telegram'
+    | '/admin/trading-vendors'
     | '/admin/transactions'
+    | '/admin/user-wallets'
+    | '/admin/users'
     | '/admin/wallets'
+    | '/admin/webhooks'
+    | '/admin/withdrawals'
+    | '/orders/$orderId'
     | '/wallet/$walletId'
+    | '/api/v1/balance'
+    | '/api/v1/deposits'
+    | '/api/v1/direct-sell'
+    | '/api/v1/health'
     | '/admin/'
     | '/wallet/'
     | '/api/public/listener/tick'
+    | '/api/v1/deposits/$id'
+    | '/api/v1/direct-sell/$id'
+    | '/api/v1/transactions/$id'
+    | '/api/v1/deposits/$id/status'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/mini-app'
+    | '/analytics'
+    | '/assets'
+    | '/bank-accounts'
     | '/dashboard'
     | '/deposits'
+    | '/history'
+    | '/more'
+    | '/notifications'
+    | '/orders'
+    | '/p2p'
+    | '/payment-methods'
+    | '/profile-security'
+    | '/referral'
+    | '/trade'
+    | '/withdraw'
     | '/admin/login'
     | '/admin/register'
     | '/trader/login'
     | '/trader/register'
+    | '/admin/ads'
+    | '/admin/analytics'
+    | '/admin/api-management'
+    | '/admin/audit-logs'
+    | '/admin/blockchain-monitor'
+    | '/admin/deposits'
+    | '/admin/direct-sell'
+    | '/admin/disputes'
+    | '/admin/fees'
+    | '/admin/ledger'
+    | '/admin/p2p-orders'
+    | '/admin/payment-methods'
+    | '/admin/payment-operations'
+    | '/admin/referrals'
+    | '/admin/risk-security'
+    | '/admin/system-settings'
+    | '/admin/telegram'
+    | '/admin/trading-vendors'
     | '/admin/transactions'
+    | '/admin/user-wallets'
+    | '/admin/users'
     | '/admin/wallets'
+    | '/admin/webhooks'
+    | '/admin/withdrawals'
+    | '/orders/$orderId'
     | '/wallet/$walletId'
+    | '/api/v1/balance'
+    | '/api/v1/deposits'
+    | '/api/v1/direct-sell'
+    | '/api/v1/health'
     | '/admin'
     | '/wallet'
     | '/api/public/listener/tick'
+    | '/api/v1/deposits/$id'
+    | '/api/v1/direct-sell/$id'
+    | '/api/v1/transactions/$id'
+    | '/api/v1/deposits/$id/status'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/mini-app'
     | '/_authenticated/admin'
+    | '/_authenticated/analytics'
+    | '/_authenticated/assets'
+    | '/_authenticated/bank-accounts'
     | '/_authenticated/dashboard'
     | '/_authenticated/deposits'
+    | '/_authenticated/history'
+    | '/_authenticated/more'
+    | '/_authenticated/notifications'
+    | '/_authenticated/orders'
+    | '/_authenticated/p2p'
+    | '/_authenticated/payment-methods'
+    | '/_authenticated/profile-security'
+    | '/_authenticated/referral'
+    | '/_authenticated/trade'
+    | '/_authenticated/withdraw'
     | '/admin/login'
     | '/admin/register'
     | '/trader/login'
     | '/trader/register'
+    | '/_authenticated/admin/ads'
+    | '/_authenticated/admin/analytics'
+    | '/_authenticated/admin/api-management'
+    | '/_authenticated/admin/audit-logs'
+    | '/_authenticated/admin/blockchain-monitor'
+    | '/_authenticated/admin/deposits'
+    | '/_authenticated/admin/direct-sell'
+    | '/_authenticated/admin/disputes'
+    | '/_authenticated/admin/fees'
+    | '/_authenticated/admin/ledger'
+    | '/_authenticated/admin/p2p-orders'
+    | '/_authenticated/admin/payment-methods'
+    | '/_authenticated/admin/payment-operations'
+    | '/_authenticated/admin/referrals'
+    | '/_authenticated/admin/risk-security'
+    | '/_authenticated/admin/system-settings'
+    | '/_authenticated/admin/telegram'
+    | '/_authenticated/admin/trading-vendors'
     | '/_authenticated/admin/transactions'
+    | '/_authenticated/admin/user-wallets'
+    | '/_authenticated/admin/users'
     | '/_authenticated/admin/wallets'
+    | '/_authenticated/admin/webhooks'
+    | '/_authenticated/admin/withdrawals'
+    | '/_authenticated/orders/$orderId'
     | '/_authenticated/wallet/$walletId'
+    | '/api/v1/balance'
+    | '/api/v1/deposits'
+    | '/api/v1/direct-sell'
+    | '/api/v1/health'
     | '/_authenticated/admin/'
     | '/_authenticated/wallet/'
     | '/api/public/listener/tick'
+    | '/api/v1/deposits/$id'
+    | '/api/v1/direct-sell/$id'
+    | '/api/v1/transactions/$id'
+    | '/api/v1/deposits/$id/status'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  MiniAppRoute: typeof MiniAppRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminRegisterRoute: typeof AdminRegisterRoute
   TraderLoginRoute: typeof TraderLoginRoute
   TraderRegisterRoute: typeof TraderRegisterRoute
+  ApiV1BalanceRoute: typeof ApiV1BalanceRoute
+  ApiV1DepositsRoute: typeof ApiV1DepositsRouteWithChildren
+  ApiV1DirectSellRoute: typeof ApiV1DirectSellRouteWithChildren
+  ApiV1HealthRoute: typeof ApiV1HealthRoute
   ApiPublicListenerTickRoute: typeof ApiPublicListenerTickRoute
+  ApiV1TransactionsIdRoute: typeof ApiV1TransactionsIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -250,11 +820,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mini-app': {
+      id: '/mini-app'
+      path: '/mini-app'
+      fullPath: '/mini-app'
+      preLoaderRoute: typeof MiniAppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/admin': {
       id: '/_authenticated/admin'
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AuthenticatedAdminRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/analytics': {
+      id: '/_authenticated/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/assets': {
+      id: '/_authenticated/assets'
+      path: '/assets'
+      fullPath: '/assets'
+      preLoaderRoute: typeof AuthenticatedAssetsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/bank-accounts': {
+      id: '/_authenticated/bank-accounts'
+      path: '/bank-accounts'
+      fullPath: '/bank-accounts'
+      preLoaderRoute: typeof AuthenticatedBankAccountsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard': {
@@ -269,6 +867,76 @@ declare module '@tanstack/react-router' {
       path: '/deposits'
       fullPath: '/deposits'
       preLoaderRoute: typeof AuthenticatedDepositsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/history': {
+      id: '/_authenticated/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof AuthenticatedHistoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/more': {
+      id: '/_authenticated/more'
+      path: '/more'
+      fullPath: '/more'
+      preLoaderRoute: typeof AuthenticatedMoreRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/notifications': {
+      id: '/_authenticated/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/orders': {
+      id: '/_authenticated/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof AuthenticatedOrdersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/p2p': {
+      id: '/_authenticated/p2p'
+      path: '/p2p'
+      fullPath: '/p2p'
+      preLoaderRoute: typeof AuthenticatedP2pRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/payment-methods': {
+      id: '/_authenticated/payment-methods'
+      path: '/payment-methods'
+      fullPath: '/payment-methods'
+      preLoaderRoute: typeof AuthenticatedPaymentMethodsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/profile-security': {
+      id: '/_authenticated/profile-security'
+      path: '/profile-security'
+      fullPath: '/profile-security'
+      preLoaderRoute: typeof AuthenticatedProfileSecurityRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/referral': {
+      id: '/_authenticated/referral'
+      path: '/referral'
+      fullPath: '/referral'
+      preLoaderRoute: typeof AuthenticatedReferralRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/trade': {
+      id: '/_authenticated/trade'
+      path: '/trade'
+      fullPath: '/trade'
+      preLoaderRoute: typeof AuthenticatedTradeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/withdraw': {
+      id: '/_authenticated/withdraw'
+      path: '/withdraw'
+      fullPath: '/withdraw'
+      preLoaderRoute: typeof AuthenticatedWithdrawRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/admin/login': {
@@ -306,11 +974,151 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/ads': {
+      id: '/_authenticated/admin/ads'
+      path: '/ads'
+      fullPath: '/admin/ads'
+      preLoaderRoute: typeof AuthenticatedAdminAdsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/analytics': {
+      id: '/_authenticated/admin/analytics'
+      path: '/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AuthenticatedAdminAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/api-management': {
+      id: '/_authenticated/admin/api-management'
+      path: '/api-management'
+      fullPath: '/admin/api-management'
+      preLoaderRoute: typeof AuthenticatedAdminApiManagementRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/audit-logs': {
+      id: '/_authenticated/admin/audit-logs'
+      path: '/audit-logs'
+      fullPath: '/admin/audit-logs'
+      preLoaderRoute: typeof AuthenticatedAdminAuditLogsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/blockchain-monitor': {
+      id: '/_authenticated/admin/blockchain-monitor'
+      path: '/blockchain-monitor'
+      fullPath: '/admin/blockchain-monitor'
+      preLoaderRoute: typeof AuthenticatedAdminBlockchainMonitorRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/deposits': {
+      id: '/_authenticated/admin/deposits'
+      path: '/deposits'
+      fullPath: '/admin/deposits'
+      preLoaderRoute: typeof AuthenticatedAdminDepositsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/direct-sell': {
+      id: '/_authenticated/admin/direct-sell'
+      path: '/direct-sell'
+      fullPath: '/admin/direct-sell'
+      preLoaderRoute: typeof AuthenticatedAdminDirectSellRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/disputes': {
+      id: '/_authenticated/admin/disputes'
+      path: '/disputes'
+      fullPath: '/admin/disputes'
+      preLoaderRoute: typeof AuthenticatedAdminDisputesRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/fees': {
+      id: '/_authenticated/admin/fees'
+      path: '/fees'
+      fullPath: '/admin/fees'
+      preLoaderRoute: typeof AuthenticatedAdminFeesRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/ledger': {
+      id: '/_authenticated/admin/ledger'
+      path: '/ledger'
+      fullPath: '/admin/ledger'
+      preLoaderRoute: typeof AuthenticatedAdminLedgerRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/p2p-orders': {
+      id: '/_authenticated/admin/p2p-orders'
+      path: '/p2p-orders'
+      fullPath: '/admin/p2p-orders'
+      preLoaderRoute: typeof AuthenticatedAdminP2pOrdersRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/payment-methods': {
+      id: '/_authenticated/admin/payment-methods'
+      path: '/payment-methods'
+      fullPath: '/admin/payment-methods'
+      preLoaderRoute: typeof AuthenticatedAdminPaymentMethodsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/payment-operations': {
+      id: '/_authenticated/admin/payment-operations'
+      path: '/payment-operations'
+      fullPath: '/admin/payment-operations'
+      preLoaderRoute: typeof AuthenticatedAdminPaymentOperationsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/referrals': {
+      id: '/_authenticated/admin/referrals'
+      path: '/referrals'
+      fullPath: '/admin/referrals'
+      preLoaderRoute: typeof AuthenticatedAdminReferralsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/risk-security': {
+      id: '/_authenticated/admin/risk-security'
+      path: '/risk-security'
+      fullPath: '/admin/risk-security'
+      preLoaderRoute: typeof AuthenticatedAdminRiskSecurityRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/system-settings': {
+      id: '/_authenticated/admin/system-settings'
+      path: '/system-settings'
+      fullPath: '/admin/system-settings'
+      preLoaderRoute: typeof AuthenticatedAdminSystemSettingsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/telegram': {
+      id: '/_authenticated/admin/telegram'
+      path: '/telegram'
+      fullPath: '/admin/telegram'
+      preLoaderRoute: typeof AuthenticatedAdminTelegramRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/trading-vendors': {
+      id: '/_authenticated/admin/trading-vendors'
+      path: '/trading-vendors'
+      fullPath: '/admin/trading-vendors'
+      preLoaderRoute: typeof AuthenticatedAdminTradingVendorsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/transactions': {
       id: '/_authenticated/admin/transactions'
       path: '/transactions'
       fullPath: '/admin/transactions'
       preLoaderRoute: typeof AuthenticatedAdminTransactionsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/user-wallets': {
+      id: '/_authenticated/admin/user-wallets'
+      path: '/user-wallets'
+      fullPath: '/admin/user-wallets'
+      preLoaderRoute: typeof AuthenticatedAdminUserWalletsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/users': {
+      id: '/_authenticated/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/wallets': {
@@ -319,6 +1127,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/wallets'
       preLoaderRoute: typeof AuthenticatedAdminWalletsRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/webhooks': {
+      id: '/_authenticated/admin/webhooks'
+      path: '/webhooks'
+      fullPath: '/admin/webhooks'
+      preLoaderRoute: typeof AuthenticatedAdminWebhooksRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/withdrawals': {
+      id: '/_authenticated/admin/withdrawals'
+      path: '/withdrawals'
+      fullPath: '/admin/withdrawals'
+      preLoaderRoute: typeof AuthenticatedAdminWithdrawalsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/orders/$orderId': {
+      id: '/_authenticated/orders/$orderId'
+      path: '/$orderId'
+      fullPath: '/orders/$orderId'
+      preLoaderRoute: typeof AuthenticatedOrdersOrderIdRouteImport
+      parentRoute: typeof AuthenticatedOrdersRoute
     }
     '/_authenticated/wallet/': {
       id: '/_authenticated/wallet/'
@@ -334,6 +1163,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWalletWalletIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/v1/balance': {
+      id: '/api/v1/balance'
+      path: '/api/v1/balance'
+      fullPath: '/api/v1/balance'
+      preLoaderRoute: typeof ApiV1BalanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/deposits': {
+      id: '/api/v1/deposits'
+      path: '/api/v1/deposits'
+      fullPath: '/api/v1/deposits'
+      preLoaderRoute: typeof ApiV1DepositsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/direct-sell': {
+      id: '/api/v1/direct-sell'
+      path: '/api/v1/direct-sell'
+      fullPath: '/api/v1/direct-sell'
+      preLoaderRoute: typeof ApiV1DirectSellRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/health': {
+      id: '/api/v1/health'
+      path: '/api/v1/health'
+      fullPath: '/api/v1/health'
+      preLoaderRoute: typeof ApiV1HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/listener/tick': {
       id: '/api/public/listener/tick'
       path: '/api/public/listener/tick'
@@ -341,19 +1198,96 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicListenerTickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/deposits/$id': {
+      id: '/api/v1/deposits/$id'
+      path: '/$id'
+      fullPath: '/api/v1/deposits/$id'
+      preLoaderRoute: typeof ApiV1DepositsIdRouteImport
+      parentRoute: typeof ApiV1DepositsRoute
+    }
+    '/api/v1/direct-sell/$id': {
+      id: '/api/v1/direct-sell/$id'
+      path: '/$id'
+      fullPath: '/api/v1/direct-sell/$id'
+      preLoaderRoute: typeof ApiV1DirectSellIdRouteImport
+      parentRoute: typeof ApiV1DirectSellRoute
+    }
+    '/api/v1/transactions/$id': {
+      id: '/api/v1/transactions/$id'
+      path: '/api/v1/transactions/$id'
+      fullPath: '/api/v1/transactions/$id'
+      preLoaderRoute: typeof ApiV1TransactionsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/deposits/$id/status': {
+      id: '/api/v1/deposits/$id/status'
+      path: '/status'
+      fullPath: '/api/v1/deposits/$id/status'
+      preLoaderRoute: typeof ApiV1DepositsIdStatusRouteImport
+      parentRoute: typeof ApiV1DepositsIdRoute
+    }
   }
 }
 
 interface AuthenticatedAdminRouteRouteChildren {
+  AuthenticatedAdminAdsRoute: typeof AuthenticatedAdminAdsRoute
+  AuthenticatedAdminAnalyticsRoute: typeof AuthenticatedAdminAnalyticsRoute
+  AuthenticatedAdminApiManagementRoute: typeof AuthenticatedAdminApiManagementRoute
+  AuthenticatedAdminAuditLogsRoute: typeof AuthenticatedAdminAuditLogsRoute
+  AuthenticatedAdminBlockchainMonitorRoute: typeof AuthenticatedAdminBlockchainMonitorRoute
+  AuthenticatedAdminDepositsRoute: typeof AuthenticatedAdminDepositsRoute
+  AuthenticatedAdminDirectSellRoute: typeof AuthenticatedAdminDirectSellRoute
+  AuthenticatedAdminDisputesRoute: typeof AuthenticatedAdminDisputesRoute
+  AuthenticatedAdminFeesRoute: typeof AuthenticatedAdminFeesRoute
+  AuthenticatedAdminLedgerRoute: typeof AuthenticatedAdminLedgerRoute
+  AuthenticatedAdminP2pOrdersRoute: typeof AuthenticatedAdminP2pOrdersRoute
+  AuthenticatedAdminPaymentMethodsRoute: typeof AuthenticatedAdminPaymentMethodsRoute
+  AuthenticatedAdminPaymentOperationsRoute: typeof AuthenticatedAdminPaymentOperationsRoute
+  AuthenticatedAdminReferralsRoute: typeof AuthenticatedAdminReferralsRoute
+  AuthenticatedAdminRiskSecurityRoute: typeof AuthenticatedAdminRiskSecurityRoute
+  AuthenticatedAdminSystemSettingsRoute: typeof AuthenticatedAdminSystemSettingsRoute
+  AuthenticatedAdminTelegramRoute: typeof AuthenticatedAdminTelegramRoute
+  AuthenticatedAdminTradingVendorsRoute: typeof AuthenticatedAdminTradingVendorsRoute
   AuthenticatedAdminTransactionsRoute: typeof AuthenticatedAdminTransactionsRoute
+  AuthenticatedAdminUserWalletsRoute: typeof AuthenticatedAdminUserWalletsRoute
+  AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedAdminWalletsRoute: typeof AuthenticatedAdminWalletsRoute
+  AuthenticatedAdminWebhooksRoute: typeof AuthenticatedAdminWebhooksRoute
+  AuthenticatedAdminWithdrawalsRoute: typeof AuthenticatedAdminWithdrawalsRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
 
 const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
   {
+    AuthenticatedAdminAdsRoute: AuthenticatedAdminAdsRoute,
+    AuthenticatedAdminAnalyticsRoute: AuthenticatedAdminAnalyticsRoute,
+    AuthenticatedAdminApiManagementRoute: AuthenticatedAdminApiManagementRoute,
+    AuthenticatedAdminAuditLogsRoute: AuthenticatedAdminAuditLogsRoute,
+    AuthenticatedAdminBlockchainMonitorRoute:
+      AuthenticatedAdminBlockchainMonitorRoute,
+    AuthenticatedAdminDepositsRoute: AuthenticatedAdminDepositsRoute,
+    AuthenticatedAdminDirectSellRoute: AuthenticatedAdminDirectSellRoute,
+    AuthenticatedAdminDisputesRoute: AuthenticatedAdminDisputesRoute,
+    AuthenticatedAdminFeesRoute: AuthenticatedAdminFeesRoute,
+    AuthenticatedAdminLedgerRoute: AuthenticatedAdminLedgerRoute,
+    AuthenticatedAdminP2pOrdersRoute: AuthenticatedAdminP2pOrdersRoute,
+    AuthenticatedAdminPaymentMethodsRoute:
+      AuthenticatedAdminPaymentMethodsRoute,
+    AuthenticatedAdminPaymentOperationsRoute:
+      AuthenticatedAdminPaymentOperationsRoute,
+    AuthenticatedAdminReferralsRoute: AuthenticatedAdminReferralsRoute,
+    AuthenticatedAdminRiskSecurityRoute: AuthenticatedAdminRiskSecurityRoute,
+    AuthenticatedAdminSystemSettingsRoute:
+      AuthenticatedAdminSystemSettingsRoute,
+    AuthenticatedAdminTelegramRoute: AuthenticatedAdminTelegramRoute,
+    AuthenticatedAdminTradingVendorsRoute:
+      AuthenticatedAdminTradingVendorsRoute,
     AuthenticatedAdminTransactionsRoute: AuthenticatedAdminTransactionsRoute,
+    AuthenticatedAdminUserWalletsRoute: AuthenticatedAdminUserWalletsRoute,
+    AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
     AuthenticatedAdminWalletsRoute: AuthenticatedAdminWalletsRoute,
+    AuthenticatedAdminWebhooksRoute: AuthenticatedAdminWebhooksRoute,
+    AuthenticatedAdminWithdrawalsRoute: AuthenticatedAdminWithdrawalsRoute,
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   }
 
@@ -362,18 +1296,55 @@ const AuthenticatedAdminRouteRouteWithChildren =
     AuthenticatedAdminRouteRouteChildren,
   )
 
+interface AuthenticatedOrdersRouteChildren {
+  AuthenticatedOrdersOrderIdRoute: typeof AuthenticatedOrdersOrderIdRoute
+}
+
+const AuthenticatedOrdersRouteChildren: AuthenticatedOrdersRouteChildren = {
+  AuthenticatedOrdersOrderIdRoute: AuthenticatedOrdersOrderIdRoute,
+}
+
+const AuthenticatedOrdersRouteWithChildren =
+  AuthenticatedOrdersRoute._addFileChildren(AuthenticatedOrdersRouteChildren)
+
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRouteRoute: typeof AuthenticatedAdminRouteRouteWithChildren
+  AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
+  AuthenticatedAssetsRoute: typeof AuthenticatedAssetsRoute
+  AuthenticatedBankAccountsRoute: typeof AuthenticatedBankAccountsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDepositsRoute: typeof AuthenticatedDepositsRoute
+  AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
+  AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
+  AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
+  AuthenticatedOrdersRoute: typeof AuthenticatedOrdersRouteWithChildren
+  AuthenticatedP2pRoute: typeof AuthenticatedP2pRoute
+  AuthenticatedPaymentMethodsRoute: typeof AuthenticatedPaymentMethodsRoute
+  AuthenticatedProfileSecurityRoute: typeof AuthenticatedProfileSecurityRoute
+  AuthenticatedReferralRoute: typeof AuthenticatedReferralRoute
+  AuthenticatedTradeRoute: typeof AuthenticatedTradeRoute
+  AuthenticatedWithdrawRoute: typeof AuthenticatedWithdrawRoute
   AuthenticatedWalletWalletIdRoute: typeof AuthenticatedWalletWalletIdRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRouteRoute: AuthenticatedAdminRouteRouteWithChildren,
+  AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
+  AuthenticatedAssetsRoute: AuthenticatedAssetsRoute,
+  AuthenticatedBankAccountsRoute: AuthenticatedBankAccountsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDepositsRoute: AuthenticatedDepositsRoute,
+  AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
+  AuthenticatedMoreRoute: AuthenticatedMoreRoute,
+  AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
+  AuthenticatedOrdersRoute: AuthenticatedOrdersRouteWithChildren,
+  AuthenticatedP2pRoute: AuthenticatedP2pRoute,
+  AuthenticatedPaymentMethodsRoute: AuthenticatedPaymentMethodsRoute,
+  AuthenticatedProfileSecurityRoute: AuthenticatedProfileSecurityRoute,
+  AuthenticatedReferralRoute: AuthenticatedReferralRoute,
+  AuthenticatedTradeRoute: AuthenticatedTradeRoute,
+  AuthenticatedWithdrawRoute: AuthenticatedWithdrawRoute,
   AuthenticatedWalletWalletIdRoute: AuthenticatedWalletWalletIdRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }
@@ -381,15 +1352,57 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface ApiV1DepositsIdRouteChildren {
+  ApiV1DepositsIdStatusRoute: typeof ApiV1DepositsIdStatusRoute
+}
+
+const ApiV1DepositsIdRouteChildren: ApiV1DepositsIdRouteChildren = {
+  ApiV1DepositsIdStatusRoute: ApiV1DepositsIdStatusRoute,
+}
+
+const ApiV1DepositsIdRouteWithChildren = ApiV1DepositsIdRoute._addFileChildren(
+  ApiV1DepositsIdRouteChildren,
+)
+
+interface ApiV1DepositsRouteChildren {
+  ApiV1DepositsIdRoute: typeof ApiV1DepositsIdRouteWithChildren
+}
+
+const ApiV1DepositsRouteChildren: ApiV1DepositsRouteChildren = {
+  ApiV1DepositsIdRoute: ApiV1DepositsIdRouteWithChildren,
+}
+
+const ApiV1DepositsRouteWithChildren = ApiV1DepositsRoute._addFileChildren(
+  ApiV1DepositsRouteChildren,
+)
+
+interface ApiV1DirectSellRouteChildren {
+  ApiV1DirectSellIdRoute: typeof ApiV1DirectSellIdRoute
+}
+
+const ApiV1DirectSellRouteChildren: ApiV1DirectSellRouteChildren = {
+  ApiV1DirectSellIdRoute: ApiV1DirectSellIdRoute,
+}
+
+const ApiV1DirectSellRouteWithChildren = ApiV1DirectSellRoute._addFileChildren(
+  ApiV1DirectSellRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  MiniAppRoute: MiniAppRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminRegisterRoute: AdminRegisterRoute,
   TraderLoginRoute: TraderLoginRoute,
   TraderRegisterRoute: TraderRegisterRoute,
+  ApiV1BalanceRoute: ApiV1BalanceRoute,
+  ApiV1DepositsRoute: ApiV1DepositsRouteWithChildren,
+  ApiV1DirectSellRoute: ApiV1DirectSellRouteWithChildren,
+  ApiV1HealthRoute: ApiV1HealthRoute,
   ApiPublicListenerTickRoute: ApiPublicListenerTickRoute,
+  ApiV1TransactionsIdRoute: ApiV1TransactionsIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

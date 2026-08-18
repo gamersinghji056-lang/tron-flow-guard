@@ -23,11 +23,7 @@
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { DEFAULT_NETWORK, networkConfig, type ChainNetwork } from "./chain";
-import {
-  listHotAddresses,
-  listMonitoredAddresses,
-  type MonitoredAddress,
-} from "./monitor.server";
+import { listHotAddresses, listMonitoredAddresses, type MonitoredAddress } from "./monitor.server";
 
 import {
   getIncomingUsdtTransfers,
@@ -36,6 +32,7 @@ import {
   withRetry,
   type Trc20Transfer,
 } from "./tron.server";
+import { enqueueWebhookEvent } from "./webhooks.server";
 
 export interface ListenerTickResult {
   ok: boolean;
@@ -51,11 +48,29 @@ export interface ListenerTickResult {
   walletsCredited: number;
   expired: number;
   reconciled: boolean;
+  timingsMs: Record<string, number>;
   durationMs: number;
   errors: string[];
 }
 
 type SettingsMap = Record<string, unknown>;
+
+interface LooseDepositRequestQuery {
+  select: (columns: string) => {
+    eq: (column: string, value: unknown) => LooseDepositRequestQueryFilter;
+  };
+}
+
+interface LooseDepositRequestQueryFilter {
+  eq: (column: string, value: unknown) => LooseDepositRequestQueryFilter;
+  in: (column: string, values: unknown[]) => LooseDepositRequestQueryFilter;
+  is: (column: string, value: unknown) => LooseDepositRequestQueryFilter;
+  order: (
+    column: string,
+    options: { ascending: boolean },
+  ) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
+  maybeSingle: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
+}
 
 async function readSettings(): Promise<SettingsMap> {
   const { data } = await supabaseAdmin.from("system_settings").select("key, value");
@@ -132,7 +147,8 @@ function verifyTransfer(
   network: ChainNetwork,
 ): string | null {
   const config = networkConfig(network);
-  if (transfer.to !== expectedAddress) return "Receiver address does not match the monitored wallet";
+  if (transfer.to !== expectedAddress)
+    return "Receiver address does not match the monitored wallet";
   // Token contract is authoritative: a look-alike token must never credit.
   if (!transfer.tokenContract) return "Transfer has no token contract";
   if (transfer.tokenContract !== config.usdtContract) {
@@ -149,10 +165,7 @@ function verifyTransfer(
   return null;
 }
 
-async function persistState(
-  network: ChainNetwork,
-  patch: Record<string, unknown>,
-): Promise<void> {
+async function persistState(network: ChainNetwork, patch: Record<string, unknown>): Promise<void> {
   await supabaseAdmin
     .from("listener_state")
     .upsert({ network, ...patch } as never, { onConflict: "network" });
@@ -203,9 +216,19 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
     walletsCredited: 0,
     expired: 0,
     reconciled: false,
+    timingsMs: {},
     durationMs: 0,
     errors,
   };
+
+  async function measure<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const started = Date.now();
+    try {
+      return await fn();
+    } finally {
+      result.timingsMs[key] = (result.timingsMs[key] ?? 0) + Date.now() - started;
+    }
+  }
 
   // Decide whether this run must sweep further back than the usual window.
   const { data: priorState } = await supabaseAdmin
@@ -231,12 +254,13 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
       }
     : { limit: fast ? 15 : 50 };
 
-
   await persistState(network, { last_poll_at: new Date().toISOString() });
 
   // ── B. chain head ──────────────────────────────────────────────────────────
   try {
-    result.latestBlock = await withRetry(() => getLatestBlock(network));
+    result.latestBlock = await measure("latestBlock", () =>
+      withRetry(() => getLatestBlock(network)),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to read the chain head";
     result.ok = false;
@@ -271,12 +295,16 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
   // A `fast` pass polls only "hot" addresses (live orders / recently used
   // wallets) so detection latency stays flat as wallet count grows. Full passes
   // still sweep every address, which is what recovers anything missed.
-  const allMonitored = await listMonitoredAddresses(network, {
-    includePersonal: monitorPersonal,
-  });
+  const allMonitored = await measure("monitoredAddressLoad", () =>
+    listMonitoredAddresses(network, {
+      includePersonal: monitorPersonal,
+    }),
+  );
   let monitored = allMonitored;
   if (fast) {
-    const hot = await listHotAddresses(network, { includePersonal: monitorPersonal });
+    const hot = await measure("hotAddressLoad", () =>
+      listHotAddresses(network, { includePersonal: monitorPersonal }),
+    );
     if (hot.length) monitored = hot;
   }
   result.addressesMonitored = allMonitored.length;
@@ -290,8 +318,8 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
     result.addressesPolled += 1;
     let transfers: Trc20Transfer[] = [];
     try {
-      transfers = await withRetry(() =>
-        getIncomingUsdtTransfers(network, target.address, sweepOptions),
+      transfers = await measure("tronAddressHistory", () =>
+        withRetry(() => getIncomingUsdtTransfers(network, target.address, sweepOptions)),
       );
     } catch (error) {
       result.ok = false;
@@ -304,48 +332,57 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
     // and must not race itself on the same deposit order.
     for (const transfer of transfers) {
       try {
-        await ingestTransfer({
-          transfer,
-          target,
-          network,
-          requiredConfirmations,
-          largeThreshold,
-          toleranceBase,
-          overpaymentPolicy,
-          underpaymentPolicy,
-          latePaymentPolicy,
-          latestBlock: result.latestBlock,
-          result,
-        });
+        await measure("transferIngestion", () =>
+          ingestTransfer({
+            transfer,
+            target,
+            network,
+            requiredConfirmations,
+            largeThreshold,
+            toleranceBase,
+            overpaymentPolicy,
+            underpaymentPolicy,
+            latePaymentPolicy,
+            latestBlock: result.latestBlock,
+            result,
+          }),
+        );
       } catch (error) {
-        errors.push(`${transfer.txid}: ${error instanceof Error ? error.message : "ingest failed"}`);
+        errors.push(
+          `${transfer.txid}: ${error instanceof Error ? error.message : "ingest failed"}`,
+        );
       }
     }
   }
 
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-      for (;;) {
-        const next = queue.shift();
-        if (!next) return;
-        await pollOne(next);
-      }
+  await measure("addressScan", () =>
+    Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+        for (;;) {
+          const next = queue.shift();
+          if (!next) return;
+          await pollOne(next);
+        }
+      }),
+    ),
+  );
+
+  // ── E. confirmations + credit ──────────────────────────────────────────────
+  await measure("confirmationRefresh", () =>
+    settleConfirmedTransactions({
+      network,
+      requiredConfirmations,
+      latestBlock: result.latestBlock,
+      result,
+      errors,
     }),
   );
 
-
-  // ── E. confirmations + credit ──────────────────────────────────────────────
-  await settleConfirmedTransactions({
-    network,
-    requiredConfirmations,
-    latestBlock: result.latestBlock,
-    result,
-    errors,
-  });
-
   // ── F. expiry, checkpoint, health ──────────────────────────────────────────
   try {
-    const { data: expired } = await supabaseAdmin.rpc("expire_stale_deposits");
+    const { data: expired } = await measure("expiry", async () =>
+      supabaseAdmin.rpc("expire_stale_deposits"),
+    );
     result.expired = Number(expired ?? 0);
   } catch {
     errors.push("Could not expire stale deposit orders");
@@ -383,6 +420,9 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
         addressesMonitored: result.addressesMonitored,
         reconciled: result.reconciled,
         trigger,
+        timingsMs: result.timingsMs,
+        durationMs: result.durationMs,
+        latestSuccessAt: healthy ? finishedAt : priorState?.last_success_at,
       },
     },
   );
@@ -404,7 +444,7 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
     eventsSeen: result.eventsSeen,
     depositsUpdated: result.depositsUpdated,
     durationMs: result.durationMs,
-    metadata: { trigger, reconciled: result.reconciled, errors },
+    metadata: { trigger, reconciled: result.reconciled, errors, timingsMs: result.timingsMs },
   });
 
   return result;
@@ -470,9 +510,7 @@ async function ingestTransfer(args: {
 
   const chainRejection = rejection ?? (info.success ? null : "Transaction failed on-chain");
   const confirmations =
-    info.blockNumber && args.latestBlock
-      ? Math.max(0, args.latestBlock - info.blockNumber + 1)
-      : 0;
+    info.blockNumber && args.latestBlock ? Math.max(0, args.latestBlock - info.blockNumber + 1) : 0;
 
   // Match a deposit order only for company P2P deposit wallets.
   interface MatchedOrder {
@@ -481,6 +519,8 @@ async function ingestTransfer(args: {
     order_ref: string;
     expected_amount: string | number;
     expires_at: string;
+    purpose?: string | null;
+    direct_sell_order_id?: string | null;
   }
   let matchedOrder: MatchedOrder | null = null;
 
@@ -489,25 +529,33 @@ async function ingestTransfer(args: {
   let holdReason: string | null = null;
 
   if (target.kind === "company" && !chainRejection) {
-    const { data: candidates } = await supabaseAdmin
-      .from("deposit_requests")
-      .select("id, user_id, order_ref, expected_amount, expires_at, created_at, status")
+    const depositRequests = supabaseAdmin.from(
+      "deposit_requests",
+    ) as unknown as LooseDepositRequestQuery;
+    const { data: candidates } = await depositRequests
+      .select(
+        "id, user_id, order_ref, expected_amount, expires_at, created_at, status, purpose, direct_sell_order_id",
+      )
       .eq("wallet_id", target.id)
       .eq("network", network)
       .in("status", ["waiting", "detected", "expired"])
       .is("txid", null)
       .order("created_at", { ascending: true });
 
-    const scored = (candidates ?? []).map((candidate) => {
+    const scored = ((candidates ?? []) as MatchedOrder[]).map((candidate) => {
       const expectedBase = toBaseUnits(candidate.expected_amount, config.tokenDecimals);
       const diff = transfer.baseUnits - expectedBase;
       return { candidate, expectedBase, diff, abs: diff < 0n ? -diff : diff };
     });
 
     // Prefer an exact/in-tolerance match, else the closest open order.
-    const exact = scored.find((entry) => entry.abs <= args.toleranceBase);
+    const exact = scored.find((entry: (typeof scored)[number]) => entry.abs <= args.toleranceBase);
     const chosen =
-      exact ?? scored.sort((a, b) => (a.abs < b.abs ? -1 : a.abs > b.abs ? 1 : 0))[0] ?? null;
+      exact ??
+      scored.sort((a: (typeof scored)[number], b: (typeof scored)[number]) =>
+        a.abs < b.abs ? -1 : a.abs > b.abs ? 1 : 0,
+      )[0] ??
+      null;
 
     if (chosen) {
       matchedOrder = chosen.candidate as unknown as MatchedOrder;
@@ -603,6 +651,12 @@ async function ingestTransfer(args: {
       txid: transfer.txid,
       chainRejection,
     });
+    await enqueueWebhookEvent("deposit.failed", {
+      id: matchedOrder.id,
+      txid: transfer.txid,
+      reason: chainRejection,
+      user_id: matchedOrder.user_id,
+    });
     result.depositsUpdated += 1;
     return;
   }
@@ -622,11 +676,54 @@ async function ingestTransfer(args: {
     })
     .eq("id", matchedOrder.id);
 
+  if (matchedOrder.purpose === "direct_sell" && matchedOrder.direct_sell_order_id) {
+    const directSellStatus =
+      orderStatus === "underpaid"
+        ? "partial_payment"
+        : orderStatus === "overpaid"
+          ? "overpayment"
+          : holdReason
+            ? "manual_review"
+            : "usdt_detected";
+    await supabaseAdmin
+      .from("direct_sell_orders" as never)
+      .update({
+        status: directSellStatus,
+        received_usdt: transfer.amount,
+        remaining_usdt: Math.max(0, Number(matchedOrder.expected_amount) - transfer.amount),
+        sender_address: transfer.from,
+        txid: transfer.txid,
+        block_number: info.blockNumber,
+        confirmations,
+        failure_reason: holdReason,
+      } as never)
+      .eq("id", matchedOrder.direct_sell_order_id as never);
+    await enqueueWebhookEvent(
+      directSellStatus === "manual_review"
+        ? "direct_sell.manual_review"
+        : "direct_sell.usdt_detected",
+      {
+        id: matchedOrder.direct_sell_order_id,
+        deposit_request_id: matchedOrder.id,
+        txid: transfer.txid,
+        amount: transfer.amount,
+        status: directSellStatus,
+      },
+    );
+  }
+
   result.depositsUpdated += 1;
   await audit("deposit.detected", matchedOrder.id, {
     txid: transfer.txid,
     amount: transfer.amount,
     status: orderStatus,
+  });
+  await enqueueWebhookEvent("deposit.detected", {
+    id: matchedOrder.id,
+    txid: transfer.txid,
+    amount: transfer.amount,
+    status: orderStatus,
+    user_id: matchedOrder.user_id,
   });
 
   await notify({
@@ -672,6 +769,7 @@ async function settleConfirmedTransactions(args: {
 }): Promise<void> {
   const { network, requiredConfirmations, latestBlock, result, errors } = args;
   if (!latestBlock) return;
+  const chainHeadBlock = latestBlock;
 
   const { data: open } = await supabaseAdmin
     .from("transactions")
@@ -680,7 +778,9 @@ async function settleConfirmedTransactions(args: {
     .eq("verified", true)
     .eq("processed", false);
 
-  for (const tx of open ?? []) {
+  const queue = [...(open ?? [])];
+
+  async function settleOne(tx: (typeof queue)[number]) {
     let blockNumber = tx.block_number;
     let chainStatus: string | null = null;
     if (!blockNumber) {
@@ -698,16 +798,16 @@ async function settleConfirmedTransactions(args: {
               chain_status: info.status,
             })
             .eq("id", tx.id);
-          continue;
+          return;
         }
       } catch {
         errors.push(`Could not refresh receipt for ${tx.txid}`);
-        continue;
+        return;
       }
     }
-    if (!blockNumber) continue;
+    if (!blockNumber) return;
 
-    const confirmations = Math.max(0, latestBlock - blockNumber + 1);
+    const confirmations = Math.max(0, chainHeadBlock - blockNumber + 1);
     await supabaseAdmin
       .from("transactions")
       .update({
@@ -718,34 +818,94 @@ async function settleConfirmedTransactions(args: {
       .eq("id", tx.id);
 
     if (tx.deposit_request_id) {
-      const { data: order } = await supabaseAdmin
-        .from("deposit_requests")
-        .select("id, status, order_ref, user_id")
+      const depositRequests = supabaseAdmin.from(
+        "deposit_requests",
+      ) as unknown as LooseDepositRequestQuery;
+      const { data: order } = await depositRequests
+        .select("id, status, order_ref, user_id, purpose, direct_sell_order_id")
         .eq("id", tx.deposit_request_id)
         .maybeSingle();
-      if (!order) continue;
+      if (!order) return;
+      const depositOrder = order as {
+        id: string;
+        status: string;
+        order_ref: string;
+        user_id: string;
+        purpose?: string | null;
+        direct_sell_order_id?: string | null;
+      };
 
       const nextStatus =
         confirmations >= requiredConfirmations
           ? "confirmed"
-          : order.status === "late_payment"
+          : depositOrder.status === "late_payment"
             ? "late_payment"
             : "confirming";
 
       await supabaseAdmin
         .from("deposit_requests")
         .update({ confirmations, block_number: blockNumber, status: nextStatus as never })
-        .eq("id", order.id);
+        .eq("id", depositOrder.id);
+      await enqueueWebhookEvent(
+        confirmations >= requiredConfirmations ? "deposit.confirmed" : "deposit.confirming",
+        {
+          id: depositOrder.id,
+          txid: tx.txid,
+          confirmations,
+          required_confirmations: requiredConfirmations,
+          status: nextStatus,
+          user_id: depositOrder.user_id,
+        },
+        confirmations >= requiredConfirmations
+          ? `deposit.confirmed:${depositOrder.id}`
+          : `deposit.confirming:${depositOrder.id}:${confirmations}`,
+      );
 
-      if (confirmations < requiredConfirmations) continue;
+      if (depositOrder.purpose === "direct_sell" && depositOrder.direct_sell_order_id) {
+        const directSellStatus =
+          confirmations >= requiredConfirmations ? "inr_payment_pending" : "usdt_confirming";
+        await supabaseAdmin
+          .from("direct_sell_orders" as never)
+          .update({
+            status: directSellStatus,
+            confirmations,
+            block_number: blockNumber,
+            ...(confirmations >= requiredConfirmations
+              ? { usdt_confirmed_at: new Date().toISOString() }
+              : {}),
+          } as never)
+          .eq("id", depositOrder.direct_sell_order_id as never);
+
+        if (confirmations >= requiredConfirmations) {
+          await supabaseAdmin.from("transactions").update({ processed: true }).eq("id", tx.id);
+          await audit("direct_sell.usdt_confirmed", depositOrder.id, { txid: tx.txid });
+          await enqueueWebhookEvent("direct_sell.usdt_confirmed", {
+            id: depositOrder.direct_sell_order_id,
+            deposit_request_id: depositOrder.id,
+            txid: tx.txid,
+            confirmations,
+          });
+          await notify({
+            userId: depositOrder.user_id,
+            audience: "trader",
+            title: "USDT confirmed",
+            body: `${depositOrder.order_ref} is ready for INR payment processing.`,
+            severity: "success",
+            depositRequestId: depositOrder.id,
+          });
+        }
+        return;
+      }
+
+      if (confirmations < requiredConfirmations) return;
 
       // Atomic, idempotent credit inside the database.
       const { data: credit, error } = await supabaseAdmin.rpc("credit_deposit", {
-        _deposit_id: order.id,
+        _deposit_id: depositOrder.id,
       });
       if (error) {
-        errors.push(`Credit failed for ${order.order_ref}: ${error.message}`);
-        continue;
+        errors.push(`Credit failed for ${depositOrder.order_ref}: ${error.message}`);
+        return;
       }
       const row = Array.isArray(credit) ? credit[0] : null;
       await supabaseAdmin.from("transactions").update({ processed: true }).eq("id", tx.id);
@@ -755,22 +915,28 @@ async function settleConfirmedTransactions(args: {
         await supabaseAdmin
           .from("deposit_requests")
           .update({ status: "credited" as never })
-          .eq("id", order.id);
-        await audit("deposit.credited", order.id, { txid: tx.txid, amount: row.amount });
+          .eq("id", depositOrder.id);
+        await audit("deposit.credited", depositOrder.id, { txid: tx.txid, amount: row.amount });
+        await enqueueWebhookEvent("deposit.credited", {
+          id: depositOrder.id,
+          txid: tx.txid,
+          amount: row.amount,
+          user_id: depositOrder.user_id,
+        });
         await notify({
-          userId: order.user_id,
+          userId: depositOrder.user_id,
           audience: "trader",
           title: "Deposit credited",
-          body: `${row.amount} USDT credited from ${order.order_ref}.`,
+          body: `${row.amount} USDT credited from ${depositOrder.order_ref}.`,
           severity: "success",
-          depositRequestId: order.id,
+          depositRequestId: depositOrder.id,
         });
       }
-      continue;
+      return;
     }
 
     // No order: a direct transfer into a personal wallet.
-    if (confirmations < requiredConfirmations) continue;
+    if (confirmations < requiredConfirmations) return;
 
     const { data: wallet } = await supabaseAdmin
       .from("user_wallets")
@@ -787,7 +953,7 @@ async function settleConfirmedTransactions(args: {
           verification_error: "No monitored wallet owns the receiving address",
         })
         .eq("id", tx.id);
-      continue;
+      return;
     }
 
     const { data: credit, error } = await supabaseAdmin.rpc("credit_wallet_onchain_deposit", {
@@ -801,10 +967,21 @@ async function settleConfirmedTransactions(args: {
 
     if (error) {
       errors.push(`Wallet credit failed for ${tx.txid}: ${error.message}`);
-      continue;
+      return;
     }
     await supabaseAdmin.from("transactions").update({ processed: true }).eq("id", tx.id);
     const row = Array.isArray(credit) ? credit[0] : null;
     if (row?.credited) result.walletsCredited += 1;
   }
+
+  const CONCURRENCY = 4;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      for (;;) {
+        const tx = queue.shift();
+        if (!tx) return;
+        await settleOne(tx);
+      }
+    }),
+  );
 }

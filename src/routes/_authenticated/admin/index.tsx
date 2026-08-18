@@ -1,249 +1,230 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Activity, Blocks, Coins, RefreshCw, Users } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Activity, AlertTriangle, Blocks, Coins, RefreshCw, Users } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
-import { useListenerHeartbeat } from "@/hooks/use-listener-heartbeat";
-import { formatUsdt, NETWORKS, type ChainNetwork } from "@/lib/chain";
+import { getAdminDashboard } from "@/lib/admin.functions";
+import { triggerListenerTick } from "@/lib/deposits.functions";
+import { formatUsdt } from "@/lib/chain";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SectionHeader, StatCard } from "@/components/stat-card";
 import { LiveDot } from "@/components/status-badge";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   head: () => ({
     meta: [
-      { title: "Listener control — TRONDESK admin" },
+      { title: "Operations dashboard - TRONDESK admin" },
       {
         name: "description",
         content:
-          "Monitor the TRON blockchain listener, switch networks and review deposit settlement metrics.",
+          "Real platform metrics, P2P activity, direct sell state and blockchain worker health.",
       },
-      { property: "og:title", content: "Listener control — TRONDESK admin" },
-      {
-        property: "og:description",
-        content: "Blockchain listener health, network selection and settlement metrics.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: AdminOverview,
 });
 
-interface LogRow {
-  id: string;
-  level: string;
-  scope: string;
-  message: string;
-  latest_block: number | null;
-  events_seen: number;
-  deposits_updated: number;
-  duration_ms: number | null;
-  created_at: string;
-}
+type DashboardData = Awaited<ReturnType<typeof getAdminDashboard>>;
 
 function AdminOverview() {
-  const { isAdmin, loading } = useAuth();
-  const heartbeat = useListenerHeartbeat(isAdmin, 15_000);
-  const [logs, setLogs] = useState<LogRow[]>([]);
-  const [network, setNetwork] = useState<ChainNetwork | null>(null);
-  const [confirmations, setConfirmations] = useState<number | null>(null);
-  const [stats, setStats] = useState({ deposits: 0, confirmed: 0, credited: 0, traders: 0 });
+  const loadDashboard = useServerFn(getAdminDashboard);
+  const runTick = useServerFn(triggerListenerTick);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      setData(await loadDashboard());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load dashboard metrics");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    if (!isAdmin) return;
-    let active = true;
-
-    async function load() {
-      const [logRes, settingsRes, depositRes, profileRes] = await Promise.all([
-        supabase
-          .from("listener_logs")
-          .select(
-            "id, level, scope, message, latest_block, events_seen, deposits_updated, duration_ms, created_at",
-          )
-          .order("created_at", { ascending: false })
-          .limit(40),
-        supabase.from("system_settings").select("key, value"),
-        supabase.from("deposit_requests").select("status, received_amount"),
-        supabase.from("profiles").select("id", { count: "exact", head: true }),
-      ]);
-
-      if (!active) return;
-      setLogs((logRes.data ?? []) as LogRow[]);
-
-      const settings = Object.fromEntries((settingsRes.data ?? []).map((row) => [row.key, row.value]));
-      setNetwork((settings["active_network"] as ChainNetwork) ?? null);
-      setConfirmations(Number(settings["required_confirmations"] ?? 16));
-
-      const deposits = depositRes.data ?? [];
-      setStats({
-        deposits: deposits.length,
-        confirmed: deposits.filter((row) => row.status === "confirmed").length,
-        credited: deposits
-          .filter((row) => row.status === "confirmed")
-          .reduce((sum, row) => sum + Number(row.received_amount ?? 0), 0),
-        traders: profileRes.count ?? 0,
-      });
-    }
-
     void load();
-    const channel = supabase
-      .channel(`admin-listener-logs-${crypto.randomUUID()}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "listener_logs" },
-        () => void load(),
-      )
-      .subscribe();
+    const timer = setInterval(() => void load(), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
-    return () => {
-      active = false;
-      void supabase.removeChannel(channel);
-    };
-  }, [isAdmin]);
-
-  async function changeNetwork(next: ChainNetwork) {
-    const { error } = await supabase
-      .from("system_settings")
-      .update({ value: next as never })
-      .eq("key", "active_network");
-    if (error) {
-      toast.error("Could not switch network");
-      return;
+  async function triggerManualTick() {
+    setRunning(true);
+    try {
+      const result = await runTick({ data: { mode: "manual" } });
+      toast.success(result.ok ? "Listener pass completed" : "Listener pass completed with errors");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not trigger listener");
+    } finally {
+      setRunning(false);
     }
-    setNetwork(next);
-    toast.success(`Listener switched to ${NETWORKS[next].label}`);
-    void heartbeat.run();
   }
 
-  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (!isAdmin) {
-    return (
-      <div className="panel p-6">
-        <h1 className="text-lg font-semibold">Admin access required</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          This area is restricted to platform administrators.
-        </p>
-      </div>
-    );
-  }
-
-  const levelColor: Record<string, string> = {
-    info: "text-muted-foreground",
-    warn: "text-warning",
-    error: "text-destructive",
-    success: "text-success",
-  };
+  const health = data?.blockchainHealth;
+  const healthy = health?.status === "healthy";
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <SectionHeader
+        title="Operations dashboard"
+        description="All values are computed from backend database state. Empty systems show zeros."
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void triggerManualTick()}
+            disabled={running}
+          >
+            <RefreshCw
+              className={running ? "mr-1.5 h-3.5 w-3.5 animate-spin" : "mr-1.5 h-3.5 w-3.5"}
+            />
+            Trigger listener
+          </Button>
+        }
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Listener status"
+          label="Total Users"
+          value={data?.totalUsers ?? 0}
+          icon={<Users className="h-4 w-4" />}
+          loading={loading}
+        />
+        <StatCard
+          label="Active Users 24H"
+          value={data?.activeUsers24h ?? 0}
+          icon={<Activity className="h-4 w-4" />}
+          loading={loading}
+        />
+        <StatCard
+          label="24H P2P Volume"
+          value={`${formatUsdt(data?.p2pVolume24h)} USDT`}
+          icon={<Coins className="h-4 w-4" />}
+          loading={loading}
+        />
+        <StatCard
+          label="Blockchain Health"
           value={
             <span className="flex items-center gap-2 text-base">
-              <LiveDot online={heartbeat.online} />
-              {heartbeat.online === false ? "Degraded" : heartbeat.online ? "Live" : "Idle"}
+              <LiveDot online={healthy} />
+              {healthy ? "HEALTHY" : health?.status === "degraded" ? "DEGRADED" : "OFFLINE"}
             </span>
           }
-          icon={<Activity className="h-4 w-4" />}
-          hint={`Required confirmations: ${confirmations ?? "—"}`}
-        />
-        <StatCard
-          label="Latest block"
-          value={heartbeat.lastBlock ? heartbeat.lastBlock.toLocaleString() : "—"}
           icon={<Blocks className="h-4 w-4" />}
-          tone="info"
+          tone={healthy ? "success" : "warning"}
+          hint={health?.reason ?? "No worker heartbeat recorded"}
+          loading={loading}
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Active P2P Orders" value={data?.activeP2pOrders ?? 0} loading={loading} />
+        <StatCard label="Completed Orders" value={data?.completedOrders ?? 0} loading={loading} />
+        <StatCard
+          label="Open Disputes"
+          value={data?.openDisputes ?? 0}
+          loading={loading}
+          tone="warning"
         />
         <StatCard
-          label="Deposits settled"
-          value={`${stats.confirmed}/${stats.deposits}`}
-          icon={<Coins className="h-4 w-4" />}
-          tone="success"
-          hint={`${formatUsdt(stats.credited)} USDT credited`}
+          label="Pending Direct Sell"
+          value={data?.pendingDirectSellOrders ?? 0}
+          loading={loading}
         />
-        <StatCard label="Traders" value={stats.traders} icon={<Users className="h-4 w-4" />} />
-      </div>
-
-      <div className="panel p-5">
-        <SectionHeader
-          title="Network"
-          description="Switching the network changes which chain the listener polls and which wallets are assigned."
-          actions={
-            <div className="flex items-center gap-2">
-              <Select
-                {...(network ? { value: network } : {})}
-                onValueChange={(value) => void changeNetwork(value as ChainNetwork)}
-              >
-                <SelectTrigger className="w-56">
-                  <SelectValue placeholder="Select network" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.values(NETWORKS).map((config) => (
-                    <SelectItem key={config.id} value={config.id}>
-                      {config.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => void heartbeat.run()}
-                disabled={heartbeat.running}
-              >
-                <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", heartbeat.running && "animate-spin")} />
-                Run pass
-              </Button>
-            </div>
-          }
+        <StatCard label="Pending Deposits" value={data?.pendingDeposits ?? 0} loading={loading} />
+        <StatCard label="Credited Deposits" value={data?.creditedDeposits ?? 0} loading={loading} />
+        <StatCard
+          label="Total USDT Deposited"
+          value={`${formatUsdt(data?.totalUsdtDeposited)} USDT`}
+          loading={loading}
+        />
+        <StatCard
+          label="Total USDT Withdrawn"
+          value={`${formatUsdt(data?.totalUsdtWithdrawn)} USDT`}
+          loading={loading}
         />
       </div>
 
-      <div className="panel overflow-hidden">
-        <div className="border-b px-5 py-3">
-          <SectionHeader title="Listener log" description="Newest passes first." />
-        </div>
-        <div className="max-h-96 overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-secondary/70 text-xs tracking-wide text-muted-foreground uppercase backdrop-blur">
-              <tr>
-                <th className="px-4 py-2.5 text-left font-medium">Time</th>
-                <th className="px-4 py-2.5 text-left font-medium">Scope</th>
-                <th className="px-4 py-2.5 text-left font-medium">Message</th>
-                <th className="px-4 py-2.5 text-left font-medium">Block</th>
-                <th className="px-4 py-2.5 text-left font-medium">Events</th>
-                <th className="px-4 py-2.5 text-left font-medium">Updated</th>
-                <th className="px-4 py-2.5 text-left font-medium">ms</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {logs.length === 0 ? (
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="panel overflow-hidden">
+          <div className="border-b px-5 py-3">
+            <SectionHeader
+              title="Recent P2P Orders"
+              description="Newest order records from the database."
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-secondary/50 text-xs tracking-wide text-muted-foreground uppercase">
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    No listener activity recorded yet.
-                  </td>
+                  <th className="px-4 py-2.5 text-left font-medium">Order</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  <th className="px-4 py-2.5 text-left font-medium">USDT</th>
+                  <th className="px-4 py-2.5 text-left font-medium">INR</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Created</th>
                 </tr>
-              ) : (
-                logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-secondary/30">
-                    <td className="mono px-4 py-2 text-xs text-muted-foreground">
-                      {new Date(log.created_at).toLocaleTimeString()}
+              </thead>
+              <tbody className="divide-y">
+                {(data?.recentP2pOrders ?? []).length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                      No P2P orders yet.
                     </td>
-                    <td className="mono px-4 py-2 text-xs">{log.scope}</td>
-                    <td className={cn("px-4 py-2", levelColor[log.level])}>{log.message}</td>
-                    <td className="mono px-4 py-2 text-xs">{log.latest_block ?? "—"}</td>
-                    <td className="mono px-4 py-2 text-xs">{log.events_seen}</td>
-                    <td className="mono px-4 py-2 text-xs">{log.deposits_updated}</td>
-                    <td className="mono px-4 py-2 text-xs">{log.duration_ms ?? "—"}</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  data?.recentP2pOrders.map((row) => (
+                    <tr key={row.id}>
+                      <td className="mono px-4 py-2.5">{row.order_ref}</td>
+                      <td className="px-4 py-2.5">{row.status}</td>
+                      <td className="mono px-4 py-2.5">{formatUsdt(row.usdt_amount)}</td>
+                      <td className="mono px-4 py-2.5">
+                        {Number(row.total_inr ?? 0).toLocaleString("en-IN")}
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground">
+                        {new Date(row.created_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="panel p-5">
+          <SectionHeader
+            title="Blockchain Worker"
+            description="Authoritative persisted worker/listener health."
+          />
+          <div className="mt-4 space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Latest block</span>
+              <span className="mono">{health?.latestBlock?.toLocaleString() ?? "-"}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Worker heartbeat</span>
+              <span className="mono text-xs">
+                {health?.workerUpdatedAt ? new Date(health.workerUpdatedAt).toLocaleString() : "-"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Listener heartbeat</span>
+              <span className="mono text-xs">
+                {health?.listenerUpdatedAt
+                  ? new Date(health.listenerUpdatedAt).toLocaleString()
+                  : "-"}
+              </span>
+            </div>
+            {!healthy ? (
+              <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-warning">
+                <AlertTriangle className="mr-1 inline h-4 w-4" />
+                {health?.reason ?? "Worker is not reporting healthy state."}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

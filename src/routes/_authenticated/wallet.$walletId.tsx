@@ -8,13 +8,13 @@ import {
   ArrowUpRight,
   Copy,
   ExternalLink,
+  KeyRound,
   Loader2,
-  Trash2,
 } from "lucide-react";
-import { toast } from "sonner";
 import QRCode from "qrcode";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { archiveWallet, quoteTransfer, renameWallet, sendTransfer } from "@/lib/wallets.functions";
+import { quoteTransfer, revealRecoveryPhrase, sendTransfer } from "@/lib/wallets.functions";
 import { formatUsdt, isTronAddress, networkConfig, shortenHash } from "@/lib/chain";
 import type { ChainNetwork } from "@/lib/chain";
 import { Button } from "@/components/ui/button";
@@ -29,23 +29,7 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute("/_authenticated/wallet/$walletId")({
   validateSearch: (search) => searchSchema.parse(search),
-  head: () => ({
-    meta: [
-      { title: "Wallet detail — TRONDESK" },
-      {
-        name: "description",
-        content:
-          "Receive USDT with a QR code, send USDT to any TRC20 address and review the full movement history of this wallet.",
-      },
-      { property: "og:title", content: "Wallet detail — TRONDESK" },
-      {
-        property: "og:description",
-        content: "Receive, send and audit USDT movements for a single personal wallet.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Wallet detail - WTRON" }] }),
   component: WalletDetailPage,
 });
 
@@ -56,7 +40,10 @@ interface WalletDetail {
   network: ChainNetwork;
   balance: number;
   is_default: boolean;
-  created_at: string;
+  wallet_type?: "standard" | "gasfree";
+  custody?: string;
+  backup_status?: string;
+  gas_sponsorship_status?: string;
 }
 
 interface LedgerRow {
@@ -73,41 +60,36 @@ interface LedgerRow {
   created_at: string;
 }
 
-const statusTone: Record<string, string> = {
-  completed: "text-success",
-  pending: "text-warning",
-  broadcasting: "text-info",
-  failed: "text-destructive",
-};
-
 function WalletDetailPage() {
   const { walletId } = Route.useParams();
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
-
   const send = useServerFn(sendTransfer);
-  const rename = useServerFn(renameWallet);
-  const archive = useServerFn(archiveWallet);
   const quote = useServerFn(quoteTransfer);
+  const reveal = useServerFn(revealRecoveryPhrase);
 
   const [wallet, setWallet] = useState<WalletDetail | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [qr, setQr] = useState<string | null>(null);
   const [fee, setFee] = useState(1.5);
-
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
+  const [transactionPassword, setTransactionPassword] = useState("");
+  const [revealPassword, setRevealPassword] = useState("");
+  const [recoveryPhrase, setRecoveryPhrase] = useState("");
   const [sending, setSending] = useState(false);
-  const [nameDraft, setNameDraft] = useState("");
 
   const load = useCallback(async () => {
+    setLoading(true);
     const [{ data: walletRow, error }, { data: txRows }] = await Promise.all([
       supabase
-        .from("user_wallets")
-        .select("id, name, address, network, balance, is_default, created_at")
-        .eq("id", walletId)
+        .from("user_wallets" as never)
+        .select(
+          "id, name, address, network, balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
+        )
+        .eq("id", walletId as never)
         .maybeSingle(),
       supabase
         .from("wallet_transactions")
@@ -119,11 +101,13 @@ function WalletDetailPage() {
         .limit(100),
     ]);
 
-    if (error) toast.error(error.message);
+    if (error) toast.error("Unable to load wallet.");
     if (walletRow) {
-      const detail = { ...walletRow, balance: Number(walletRow.balance) } as WalletDetail;
+      const detail = {
+        ...(walletRow as unknown as WalletDetail),
+        balance: Number((walletRow as unknown as WalletDetail).balance ?? 0),
+      };
       setWallet(detail);
-      setNameDraft(detail.name);
       QRCode.toDataURL(detail.address, { width: 320, margin: 1 })
         .then(setQr)
         .catch(() => setQr(null));
@@ -165,6 +149,7 @@ function WalletDetailPage() {
   const canSend =
     isTronAddress(toAddress) &&
     parsedAmount > 0 &&
+    Boolean(transactionPassword) &&
     !!wallet &&
     total <= wallet.balance &&
     !sending;
@@ -179,15 +164,14 @@ function WalletDetailPage() {
           walletId: wallet.id,
           toAddress: toAddress.trim(),
           amount: parsedAmount,
+          transactionPassword,
           ...(memo.trim() ? { memo: memo.trim() } : {}),
         },
       });
       if (result.broadcastError) {
         toast.error("On-chain broadcast failed", { description: result.broadcastError });
       } else if (result.internal) {
-        toast.success("Transfer completed instantly", {
-          description: `${formatUsdt(parsedAmount)} USDT sent · ${formatUsdt(result.fee)} USDT fee`,
-        });
+        toast.success("Transfer completed");
       } else {
         toast.success("Transfer queued", {
           description: result.txid
@@ -198,11 +182,26 @@ function WalletDetailPage() {
       setToAddress("");
       setAmount("");
       setMemo("");
+      setTransactionPassword("");
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Transfer failed");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function revealPhrase(event: React.FormEvent) {
+    event.preventDefault();
+    setRecoveryPhrase("");
+    try {
+      const result = await reveal({ data: { walletId, transactionPassword: revealPassword } });
+      setRecoveryPhrase(result.recoveryPhrase);
+      setRevealPassword("");
+      toast.success("Recovery phrase unlocked");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not reveal recovery phrase");
     }
   }
 
@@ -217,7 +216,7 @@ function WalletDetailPage() {
   if (!wallet) {
     return (
       <div className="panel grid place-items-center gap-3 p-12 text-center">
-        <p className="text-sm text-muted-foreground">This wallet could not be found.</p>
+        <p className="text-sm text-muted-foreground">Unable to load wallet.</p>
         <Button asChild variant="secondary">
           <Link to="/wallet">Back to my wallets</Link>
         </Button>
@@ -227,7 +226,7 @@ function WalletDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link
             to="/wallet"
@@ -241,13 +240,13 @@ function WalletDetailPage() {
         </div>
         <div className="panel px-4 py-2">
           <p className="text-[10px] tracking-wide text-muted-foreground uppercase">
-            {config.shortLabel} balance
+            {wallet.wallet_type === "gasfree" ? "GasFree" : "Standard"} {config.shortLabel}
           </p>
           <p className="mono text-2xl font-semibold text-primary">
             {formatUsdt(wallet.balance)} USDT
           </p>
         </div>
-      </div>
+      </header>
 
       <Tabs
         value={tab ?? "receive"}
@@ -271,7 +270,7 @@ function WalletDetailPage() {
             {qr ? (
               <img
                 src={qr}
-                alt={`QR code for the ${wallet.name} deposit address`}
+                alt={`QR code for ${wallet.name}`}
                 className="h-44 w-44 rounded-lg bg-white p-2"
               />
             ) : (
@@ -281,7 +280,7 @@ function WalletDetailPage() {
             )}
             <div className="space-y-3">
               <div>
-                <p className="text-sm font-medium">Your {config.shortLabel} address</p>
+                <p className="text-sm font-medium">PERSONAL WALLET RECEIVE</p>
                 <p className="mono mt-1 text-sm break-all">{wallet.address}</p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -303,41 +302,41 @@ function WalletDetailPage() {
                     rel="noreferrer noopener"
                   >
                     <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                    View on explorer
+                    Explorer
                   </a>
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Send only {config.tokenSymbol} on {config.label}. Incoming transfers are detected
-                automatically by the blockchain listener and credited after{" "}
-                {config.isTestnet ? "the required" : "16"} confirmations.
+                This is not your PLATFORM DEPOSIT address. Platform deposits use assigned company
+                wallets, deposit requests, and the existing blockchain listener.
               </p>
+              {wallet.wallet_type === "gasfree" ? (
+                <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+                  Gas sponsorship is {wallet.gas_sponsorship_status ?? "unavailable"}. If
+                  unavailable, sends require normal TRON resources or enabled broadcast support.
+                </p>
+              ) : null}
             </div>
           </div>
         </TabsContent>
 
         <TabsContent value="send" className="mt-4">
           <form className="panel max-w-xl space-y-4 p-6" onSubmit={submitSend}>
-            <div className="space-y-1.5">
-              <Label htmlFor="to-address">Recipient TRC20 address</Label>
+            <Field label="Recipient TRC20 address">
               <Input
-                id="to-address"
                 value={toAddress}
                 onChange={(event) => setToAddress(event.target.value)}
-                placeholder="T…"
+                placeholder="T..."
                 className="mono"
                 maxLength={40}
                 required
               />
-              {toAddress && !isTronAddress(toAddress) ? (
-                <p className="text-xs text-destructive">That is not a valid TRON address.</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="amount">Amount (USDT)</Label>
+            </Field>
+            {toAddress && !isTronAddress(toAddress) ? (
+              <p className="text-xs text-destructive">That is not a valid TRON address.</p>
+            ) : null}
+            <Field label="Amount (USDT)">
               <Input
-                id="amount"
                 type="number"
                 min="0.000001"
                 step="0.000001"
@@ -347,56 +346,78 @@ function WalletDetailPage() {
                 className="mono"
                 required
               />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="memo">Memo (optional)</Label>
+            </Field>
+            <Field label="Memo (optional)">
               <Textarea
-                id="memo"
                 value={memo}
                 onChange={(event) => setMemo(event.target.value)}
-                placeholder="Internal reference"
                 maxLength={140}
                 rows={2}
               />
-            </div>
-
+            </Field>
             <dl className="space-y-1 rounded-lg border border-border/70 p-3 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Amount</dt>
-                <dd className="mono">{formatUsdt(parsedAmount > 0 ? parsedAmount : 0)} USDT</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Network fee</dt>
-                <dd className="mono">{formatUsdt(fee)} USDT</dd>
-              </div>
-              <div className="flex justify-between border-t border-border/70 pt-1 font-medium">
-                <dt>Total debited</dt>
-                <dd className="mono text-primary">{formatUsdt(total)} USDT</dd>
-              </div>
+              <Row
+                label="Amount"
+                value={`${formatUsdt(parsedAmount > 0 ? parsedAmount : 0)} USDT`}
+              />
+              <Row label="Platform fee" value={`${formatUsdt(fee)} USDT`} />
+              <Row label="Total debit" value={`${formatUsdt(total)} USDT`} strong />
             </dl>
-
+            <Field label="Transaction password">
+              <Input
+                type="password"
+                value={transactionPassword}
+                onChange={(event) => setTransactionPassword(event.target.value)}
+                placeholder="Required"
+                required
+              />
+            </Field>
             {parsedAmount > 0 && total > wallet.balance ? (
               <p className="text-xs text-destructive">
-                Insufficient balance — you need {formatUsdt(total)} USDT including the fee.
+                Insufficient balance. You need {formatUsdt(total)} USDT including fee.
               </p>
             ) : null}
-
             <Button type="submit" className="w-full" disabled={!canSend}>
               {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
               Send USDT
             </Button>
             <p className="text-xs text-muted-foreground">
-              Transfers to another TRONDESK wallet settle instantly. External addresses are signed
-              and broadcast to {config.label} when the administrator enables on-chain payouts.
+              External on-chain broadcasts remain disabled until the administrator enables safe
+              signing/broadcast infrastructure. No fake TXID is created.
             </p>
           </form>
         </TabsContent>
 
-        <TabsContent value="activity" className="mt-4">
+        <TabsContent value="activity" className="mt-4 space-y-4">
+          <form className="panel max-w-xl space-y-3 p-5" onSubmit={revealPhrase}>
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-warning" />
+              <div>
+                <p className="text-sm font-medium">Backup recovery phrase</p>
+                <p className="text-xs text-muted-foreground">
+                  Requires transaction password. Never share the phrase, private key, seed or OTP.
+                </p>
+              </div>
+            </div>
+            <Input
+              type="password"
+              value={revealPassword}
+              onChange={(event) => setRevealPassword(event.target.value)}
+              placeholder="Transaction password"
+            />
+            <Button variant="secondary" disabled={!revealPassword}>
+              Reveal phrase
+            </Button>
+            {recoveryPhrase ? (
+              <div className="rounded-md border border-warning/40 bg-warning/10 p-3">
+                <p className="select-all font-mono text-sm">{recoveryPhrase}</p>
+              </div>
+            ) : null}
+          </form>
+
           {ledger.length === 0 ? (
             <div className="panel grid place-items-center p-12 text-center text-sm text-muted-foreground">
-              No movements on this wallet yet.
+              No wallet activity yet.
             </div>
           ) : (
             <div className="panel divide-y divide-border/70">
@@ -417,13 +438,13 @@ function WalletDetailPage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium capitalize">
-                      {row.kind === "fee" ? "Fee collected" : `${row.kind} ${row.direction === "in" ? "received" : "sent"}`}
+                      {row.kind.replaceAll("_", " ")}
                     </p>
                     <p className="mono truncate text-xs text-muted-foreground">
                       {row.counterparty_address
                         ? shortenHash(row.counterparty_address, 8)
-                        : "—"}
-                      {row.memo ? ` · ${row.memo}` : ""}
+                        : "No counterparty"}
+                      {row.memo ? ` - ${row.memo}` : ""}
                     </p>
                     {row.failure_reason ? (
                       <p className="text-xs text-warning">{row.failure_reason}</p>
@@ -437,12 +458,12 @@ function WalletDetailPage() {
                           : "mono text-sm font-semibold"
                       }
                     >
-                      {row.direction === "in" ? "+" : "−"}
+                      {row.direction === "in" ? "+" : "-"}
                       {formatUsdt(row.amount)} USDT
                     </p>
-                    <p className={`text-[10px] capitalize ${statusTone[row.status] ?? ""}`}>
+                    <p className="text-[10px] capitalize text-muted-foreground">
                       {row.status}
-                      {row.fee > 0 ? ` · fee ${formatUsdt(row.fee)}` : ""}
+                      {row.fee > 0 ? ` - fee ${formatUsdt(row.fee)}` : ""}
                     </p>
                     {row.txid ? (
                       <a
@@ -461,49 +482,26 @@ function WalletDetailPage() {
           )}
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
 
-      <div className="panel flex flex-wrap items-end gap-3 p-4">
-        <div className="min-w-48 flex-1 space-y-1.5">
-          <Label htmlFor="rename">Wallet name</Label>
-          <Input
-            id="rename"
-            value={nameDraft}
-            onChange={(event) => setNameDraft(event.target.value)}
-            maxLength={48}
-          />
-        </div>
-        <Button
-          variant="secondary"
-          disabled={!nameDraft.trim() || nameDraft === wallet.name}
-          onClick={async () => {
-            try {
-              await rename({ data: { walletId: wallet.id, name: nameDraft.trim() } });
-              toast.success("Wallet renamed");
-              await load();
-            } catch (error) {
-              toast.error(error instanceof Error ? error.message : "Rename failed");
-            }
-          }}
-        >
-          Save name
-        </Button>
-        <Button
-          variant="ghost"
-          className="text-destructive hover:text-destructive"
-          onClick={async () => {
-            try {
-              await archive({ data: { walletId: wallet.id } });
-              toast.success("Wallet archived");
-              navigate({ to: "/wallet" });
-            } catch (error) {
-              toast.error(error instanceof Error ? error.message : "Could not archive the wallet");
-            }
-          }}
-        >
-          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-          Archive
-        </Button>
-      </div>
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div
+      className={`flex justify-between ${strong ? "border-t border-border/70 pt-1 font-medium" : ""}`}
+    >
+      <dt className={strong ? "" : "text-muted-foreground"}>{label}</dt>
+      <dd className={strong ? "mono text-primary" : "mono"}>{value}</dd>
     </div>
   );
 }

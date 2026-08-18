@@ -17,15 +17,19 @@ export class ChainError extends Error {
   }
 }
 
-
 async function chainFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const apiKey = process.env["TRONGRID_API_KEY"];
+  const headers = new Headers(init?.headers);
+  headers.set("content-type", "application/json");
+  if (apiKey) headers.set("TRON-PRO-API-KEY", apiKey);
+
   try {
     const response = await fetch(url, {
       ...init,
       signal: controller.signal,
-      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+      headers,
     });
     if (!response.ok) {
       throw new ChainError(`Blockchain node responded with ${response.status}`);
@@ -143,10 +147,7 @@ export async function getIncomingUsdtTransfers(
 }
 
 /** True when the address exists as an activated account on this chain. */
-export async function isAddressActivated(
-  network: ChainNetwork,
-  address: string,
-): Promise<boolean> {
+export async function isAddressActivated(network: ChainNetwork, address: string): Promise<boolean> {
   const { apiBase } = networkConfig(network);
   try {
     const data = await chainFetch<{ data?: unknown[] }>(`${apiBase}/v1/accounts/${address}`);
@@ -155,7 +156,6 @@ export async function isAddressActivated(
     return false;
   }
 }
-
 
 export interface OnChainTransactionInfo {
   blockNumber: number | null;

@@ -10,7 +10,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const createDepositSchema = z.object({
   amount: z
-    .number({ invalid_type_error: "Enter a valid amount" })
+    .number("Enter a valid amount")
     .positive("Amount must be greater than zero")
     .max(1_000_000, "Amount exceeds the per-request limit"),
 });
@@ -119,7 +119,9 @@ export const createDepositRequest = createServerFn({ method: "POST" })
 export const triggerListenerTick = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ mode: z.enum(["fast", "manual", "reconcile"]).default("manual") }).parse(input ?? {}),
+    z
+      .object({ mode: z.enum(["fast", "manual", "reconcile"]).default("manual") })
+      .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
     const { runListenerTick } = await import("@/lib/listener.server");
@@ -133,4 +135,3 @@ export const triggerListenerTick = createServerFn({ method: "POST" })
       errors: result.errors,
     };
   });
-

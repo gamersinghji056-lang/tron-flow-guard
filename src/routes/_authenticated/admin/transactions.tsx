@@ -67,15 +67,17 @@ function AdminTransactions() {
         .order("created_at", { ascending: false })
         .limit(300);
       if (!active) return;
-      setRows(
-        (data ?? []).map((row) => ({ ...row, amount: Number(row.amount) })) as TxRow[],
-      );
+      setRows((data ?? []).map((row) => ({ ...row, amount: Number(row.amount) })) as TxRow[]);
     }
 
     void load();
     const channel = supabase
       .channel(`admin-transactions-${crypto.randomUUID()}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "transactions" }, () => void load())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "transactions" },
+        () => void load(),
+      )
       .subscribe();
 
     return () => {
@@ -233,7 +235,11 @@ function AdminTransactions() {
                           row.verified ? "text-success" : "text-destructive",
                         )}
                       >
-                        {row.verified ? (row.processed ? "Verified · credited" : "Verified") : "Rejected"}
+                        {row.verified
+                          ? row.processed
+                            ? "Verified · credited"
+                            : "Verified"
+                          : "Rejected"}
                       </span>
                       {row.verification_error ? (
                         <p className="max-w-56 text-[11px] text-muted-foreground">

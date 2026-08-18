@@ -1,14 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  Bell,
-  LayoutDashboard,
-  LogOut,
-  Radio,
-  Receipt,
-  ShieldCheck,
-  Wallet2,
-} from "lucide-react";
+import { Bell, LayoutDashboard, LogOut, Radio, Receipt, ShieldCheck, Wallet2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { formatUsdt } from "@/lib/chain";
@@ -62,8 +54,13 @@ function NotificationBell() {
   async function markAllRead() {
     const ids = items.filter((item) => !item.read_at).map((item) => item.id);
     if (!ids.length) return;
-    await supabase.from("notifications").update({ read_at: new Date().toISOString() }).in("id", ids);
-    setItems((prev) => prev.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })));
+    await supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .in("id", ids);
+    setItems((prev) =>
+      prev.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })),
+    );
   }
 
   const severityColor: Record<string, string> = {
@@ -176,7 +173,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </p>
             </div>
             <NotificationBell />
-            <Button variant="ghost" size="icon" aria-label="Sign out" onClick={() => void signOut()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Sign out"
+              onClick={() => void signOut()}
+            >
               <LogOut className="h-5 w-5" />
             </Button>
           </div>

@@ -8,6 +8,8 @@ export interface ProfileRecord {
   email: string | null;
   full_name: string | null;
   balance: number;
+  locked_balance?: number;
+  pending_balance?: number;
 }
 
 export interface AuthState {
@@ -52,7 +54,7 @@ export function useAuth(): AuthState {
       const [{ data: profile }, { data: roles }, { data: perms }] = await Promise.all([
         supabase
           .from("profiles")
-          .select("id, email, full_name, balance")
+          .select("id, email, full_name, balance, locked_balance")
           .eq("id", session.user.id)
           .maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", session.user.id),
@@ -71,7 +73,13 @@ export function useAuth(): AuthState {
         loading: false,
         session,
         user: session.user,
-        profile: profile ? { ...profile, balance: Number(profile.balance) } : null,
+        profile: profile
+          ? {
+              ...profile,
+              balance: Number(profile.balance),
+              locked_balance: Number(profile.locked_balance ?? 0),
+            }
+          : null,
         role,
         permissions: (perms ?? []).map((row) => row.permission),
         isAdmin: role === "admin" || role === "super_admin",
@@ -90,14 +98,18 @@ export function useAuth(): AuthState {
     // Keep the balance live while the listener credits deposits.
     const channel = supabase
       .channel(`auth-profile-balance-${crypto.randomUUID()}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
-        const next = payload.new as ProfileRecord;
-        setState((prev) =>
-          prev.user && next.id === prev.user.id
-            ? { ...prev, profile: { ...next, balance: Number(next.balance) } }
-            : prev,
-        );
-      })
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
+        (payload) => {
+          const next = payload.new as ProfileRecord;
+          setState((prev) =>
+            prev.user && next.id === prev.user.id
+              ? { ...prev, profile: { ...next, balance: Number(next.balance) } }
+              : prev,
+          );
+        },
+      )
       .subscribe();
 
     return () => {

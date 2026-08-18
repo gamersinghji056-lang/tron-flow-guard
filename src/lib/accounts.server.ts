@@ -17,9 +17,11 @@
  * number of administrators may exist.
  */
 import { DEFAULT_ADMIN_PERMISSIONS } from "@/lib/rbac";
+import { assertAdminRegistrationCode } from "@/lib/admin-registration";
 
 export interface RegistrationResult {
   ok: true;
+  userId: string;
   email: string;
   role: "trader" | "admin" | "super_admin";
   emailVerificationRequired: boolean;
@@ -70,10 +72,11 @@ export async function provisionTrader(input: {
   const { readAuthConfig } = await import("@/lib/auth-config.server");
   const { emailVerificationRequired } = await readAuthConfig();
 
-  await createAuthUser({ ...input, emailVerificationRequired });
+  const userId = await createAuthUser({ ...input, emailVerificationRequired });
 
   return {
     ok: true,
+    userId,
     email: input.email,
     role: "trader",
     emailVerificationRequired,
@@ -88,11 +91,7 @@ export async function provisionAdmin(input: {
   code?: string | undefined;
 }): Promise<RegistrationResult> {
   const expected = process.env["ADMIN_REGISTRATION_CODE"];
-  // When an administrator code is configured it is mandatory. If none is set the
-  // desk runs in open demo mode and administrator sign-up is unrestricted.
-  if (expected && input.code !== expected) {
-    throw new Error("Invalid administrator registration code");
-  }
+  assertAdminRegistrationCode(input.code, expected);
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { readAuthConfig } = await import("@/lib/auth-config.server");
@@ -138,6 +137,7 @@ export async function provisionAdmin(input: {
 
   return {
     ok: true,
+    userId,
     email: input.email,
     role,
     emailVerificationRequired,

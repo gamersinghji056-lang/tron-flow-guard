@@ -11,7 +11,13 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 const createWalletInput = z.object({
   name: z.string().trim().min(1, "Wallet name is required").max(48),
   network: z.enum(["trc20-mainnet", "trc20-nile"]),
+  walletType: z.enum(["standard", "gasfree"]).default("standard"),
   makeDefault: z.boolean().optional(),
+  transactionPassword: z.string().min(6).max(128),
+});
+
+const importWalletInput = createWalletInput.extend({
+  mnemonic: z.string().trim().min(24).max(512),
 });
 
 const walletIdInput = z.object({ walletId: z.string().uuid() });
@@ -29,18 +35,71 @@ const transferInput = z.object({
     .regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "Enter a valid TRON (TRC20) address"),
   amount: z.number().positive("Amount must be greater than zero").max(1_000_000),
   memo: z.string().trim().max(140).optional(),
+  transactionPassword: z.string().min(6).max(128),
+});
+
+const transactionPasswordInput = z.object({
+  password: z.string().min(6).max(128),
+  currentPassword: z.string().min(6).max(128).optional(),
+});
+
+const revealInput = walletIdInput.extend({
+  transactionPassword: z.string().min(6).max(128),
 });
 
 export const createWallet = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => createWalletInput.parse(data))
   .handler(async ({ data, context }) => {
-    const { provisionWallet } = await import("@/lib/wallets.server");
-    return provisionWallet({
+    const { provisionPersonalWallet } = await import("@/lib/wallets.server");
+    return provisionPersonalWallet({
       userId: context.userId,
       name: data.name,
       network: data.network,
+      walletType: data.walletType,
       makeDefault: data.makeDefault ?? false,
+      transactionPassword: data.transactionPassword,
+    });
+  });
+
+export const importWallet = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => importWalletInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { importPersonalWallet } = await import("@/lib/wallets.server");
+    return importPersonalWallet({
+      userId: context.userId,
+      name: data.name,
+      network: data.network,
+      walletType: data.walletType,
+      makeDefault: data.makeDefault ?? false,
+      transactionPassword: data.transactionPassword,
+      mnemonic: data.mnemonic,
+    });
+  });
+
+export const setWalletTransactionPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => transactionPasswordInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { setTransactionPassword } = await import("@/lib/wallet-security.server");
+    await setTransactionPassword({
+      userId: context.userId,
+      password: data.password,
+      ...(data.currentPassword ? { currentPassword: data.currentPassword } : {}),
+    });
+    return { ok: true };
+  });
+
+export const revealRecoveryPhrase = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => revealInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { revealWalletRecoveryPhrase } = await import("@/lib/wallets.server");
+    return revealWalletRecoveryPhrase({
+      userId: context.userId,
+      walletId: data.walletId,
+      transactionPassword: data.transactionPassword,
     });
   });
 
@@ -63,7 +122,7 @@ export const setDefaultWallet = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase
       .from("user_wallets")
-      .update({ is_default: true })
+      .update({ is_default: true, selected_at: new Date().toISOString() } as never)
       .eq("id", data.walletId)
       .eq("user_id", context.userId);
     if (error) throw new Error(error.message);
