@@ -14,6 +14,15 @@ import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { miniAppErrorHomeHref } from "@/lib/mini-app-runtime";
 
+function publicConfigScript() {
+  const env =
+    typeof process !== "undefined" ? (process.env as Record<string, string | undefined>) : {};
+  return `window.__WTRON_PUBLIC_CONFIG__=${JSON.stringify({
+    supabaseUrl: env["SUPABASE_URL"] ?? "",
+    supabasePublishableKey: env["SUPABASE_PUBLISHABLE_KEY"] ?? "",
+  }).replace(/</g, "\\u003c")};`;
+}
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -57,6 +66,13 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              if (
+                typeof window !== "undefined" &&
+                window.location.pathname.startsWith("/mini-app")
+              ) {
+                window.location.assign(miniAppErrorHomeHref(window.location.pathname));
+                return;
+              }
               router.invalidate();
               reset();
             }}
@@ -109,6 +125,7 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: publicConfigScript() }} />
         <script src="https://telegram.org/js/telegram-web-app.js" />
       </head>
       <body>

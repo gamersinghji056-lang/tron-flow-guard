@@ -471,8 +471,8 @@ describe("Telegram bot auth flow", () => {
 
 describe("Telegram Mini App runtime safety", () => {
   it("keeps root error recovery inside the Mini App", () => {
-    assert.equal(miniAppErrorHomeHref("/mini-app"), "/mini-app");
-    assert.equal(miniAppErrorHomeHref("/mini-app?tab=wallet"), "/mini-app");
+    assert.equal(miniAppErrorHomeHref("/mini-app"), "/mini-app?tab=home&auth=login");
+    assert.equal(miniAppErrorHomeHref("/mini-app?tab=wallet"), "/mini-app?tab=home&auth=login");
     assert.equal(miniAppErrorHomeHref("/dashboard"), "/");
   });
 

@@ -17,7 +17,7 @@ export function createMiniAppClientId(prefix: string) {
 }
 
 export function miniAppErrorHomeHref(pathname: string) {
-  return pathname.startsWith("/mini-app") ? "/mini-app" : "/";
+  return pathname.startsWith("/mini-app") ? "/mini-app?tab=home&auth=login" : "/";
 }
 
 export function isMiniAppSessionError(message: string) {
