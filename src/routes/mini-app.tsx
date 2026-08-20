@@ -38,6 +38,10 @@ import {
   verifyTelegramMiniApp,
 } from "@/lib/telegram.functions";
 import { createDirectSellOrder } from "@/lib/direct-sell.functions";
+import {
+  confirmDirectSellPaymentItem,
+  disputeDirectSellPaymentItem,
+} from "@/lib/direct-sell-admin.functions";
 import { createP2pAd, createP2pOrderFromAd } from "@/lib/p2p.functions";
 import {
   createWallet,
@@ -89,6 +93,7 @@ type MiniScreen =
   | "wallet-receive"
   | "wallet-backup"
   | "platform-deposit"
+  | "direct-sell-detail"
   | "send"
   | "orders"
   | "analytics"
@@ -133,6 +138,8 @@ interface Overview {
   profile?: ProfileSummary | null;
   activeOrders?: OrderRow[];
   orders?: OrderRow[];
+  directSellOrders?: DirectSellOrderRow[];
+  directSellPaymentItems?: DirectSellPaymentItemRow[];
   transactions?: TransactionRow[];
   notifications?: NotificationRow[];
   wallets?: WalletRow[];
@@ -159,6 +166,7 @@ interface TransactionRow {
   amount?: number | string | null;
   fee?: number | string | null;
   bucket?: string | null;
+  network?: string | null;
   reference_id?: string | null;
   txid?: string | null;
   status?: string | null;
@@ -208,6 +216,45 @@ interface DepositRow {
   created_at?: string | null;
 }
 
+interface DirectSellOrderRow {
+  id: string;
+  order_ref?: string | null;
+  deposit_request_id?: string | null;
+  expected_usdt?: number | string | null;
+  received_usdt?: number | string | null;
+  expected_inr?: number | string | null;
+  locked_rate_inr?: number | string | null;
+  status?: string | null;
+  assigned_company_address?: string | null;
+  txid?: string | null;
+  confirmations?: number | null;
+  required_confirmations?: number | null;
+  expires_at?: string | null;
+  created_at?: string | null;
+}
+
+interface DirectSellPaymentItemRow {
+  id: string;
+  direct_sell_order_id: string;
+  amount_inr?: number | string | null;
+  utr_reference?: string | null;
+  proof_path?: string | null;
+  status?: string | null;
+  confirmation_deadline?: string | null;
+  confirmed_at?: string | null;
+  disputed_at?: string | null;
+  created_at?: string | null;
+}
+
+interface DirectSellOrderCreated {
+  order_id: string;
+  order_ref: string;
+  deposit_request_id: string;
+  wallet_address: string;
+  expected_inr: number | string;
+  amount_usdt?: number;
+}
+
 interface WalletRow {
   id: string;
   name?: string | null;
@@ -215,6 +262,7 @@ interface WalletRow {
   network?: string | null;
   balance?: number | string | null;
   onchain_balance?: number | string | null;
+  onchain_trx_balance?: number | string | null;
   is_default?: boolean | null;
   custody?: string | null;
   wallet_type?: string | null;
@@ -289,7 +337,8 @@ function tabForScreen(screen: MiniScreen): PrimaryTab {
   ) {
     return "more";
   }
-  if (screen === "platform-deposit" || screen === "send") return "home";
+  if (screen === "platform-deposit" || screen === "direct-sell-detail" || screen === "send")
+    return "home";
   return screen as PrimaryTab;
 }
 
@@ -355,6 +404,8 @@ function TelegramMiniApp() {
   const takeP2pAd = useServerFn(createP2pOrderFromAd);
   const createSellAd = useServerFn(createP2pAd);
   const createDirectSell = useServerFn(createDirectSellOrder);
+  const confirmDirectSellItem = useServerFn(confirmDirectSellPaymentItem);
+  const disputeDirectSellItem = useServerFn(disputeDirectSellPaymentItem);
   const createPersonalWallet = useServerFn(createWallet);
   const importPersonalWallet = useServerFn(importWallet);
   const setMiniDefaultWallet = useServerFn(setDefaultWallet);
@@ -397,6 +448,8 @@ function TelegramMiniApp() {
   const [tradeHistory, setTradeHistory] = useState<unknown[]>([]);
   const [referral, setReferral] = useState<ReferralSummary | null>(null);
   const [walletTransactions, setWalletTransactions] = useState<TransactionRow[]>([]);
+  const [selectedDirectSellId, setSelectedDirectSellId] = useState("");
+  const [createdDirectSell, setCreatedDirectSell] = useState<DirectSellOrderCreated | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -405,6 +458,7 @@ function TelegramMiniApp() {
   const [receiveAsset, setReceiveAsset] = useState<ReceiveAsset>("USDT");
   const [walletQr, setWalletQr] = useState("");
   const [depositQr, setDepositQr] = useState("");
+  const [directSellQr, setDirectSellQr] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
   const [p2pAmount, setP2pAmount] = useState("");
   const [p2pTab, setP2pTab] = useState<P2pTab>("buy");
@@ -443,10 +497,33 @@ function TelegramMiniApp() {
   const pendingBalance = Number(profile?.pending_balance ?? 0);
   const totalAssets = platformBalance + lockedBalance + pendingBalance;
   const latestDeposit = deposits[0];
+  const directSellOrders = overview?.directSellOrders ?? [];
+  const directSellPaymentItems = overview?.directSellPaymentItems ?? [];
+  const activeUpiMethods = paymentMethods.filter(
+    (method) => method.kind === "upi" && (method.status ?? "active") === "active",
+  );
+  const selectedDirectSell =
+    directSellOrders.find((order) => order.id === selectedDirectSellId) ??
+    (createdDirectSell
+      ? ({
+          id: createdDirectSell.order_id,
+          order_ref: createdDirectSell.order_ref,
+          deposit_request_id: createdDirectSell.deposit_request_id,
+          expected_usdt: createdDirectSell.amount_usdt ?? directSellAmount,
+          expected_inr: createdDirectSell.expected_inr,
+          assigned_company_address: createdDirectSell.wallet_address,
+          status: "waiting_for_usdt",
+        } satisfies DirectSellOrderRow)
+      : null);
   const defaultPaymentMethod =
     paymentMethods.find((method) => method.id === selectedPaymentMethodId) ??
     paymentMethods.find((method) => method.is_default) ??
     paymentMethods[0] ??
+    null;
+  const selectedActiveUpi =
+    activeUpiMethods.find((method) => method.id === selectedPaymentMethodId) ??
+    activeUpiMethods.find((method) => method.is_default) ??
+    activeUpiMethods[0] ??
     null;
 
   async function loadAuthenticatedData(nextScreen: MiniScreen, launch = initData) {
@@ -588,6 +665,30 @@ function TelegramMiniApp() {
   }, []);
 
   useEffect(() => {
+    if (!initData || !linked) return;
+    const renew = async () => {
+      const { error } = await supabase.auth.refreshSession();
+      if (!error) {
+        setHasSession(true);
+        return;
+      }
+      try {
+        const session = await createTelegramSession({ data: { initData } });
+        await supabase.auth.setSession({
+          access_token: session.accessToken,
+          refresh_token: session.refreshToken,
+        });
+        setHasSession(true);
+        setBootstrapError("");
+      } catch {
+        setBootstrapError("Session expired");
+      }
+    };
+    const timer = window.setInterval(() => void renew(), 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [createTelegramSession, initData, linked]);
+
+  useEffect(() => {
     if (!linked || !initData) return;
     const channel = supabase
       .channel(createMiniAppClientId("telegram-mini"))
@@ -637,6 +738,20 @@ function TelegramMiniApp() {
   }, [depositAddress?.address, latestDeposit?.expected_amount, depositAmount]);
 
   useEffect(() => {
+    const address = safeAddress(selectedDirectSell?.assigned_company_address);
+    if (!address) {
+      setDirectSellQr("");
+      return;
+    }
+    const amount = Number(selectedDirectSell?.expected_usdt ?? 0);
+    const payload =
+      amount > 0
+        ? `tron:${address}?amount=${encodeURIComponent(String(amount))}&token=USDT_TRC20&network=TRON`
+        : `tron:${address}?token=USDT_TRC20&network=TRON`;
+    void QRCode.toDataURL(payload, { width: 260, margin: 1 }).then(setDirectSellQr);
+  }, [selectedDirectSell?.assigned_company_address, selectedDirectSell?.expected_usdt]);
+
+  useEffect(() => {
     if (!selectedWallet?.id || !hasSession) {
       setWalletTransactions([]);
       return;
@@ -644,7 +759,7 @@ function TelegramMiniApp() {
     void supabase
       .from("wallet_transactions" as never)
       .select(
-        "id, wallet_id, direction, kind, amount, fee, currency, txid, status, memo, created_at",
+        "id, wallet_id, direction, kind, currency, amount, fee, network, txid, status, memo, created_at",
       )
       .eq("wallet_id", selectedWallet.id as never)
       .order("created_at", { ascending: false })
@@ -658,6 +773,14 @@ function TelegramMiniApp() {
         }
       });
   }, [selectedWallet?.id, hasSession]);
+
+  useEffect(() => {
+    if (screen !== "wallet-detail" || !selectedWallet?.id || !hasSession) return;
+    void refreshBalance({ data: { walletId: selectedWallet.id } }).then(
+      () => void refresh("wallet-detail"),
+      () => undefined,
+    );
+  }, [screen, selectedWallet?.id, hasSession]);
 
   useEffect(() => {
     const webApp =
@@ -739,18 +862,22 @@ function TelegramMiniApp() {
       toast.error("Enter a valid USDT amount");
       return;
     }
-    if (!defaultPaymentMethod?.id) {
-      toast.error("Add a payout UPI or bank account before selling to WTRON");
+    if (!selectedActiveUpi?.id) {
+      toast.error("Add UPI ID first");
       return;
     }
     setBusy(true);
     try {
       const order = await createDirectSell({
-        data: { amount, paymentMethodId: defaultPaymentMethod.id },
+        data: { amount, paymentMethodId: selectedActiveUpi.id },
       });
       toast.success(`WTRON sell order ${order.order_ref ?? order.order_id} created`);
+      const created = { ...order, amount_usdt: amount } as DirectSellOrderCreated;
+      setCreatedDirectSell(created);
+      setSelectedDirectSellId(created.order_id);
       setDirectSellAmount("");
-      await refresh("trade");
+      setScreen("direct-sell-detail");
+      await refresh("direct-sell-detail");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create sell order");
     } finally {
@@ -790,6 +917,10 @@ function TelegramMiniApp() {
       toast.error("Complete the sell ad values");
       return;
     }
+    if (!selectedActiveUpi?.id) {
+      toast.error("Add UPI ID first");
+      return;
+    }
     setBusy(true);
     try {
       await createSellAd({
@@ -800,7 +931,7 @@ function TelegramMiniApp() {
           minOrderInr: min,
           maxOrderInr: max,
           paymentMethods: ["upi"],
-          paymentMethodId: defaultPaymentMethod?.id,
+          paymentMethodId: selectedActiveUpi.id,
           terms: sellAd.terms || undefined,
           isActive: true,
         },
@@ -836,6 +967,34 @@ function TelegramMiniApp() {
       await refresh("orders");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not reserve vendor order");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDirectSellPayment(itemId: string) {
+    setBusy(true);
+    try {
+      await confirmDirectSellItem({ data: { itemId } });
+      toast.success("Payment confirmed");
+      await refresh("direct-sell-detail");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not confirm payment");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disputeDirectSellPayment(itemId: string) {
+    const reason = window.prompt("Dispute reason");
+    if (!reason?.trim()) return;
+    setBusy(true);
+    try {
+      await disputeDirectSellItem({ data: { itemId, reason: reason.trim() } });
+      toast.success("Payment disputed");
+      await refresh("direct-sell-detail");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not dispute payment");
     } finally {
       setBusy(false);
     }
@@ -1193,6 +1352,19 @@ function TelegramMiniApp() {
             onSubmit={submitDeposit}
           />
         ) : null}
+        {screen === "direct-sell-detail" ? (
+          <DirectSellDetailScreen
+            order={selectedDirectSell}
+            items={directSellPaymentItems.filter(
+              (item) => item.direct_sell_order_id === selectedDirectSell?.id,
+            )}
+            qr={directSellQr}
+            busy={busy}
+            onCopy={(value) => copyText(value, "Address copied")}
+            onConfirm={(itemId) => void confirmDirectSellPayment(itemId)}
+            onDispute={(itemId) => void disputeDirectSellPayment(itemId)}
+          />
+        ) : null}
         {screen === "send" ? (
           <SendScreen
             wallet={selectedWallet}
@@ -1214,6 +1386,9 @@ function TelegramMiniApp() {
             setP2pAmount={setP2pAmount}
             sellAd={sellAd}
             setSellAd={setSellAd}
+            paymentMethods={activeUpiMethods}
+            selectedPaymentMethodId={selectedPaymentMethodId}
+            setSelectedPaymentMethodId={setSelectedPaymentMethodId}
             busy={busy}
             onTakeAd={takeAd}
             onCreateAd={submitSellAd}
@@ -1225,7 +1400,7 @@ function TelegramMiniApp() {
             setTab={setTradeTab}
             amount={directSellAmount}
             setAmount={setDirectSellAmount}
-            paymentMethods={paymentMethods}
+            paymentMethods={activeUpiMethods}
             selectedPaymentMethodId={selectedPaymentMethodId}
             setSelectedPaymentMethodId={setSelectedPaymentMethodId}
             vendors={vendorListings}
@@ -1240,7 +1415,17 @@ function TelegramMiniApp() {
           />
         ) : null}
         {screen === "more" ? <MoreScreen onNavigate={navigate} /> : null}
-        {screen === "orders" ? <OrdersScreen orders={overview?.orders ?? []} /> : null}
+        {screen === "orders" ? (
+          <OrdersScreen
+            orders={overview?.orders ?? []}
+            directSellOrders={directSellOrders}
+            onDirectSell={(order) => {
+              setSelectedDirectSellId(order.id);
+              setCreatedDirectSell(null);
+              setScreen("direct-sell-detail");
+            }}
+          />
+        ) : null}
         {screen === "analytics" ? <AnalyticsScreen data={analytics} /> : null}
         {screen === "bank-accounts" ? (
           <BankAccountsScreen
@@ -1475,6 +1660,10 @@ function WalletScreen({
   onSelect: (wallet: WalletRow) => void;
 }) {
   const total = wallets.reduce((sum, wallet) => sum + walletDisplayBalance(wallet), 0);
+  const totalTrx = wallets.reduce(
+    (sum, wallet) => sum + Number(wallet.onchain_trx_balance ?? 0),
+    0,
+  );
   if (!wallets.length) {
     return (
       <Screen title="My Wallets" subtitle="Personal non-custodial TRON wallets">
@@ -1504,7 +1693,12 @@ function WalletScreen({
         <p className="text-xs font-semibold uppercase text-slate-500">Total Personal Assets</p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <TokenMetric icon={<UsdtIcon />} label="USDT" value={money(total)} sub="TRC20 on TRON" />
-          <TokenMetric icon={<TronIcon />} label="TRX" value="0.00" sub="TRON native" />
+          <TokenMetric
+            icon={<TronIcon />}
+            label="TRX"
+            value={money(totalTrx, "TRX")}
+            sub="TRON native"
+          />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -1722,7 +1916,13 @@ function WalletDetailScreen({
           network="TRC20"
           amount={`${money(balance)} USDT`}
         />
-        <AssetRow icon={<TronIcon />} symbol="TRX" name="TRON" network="TRON" amount="0.00 TRX" />
+        <AssetRow
+          icon={<TronIcon />}
+          symbol="TRX"
+          name="TRON"
+          network="TRON"
+          amount={`${money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX`}
+        />
       </Section>
       <Section title="Wallet Settings">
         <SettingRow
@@ -2040,6 +2240,9 @@ function P2pScreen(props: {
     max: string;
     terms: string;
   }) => void;
+  paymentMethods: PaymentMethodRow[];
+  selectedPaymentMethodId: string;
+  setSelectedPaymentMethodId: (id: string) => void;
   busy: boolean;
   onTakeAd: (ad: AdRow) => void;
   onCreateAd: (event: FormEvent) => void;
@@ -2093,13 +2296,31 @@ function P2pScreen(props: {
               }
             />
           ))}
+          {props.paymentMethods.length ? (
+            <select
+              className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
+              value={props.selectedPaymentMethodId}
+              onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
+            >
+              {props.paymentMethods.map((method) => (
+                <option key={method.id} value={method.id}>
+                  {method.label || method.upi_id || "Saved UPI"}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <EmptyLine>Add UPI ID first before creating a sell ad.</EmptyLine>
+          )}
           <textarea
             className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white outline-none focus:border-blue-500"
             value={props.sellAd.terms}
             onChange={(event) => props.setSellAd({ ...props.sellAd, terms: event.target.value })}
             placeholder="Terms"
           />
-          <Button className="w-full bg-blue-600" disabled={props.busy}>
+          <Button
+            className="w-full bg-blue-600"
+            disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
+          >
             Create Sell Ad
           </Button>
         </form>
@@ -2158,17 +2379,21 @@ function TradeScreen(props: {
             onChange={(event) => props.setAmount(event.target.value)}
             placeholder="USDT amount"
           />
-          <select
-            className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
-            value={props.selectedPaymentMethodId}
-            onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
-          >
-            {props.paymentMethods.map((method) => (
-              <option key={method.id} value={method.id}>
-                {method.label || method.upi_id || method.bank_name || method.kind}
-              </option>
-            ))}
-          </select>
+          {props.paymentMethods.length ? (
+            <select
+              className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
+              value={props.selectedPaymentMethodId}
+              onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
+            >
+              {props.paymentMethods.map((method) => (
+                <option key={method.id} value={method.id}>
+                  {method.label || method.upi_id || "Saved UPI"}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <EmptyLine>Add UPI ID first.</EmptyLine>
+          )}
           {!props.paymentMethods.length ? (
             <Button
               type="button"
@@ -2176,10 +2401,13 @@ function TradeScreen(props: {
               className="w-full"
               onClick={props.onAddPayment}
             >
-              Add payout method
+              Add UPI ID first
             </Button>
           ) : null}
-          <Button className="w-full bg-blue-600" disabled={props.busy}>
+          <Button
+            className="w-full bg-blue-600"
+            disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
+          >
             Create Sell Order
           </Button>
         </form>
@@ -2243,10 +2471,50 @@ function MoreScreen({ onNavigate }: { onNavigate: (screen: MiniScreen) => Promis
   );
 }
 
-function OrdersScreen({ orders }: { orders: OrderRow[] }) {
+function OrdersScreen({
+  orders,
+  directSellOrders,
+  onDirectSell,
+}: {
+  orders: OrderRow[];
+  directSellOrders: DirectSellOrderRow[];
+  onDirectSell: (order: DirectSellOrderRow) => void;
+}) {
   return (
     <Screen title="Orders" subtitle="P2P, WTRON and vendor order activity">
-      <OrderList orders={orders} empty="No orders yet. Browse P2P or WTRON Trade." />
+      <Section title="WTRON Direct Sell">
+        {directSellOrders.length ? (
+          directSellOrders.map((order) => (
+            <button
+              key={order.id}
+              type="button"
+              className="w-full rounded-2xl border border-white/10 bg-white/6 p-4 text-left"
+              onClick={() => onDirectSell(order)}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="mono text-sm">{order.order_ref ?? shortenHash(order.id)}</p>
+                <StatusBadge status={String(order.status ?? "waiting")} />
+              </div>
+              <MetricGrid
+                items={[
+                  ["USDT", money(order.expected_usdt)],
+                  ["Expected INR", money(order.expected_inr, "INR")],
+                  [
+                    "Confirmations",
+                    `${order.confirmations ?? 0}/${order.required_confirmations ?? 0}`,
+                  ],
+                  ["Address", order.assigned_company_address ? "Assigned" : "Pending"],
+                ]}
+              />
+            </button>
+          ))
+        ) : (
+          <EmptyLine>No WTRON direct sell orders yet.</EmptyLine>
+        )}
+      </Section>
+      <Section title="P2P Orders">
+        <OrderList orders={orders} empty="No P2P orders yet." />
+      </Section>
     </Screen>
   );
 }
@@ -3011,6 +3279,191 @@ function VendorCard({ listing, onBuy }: { listing: VendorListingRow; onBuy: () =
     </div>
   );
 }
+
+function DirectSellDetailScreen(props: {
+  order: DirectSellOrderRow | null;
+  items: DirectSellPaymentItemRow[];
+  qr: string;
+  busy: boolean;
+  onCopy: (value: string) => void;
+  onConfirm: (itemId: string) => void;
+  onDispute: (itemId: string) => void;
+}) {
+  const order = props.order;
+  const address = safeAddress(order?.assigned_company_address);
+  const confirmed = props.items
+    .filter((item) => ["confirmed", "auto_approved"].includes(String(item.status)))
+    .reduce((sum, item) => sum + Number(item.amount_inr ?? 0), 0);
+  const sent = props.items
+    .filter((item) =>
+      ["sent", "confirmed", "auto_approved", "disputed"].includes(String(item.status)),
+    )
+    .reduce((sum, item) => sum + Number(item.amount_inr ?? 0), 0);
+  const disputed = props.items
+    .filter((item) => item.status === "disputed")
+    .reduce((sum, item) => sum + Number(item.amount_inr ?? 0), 0);
+  const expected = Number(order?.expected_inr ?? 0);
+  const remaining = Math.max(0, expected - confirmed);
+  const status = String(order?.status ?? "waiting_for_usdt");
+  const usdtReceived =
+    Number(order?.received_usdt ?? 0) > 0 ? order?.received_usdt : order?.expected_usdt;
+  const blockchainSteps = [
+    ["WAITING", ["waiting_for_usdt", "created", "waiting"]],
+    ["DETECTED", ["usdt_detected", "detected"]],
+    ["CONFIRMING", ["usdt_confirming", "confirming"]],
+    [
+      "CONFIRMED",
+      [
+        "usdt_confirmed",
+        "inr_payment_pending",
+        "payment_assigned",
+        "inr_payment_sent",
+        "payment_verifying",
+        "manual_review",
+        "completed",
+      ],
+    ],
+  ] as const;
+  const currentStep = blockchainSteps.findIndex(([, values]) =>
+    values.some((value) => value === status),
+  );
+
+  return (
+    <Screen title="Direct Sell Order" subtitle={order?.order_ref ?? "WTRON company sell"}>
+      {!order ? (
+        <EmptyLine>No direct sell order selected.</EmptyLine>
+      ) : (
+        <>
+          <div className="space-y-4 rounded-3xl border border-red-500/25 bg-red-500/10 p-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-red-100">Send exactly</p>
+              <p className="mono mt-1 text-3xl font-bold text-white">
+                {money(order.expected_usdt)} USDT
+              </p>
+            </div>
+            <MetricGrid
+              items={[
+                ["Network", "TRON / TRC20"],
+                ["Rate", money(order.locked_rate_inr, "INR")],
+                ["Expected INR", money(order.expected_inr, "INR")],
+                [
+                  "Confirmations",
+                  `${order.confirmations ?? 0}/${order.required_confirmations ?? 0}`,
+                ],
+              ]}
+            />
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">To WTRON address</p>
+              <p className="mono mt-1 break-all text-sm text-white">{address || "Assigning..."}</p>
+            </div>
+            <Button
+              type="button"
+              className="w-full bg-blue-600"
+              disabled={!address}
+              onClick={() => props.onCopy(address)}
+            >
+              Copy Address
+            </Button>
+            {props.qr ? (
+              <div className="rounded-2xl bg-white p-3">
+                <img src={props.qr} alt="Direct sell address QR" className="mx-auto h-56 w-56" />
+              </div>
+            ) : null}
+          </div>
+
+          <Section title="Blockchain Status">
+            <div className="grid grid-cols-4 gap-2">
+              {blockchainSteps.map(([label], index) => (
+                <div
+                  key={label}
+                  className={`rounded-2xl border p-2 text-center text-[11px] ${
+                    index <= Math.max(0, currentStep)
+                      ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                      : "border-white/10 bg-white/6 text-slate-500"
+                  }`}
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+            <MetricGrid
+              items={[
+                ["Status", status.replaceAll("_", " ")],
+                ["TXID", order.txid ? shortenHash(order.txid, 8) : "Waiting"],
+                ["USDT received", money(usdtReceived)],
+                [
+                  "Deposit request",
+                  order.deposit_request_id ? shortenHash(order.deposit_request_id) : "-",
+                ],
+              ]}
+            />
+          </Section>
+
+          <Section title="INR Receivable">
+            <MetricGrid
+              items={[
+                ["Expected INR", money(expected, "INR")],
+                ["INR Sent", money(sent, "INR")],
+                ["INR Confirmed", money(confirmed, "INR")],
+                ["INR Disputed", money(disputed, "INR")],
+                ["INR Remaining", money(remaining, "INR")],
+              ]}
+            />
+          </Section>
+
+          <Section title="INR Payments">
+            {props.items.length ? (
+              props.items.map((item) => (
+                <div key={item.id} className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="mono text-sm">{money(item.amount_inr, "INR")}</p>
+                    <StatusBadge status={String(item.status ?? "sent")} />
+                  </div>
+                  <MetricGrid
+                    items={[
+                      ["UTR", item.utr_reference ?? "-"],
+                      ["Sent", item.created_at ? new Date(item.created_at).toLocaleString() : "-"],
+                      [
+                        "Deadline",
+                        item.confirmation_deadline
+                          ? new Date(item.confirmation_deadline).toLocaleString()
+                          : "-",
+                      ],
+                      ["Proof", item.proof_path ? "Attached" : "-"],
+                    ]}
+                  />
+                  {item.status === "sent" ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        className="bg-blue-600"
+                        disabled={props.busy}
+                        onClick={() => props.onConfirm(item.id)}
+                      >
+                        Confirm Received
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={props.busy}
+                        onClick={() => props.onDispute(item.id)}
+                      >
+                        Dispute
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <EmptyLine>INR payments will appear here after WTRON sends payout.</EmptyLine>
+            )}
+          </Section>
+        </>
+      )}
+    </Screen>
+  );
+}
+
 function OrderList({ orders, empty }: { orders: OrderRow[]; empty: string }) {
   return (
     <>
@@ -3071,19 +3524,32 @@ function TransactionList({
     <Section title={title}>
       {filtered.length ? (
         filtered.map((row) => (
-          <div
-            key={row.id}
-            className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/6 p-3"
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">
-                {String(row.entry_type ?? row.kind ?? "transaction").replaceAll("_", " ")}
-              </p>
-              <p className="truncate text-xs text-slate-400">
-                {row.memo ?? row.txid ?? row.reference_id ?? "WTRON record"}
-              </p>
+          <div key={row.id} className="rounded-2xl border border-white/10 bg-white/6 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">
+                  {String(
+                    row.direction === "in"
+                      ? "Incoming"
+                      : row.direction === "out"
+                        ? "Outgoing"
+                        : (row.entry_type ?? row.kind ?? "transaction"),
+                  ).replaceAll("_", " ")}
+                </p>
+                <p className="truncate text-xs text-slate-400">
+                  {row.memo ?? row.reference_id ?? "WTRON record"}
+                </p>
+              </div>
+              <p className="mono text-sm">{money(row.amount, row.currency ?? "USDT")}</p>
             </div>
-            <p className="mono text-sm">{money(row.amount, row.currency ?? "USDT")}</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+              <span className="truncate">TXID {row.txid ? shortenHash(row.txid, 8) : "-"}</span>
+              <span className="text-right">{row.status ?? "completed"}</span>
+              <span>{row.network ?? "TRON"}</span>
+              <span className="text-right">
+                {row.created_at ? new Date(row.created_at).toLocaleString() : ""}
+              </span>
+            </div>
           </div>
         ))
       ) : (

@@ -376,6 +376,12 @@ export async function archiveOwnedWallet(userId: string, walletId: string) {
 
 export async function refreshPersonalWalletOnChainBalance(userId: string, walletId: string) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const {
+    getIncomingUsdtTransfers,
+    getNativeTrxBalance,
+    getNativeTrxTransfers,
+    getOutgoingUsdtTransfers,
+  } = await import("@/lib/tron.server");
   const { readTrc20Balance } = await import("@/lib/tron-transfer.server");
 
   const { data: wallet, error } = await supabaseAdmin
@@ -387,21 +393,110 @@ export async function refreshPersonalWalletOnChainBalance(userId: string, wallet
   if (!wallet || wallet.user_id !== userId || wallet.is_archived)
     throw new Error("Wallet not found");
 
-  const balance = await readTrc20Balance(wallet.network, wallet.address);
-  if (balance === null) throw new Error("Could not refresh on-chain USDT balance");
+  const [balance, trxBalance, incoming, outgoing, incomingTrx, outgoingTrx] = await Promise.all([
+    readTrc20Balance(wallet.network, wallet.address),
+    getNativeTrxBalance(wallet.network, wallet.address),
+    getIncomingUsdtTransfers(wallet.network, wallet.address, { limit: 100 }),
+    getOutgoingUsdtTransfers(wallet.network, wallet.address, { limit: 100 }),
+    getNativeTrxTransfers(wallet.network, wallet.address, "in", { limit: 100 }),
+    getNativeTrxTransfers(wallet.network, wallet.address, "out", { limit: 100 }),
+  ]);
+  if (balance === null || trxBalance === null) {
+    throw new Error("Could not refresh on-chain wallet balances");
+  }
+
+  const transactions = [
+    ...incoming.map((transfer) => ({
+      wallet_id: wallet.id,
+      user_id: userId,
+      direction: "in" as const,
+      kind: "deposit" as const,
+      status: "completed" as const,
+      amount: transfer.amount,
+      fee: 0,
+      currency: "USDT",
+      counterparty_address: transfer.from || null,
+      network: wallet.network,
+      txid: transfer.txid,
+      onchain: true,
+      block_number: null,
+      memo: "On-chain USDT receipt",
+      created_at: new Date(transfer.blockTimestamp).toISOString(),
+    })),
+    ...outgoing.map((transfer) => ({
+      wallet_id: wallet.id,
+      user_id: userId,
+      direction: "out" as const,
+      kind: "transfer" as const,
+      status: "completed" as const,
+      amount: transfer.amount,
+      fee: 0,
+      currency: "USDT",
+      counterparty_address: transfer.to || null,
+      network: wallet.network,
+      txid: transfer.txid,
+      onchain: true,
+      block_number: null,
+      memo: "On-chain USDT transfer",
+      created_at: new Date(transfer.blockTimestamp).toISOString(),
+    })),
+    ...incomingTrx.map((transfer) => ({
+      wallet_id: wallet.id,
+      user_id: userId,
+      direction: "in" as const,
+      kind: "deposit" as const,
+      status: "completed" as const,
+      amount: transfer.amount,
+      fee: 0,
+      currency: "TRX",
+      counterparty_address: transfer.from || null,
+      network: wallet.network,
+      txid: transfer.txid,
+      onchain: true,
+      block_number: null,
+      memo: "On-chain TRX receipt",
+      created_at: new Date(transfer.blockTimestamp).toISOString(),
+    })),
+    ...outgoingTrx.map((transfer) => ({
+      wallet_id: wallet.id,
+      user_id: userId,
+      direction: "out" as const,
+      kind: "transfer" as const,
+      status: "completed" as const,
+      amount: transfer.amount,
+      fee: 0,
+      currency: "TRX",
+      counterparty_address: transfer.to || null,
+      network: wallet.network,
+      txid: transfer.txid,
+      onchain: true,
+      block_number: null,
+      memo: "On-chain TRX transfer",
+      created_at: new Date(transfer.blockTimestamp).toISOString(),
+    })),
+  ];
+
+  if (transactions.length) {
+    const { error: historyError } = await supabaseAdmin
+      .from("wallet_transactions" as never)
+      .upsert(transactions as never, { onConflict: "txid,wallet_id", ignoreDuplicates: true });
+    if (historyError) throw new Error(`Could not sync wallet history: ${historyError.message}`);
+  }
 
   const checkedAt = new Date().toISOString();
   const { error: updateError } = await supabaseAdmin
     .from("user_wallets")
     .update({
       onchain_balance: balance,
+      onchain_trx_balance: trxBalance,
       onchain_checked_at: checkedAt,
+      onchain_trx_checked_at: checkedAt,
       last_synced_at: checkedAt,
-    })
+    } as never)
     .eq("id", wallet.id);
   if (updateError) throw new Error(updateError.message);
 
-  return { walletId: wallet.id, balance, checkedAt };
+  return { walletId: wallet.id, balance, trxBalance, checkedAt };
 }
 
 export async function executeTransfer(

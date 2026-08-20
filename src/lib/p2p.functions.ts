@@ -54,6 +54,24 @@ const messageInput = orderIdInput.extend({
   body: z.string().trim().min(1).max(2000),
 });
 
+async function requireActiveSellUpi(
+  supabaseClient: typeof import("@/integrations/supabase/client.server").supabaseAdmin,
+  userId: string,
+  paymentMethodId: string | undefined,
+) {
+  if (!paymentMethodId) throw new Error("Add UPI ID first");
+  const { data, error } = await supabaseClient
+    .from("payment_methods")
+    .select("id")
+    .eq("id", paymentMethodId)
+    .eq("user_id", userId)
+    .eq("kind", "upi")
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Select an active saved UPI account");
+}
+
 interface P2pAdRow {
   id: string;
   merchant_id: string;
@@ -114,6 +132,9 @@ export const createP2pAd = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => createAdInput.parse(input))
   .handler(async ({ data, context }) => {
+    if (data.side === "sell") {
+      await requireActiveSellUpi(context.supabase, context.userId, data.paymentMethodId);
+    }
     const { data: ad, error } = await context.supabase.rpc(
       "p2p_create_ad" as never,
       {
@@ -136,6 +157,9 @@ export const updateP2pAd = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => updateAdInput.parse(input))
   .handler(async ({ data, context }) => {
+    if (data.side === "sell") {
+      await requireActiveSellUpi(context.supabase, context.userId, data.paymentMethodId);
+    }
     const { data: ad, error } = await context.supabase.rpc(
       "p2p_update_ad" as never,
       {

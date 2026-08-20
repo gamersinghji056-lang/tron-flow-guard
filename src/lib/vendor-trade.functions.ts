@@ -27,7 +27,7 @@ const vendorInput = z.object({
   vendorId: z.string().uuid().nullable().optional(),
   name: z.string().trim().min(2).max(120),
   userId: z.string().uuid().nullable().optional(),
-  status: z.enum(["pending", "approved", "suspended", "disabled"]).default("approved"),
+  status: z.enum(["pending", "approved", "rejected", "suspended", "disabled"]).default("pending"),
   riskState: z.string().trim().min(2).max(40).default("normal"),
 });
 
@@ -93,6 +93,13 @@ export const confirmVendorPayment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => orderIdInput.parse(input))
   .handler(async ({ data, context }) => {
+    const { requireApprovedVendor } = await import("@/lib/vendor.server");
+    const { requireAdmin } = await import("@/lib/admin.server");
+    try {
+      await requireAdmin(context.supabase, context.userId);
+    } catch {
+      await requireApprovedVendor(context.supabase, context.userId);
+    }
     const { error } = await context.supabase.rpc(
       "confirm_vendor_payment" as never,
       { _order_id: data.orderId } as never,
@@ -105,6 +112,18 @@ export const disputeVendorOrder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => disputeInput.parse(input))
   .handler(async ({ data, context }) => {
+    const { requireApprovedVendor } = await import("@/lib/vendor.server");
+    const { requireAdmin } = await import("@/lib/admin.server");
+    try {
+      await requireAdmin(context.supabase, context.userId);
+    } catch {
+      const { data: vendor } = await context.supabase
+        .from("trading_vendors" as never)
+        .select("id")
+        .eq("user_id", context.userId as never)
+        .maybeSingle();
+      if (vendor) await requireApprovedVendor(context.supabase, context.userId);
+    }
     const { error } = await context.supabase.rpc(
       "dispute_vendor_order" as never,
       { _order_id: data.orderId, _reason: data.reason } as never,

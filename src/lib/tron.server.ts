@@ -83,6 +83,33 @@ interface Trc20ApiRow {
   token_info?: { address?: string; decimals?: number; symbol?: string };
 }
 
+interface TrxApiRow {
+  txID?: string;
+  block_timestamp?: number;
+  raw_data?: {
+    contract?: Array<{
+      type?: string;
+      parameter?: {
+        value?: {
+          amount?: number;
+          owner_address?: string;
+          to_address?: string;
+        };
+      };
+    }>;
+  };
+}
+
+export interface TrxTransfer {
+  txid: string;
+  from: string;
+  to: string;
+  amount: number;
+  sun: number;
+  blockTimestamp: number;
+  raw: unknown;
+}
+
 /** Latest block height on the given network. */
 export async function getLatestBlock(network: ChainNetwork): Promise<number> {
   const { apiBase } = networkConfig(network);
@@ -144,6 +171,102 @@ export async function getIncomingUsdtTransfers(
         raw: row,
       } satisfies Trc20Transfer;
     });
+}
+
+/** Outgoing TRC20 USDT transfers for a personal wallet, newest first. */
+export async function getOutgoingUsdtTransfers(
+  network: ChainNetwork,
+  address: string,
+  options: { limit?: number; minTimestamp?: number } = {},
+): Promise<Trc20Transfer[]> {
+  const config = networkConfig(network);
+  const limit = Math.min(options.limit ?? 50, 200);
+  let url =
+    `${config.apiBase}/v1/accounts/${address}/transactions/trc20` +
+    `?only_from=true&limit=${limit}&order_by=block_timestamp,desc` +
+    `&contract_address=${config.usdtContract}`;
+  if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
+
+  const payload = await chainFetch<{ data?: Trc20ApiRow[]; success?: boolean }>(url);
+  const rows = Array.isArray(payload.data) ? payload.data : [];
+  return rows
+    .filter((row) => row.transaction_id && row.from && row.value && row.type !== "Approval")
+    .map((row) => {
+      const decimals = row.token_info?.decimals ?? config.tokenDecimals;
+      const rawValue = row.value ?? "0";
+      let baseUnits = 0n;
+      try {
+        baseUnits = BigInt(rawValue);
+      } catch {
+        baseUnits = 0n;
+      }
+      return {
+        txid: row.transaction_id as string,
+        from: row.from as string,
+        to: row.to ?? "",
+        amount: Number(baseUnits) / 10 ** decimals,
+        baseUnits,
+        decimals,
+        rawValue,
+        tokenContract: row.token_info?.address ?? "",
+        tokenSymbol: row.token_info?.symbol ?? config.tokenSymbol,
+        blockTimestamp: row.block_timestamp ?? Date.now(),
+        raw: row,
+      } satisfies Trc20Transfer;
+    });
+}
+
+/** Native TRX balance in TRX, read from the chain account state. */
+export async function getNativeTrxBalance(
+  network: ChainNetwork,
+  address: string,
+): Promise<number | null> {
+  const { apiBase } = networkConfig(network);
+  try {
+    const data = await chainFetch<{ data?: Array<{ balance?: number }> }>(
+      `${apiBase}/v1/accounts/${address}`,
+    );
+    const balance = data.data?.[0]?.balance;
+    if (!Number.isFinite(balance)) return 0;
+    return Number(balance) / 1_000_000;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTrxTransfer(row: TrxApiRow): TrxTransfer | null {
+  const contract = row.raw_data?.contract?.find((item) => item.type === "TransferContract");
+  const value = contract?.parameter?.value;
+  if (!row.txID || !value || !Number.isFinite(value.amount)) return null;
+  return {
+    txid: row.txID,
+    from: value.owner_address ?? "",
+    to: value.to_address ?? "",
+    amount: Number(value.amount) / 1_000_000,
+    sun: Number(value.amount),
+    blockTimestamp: row.block_timestamp ?? Date.now(),
+    raw: row,
+  };
+}
+
+export async function getNativeTrxTransfers(
+  network: ChainNetwork,
+  address: string,
+  direction: "in" | "out",
+  options: { limit?: number; minTimestamp?: number } = {},
+): Promise<TrxTransfer[]> {
+  const config = networkConfig(network);
+  const limit = Math.min(options.limit ?? 50, 200);
+  const filter = direction === "in" ? "only_to=true" : "only_from=true";
+  let url =
+    `${config.apiBase}/v1/accounts/${address}/transactions?${filter}` +
+    `&only_confirmed=true&limit=${limit}&order_by=block_timestamp,desc`;
+  if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
+
+  const payload = await chainFetch<{ data?: TrxApiRow[] }>(url);
+  return (payload.data ?? [])
+    .map(normalizeTrxTransfer)
+    .filter((transfer): transfer is TrxTransfer => Boolean(transfer));
 }
 
 /** True when the address exists as an activated account on this chain. */

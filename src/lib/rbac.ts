@@ -6,7 +6,7 @@
  * `requireStaff` / `requirePermission` in `src/lib/access.server.ts`.
  */
 
-export type AppRole = "super_admin" | "admin" | "trader";
+export type AppRole = "super_admin" | "admin" | "employee" | "vendor" | "trader";
 
 export const PERMISSIONS = {
   MANAGE_ADMINS: "admins:manage",
@@ -17,6 +17,8 @@ export const PERMISSIONS = {
   MANAGE_SETTINGS: "settings:manage",
   MANAGE_FEES: "fees:manage",
   MANAGE_BLOCKCHAIN: "blockchain:manage",
+  VIEW_SYSTEM_HEALTH: "system_health.read",
+  MANAGE_EMPLOYEES: "employees.manage",
   VIEW_AUDIT_LOGS: "audit:read",
 } as const;
 
@@ -33,6 +35,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   [PERMISSIONS.MANAGE_SETTINGS]: "Manage system settings",
   [PERMISSIONS.MANAGE_FEES]: "Manage fees",
   [PERMISSIONS.MANAGE_BLOCKCHAIN]: "Manage blockchain configuration",
+  [PERMISSIONS.VIEW_SYSTEM_HEALTH]: "View system health",
+  [PERMISSIONS.MANAGE_EMPLOYEES]: "Manage employees",
   [PERMISSIONS.VIEW_AUDIT_LOGS]: "View audit logs",
 };
 
@@ -47,11 +51,13 @@ export const DEFAULT_ADMIN_PERMISSIONS: Permission[] = [
 export const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: "Super administrator",
   admin: "Administrator",
+  employee: "Employee",
+  vendor: "Vendor",
   trader: "Trader",
 };
 
 export function isStaffRole(role: AppRole | null): boolean {
-  return role === "admin" || role === "super_admin";
+  return role === "admin" || role === "super_admin" || role === "employee";
 }
 
 /** Super administrators implicitly hold every permission. */

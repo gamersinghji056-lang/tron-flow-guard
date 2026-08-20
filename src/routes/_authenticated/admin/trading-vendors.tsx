@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { adminUpsertTradingVendor, adminUpsertVendorListing } from "@/lib/vendor-trade.functions";
+import { adminVendorAction, listAdminVendors } from "@/lib/vendor.functions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
 
 export const Route = createFileRoute("/_authenticated/admin/trading-vendors")({
@@ -16,86 +14,54 @@ export const Route = createFileRoute("/_authenticated/admin/trading-vendors")({
 interface VendorRow {
   id: string;
   name: string;
+  contact_name?: string | null;
+  email?: string | null;
+  telegram_username?: string | null;
   status: string;
-  success_rate: number;
-  completed_orders: number;
-  disputed_orders: number;
+  success_rate?: number | string | null;
+  completed_orders?: number | null;
+  disputed_orders?: number | null;
+  created_at?: string | null;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  suspended_at?: string | null;
 }
 
 function AdminTradingVendorsPage() {
-  const saveVendor = useServerFn(adminUpsertTradingVendor);
-  const saveListing = useServerFn(adminUpsertVendorListing);
+  const fetchVendors = useServerFn(listAdminVendors);
+  const updateVendor = useServerFn(adminVendorAction);
   const [vendors, setVendors] = useState<VendorRow[]>([]);
-  const [vendorName, setVendorName] = useState("");
-  const [listing, setListing] = useState({
-    vendorId: "",
-    rateInr: "",
-    availableUsdt: "",
-    minOrderInr: "",
-    maxOrderInr: "",
-    paymentRails: "upi,imps,neft,rtgs",
-  });
+  const [tab, setTab] = useState<"pending" | "approved" | "rejected" | "suspended">("pending");
   const [working, setWorking] = useState(false);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("trading_vendors" as never)
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error) toast.error(error.message);
-    const rows = (data ?? []) as unknown as VendorRow[];
-    setVendors(rows);
-    setListing((current) => ({ ...current, vendorId: current.vendorId || rows[0]?.id || "" }));
-  }, []);
+    try {
+      setVendors(((await fetchVendors()) ?? []) as unknown as VendorRow[]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load vendors");
+    }
+  }, [fetchVendors]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  async function createVendor(event: React.FormEvent) {
-    event.preventDefault();
-    setWorking(true);
-    try {
-      await saveVendor({ data: { name: vendorName, status: "approved", riskState: "normal" } });
-      setVendorName("");
-      await load();
-      toast.success("Vendor saved");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save vendor");
-    } finally {
-      setWorking(false);
-    }
-  }
+  const filtered = useMemo(() => vendors.filter((vendor) => vendor.status === tab), [tab, vendors]);
 
-  async function createListing(event: React.FormEvent) {
-    event.preventDefault();
+  async function runAction(
+    vendorId: string,
+    action: "approve" | "reject" | "suspend" | "reactivate",
+  ) {
+    const reason =
+      action === "reject" || action === "suspend" ? window.prompt("Reason")?.trim() : undefined;
+    if ((action === "reject" || action === "suspend") && !reason) return;
     setWorking(true);
     try {
-      await saveListing({
-        data: {
-          vendorId: listing.vendorId,
-          rateInr: Number(listing.rateInr),
-          availableUsdt: Number(listing.availableUsdt),
-          minOrderInr: Number(listing.minOrderInr),
-          maxOrderInr: Number(listing.maxOrderInr),
-          paymentRails: listing.paymentRails
-            .split(",")
-            .map((rail) => rail.trim().toLowerCase())
-            .filter(Boolean) as ("upi" | "imps" | "neft" | "rtgs")[],
-          status: "active",
-        },
-      });
-      setListing((current) => ({
-        ...current,
-        rateInr: "",
-        availableUsdt: "",
-        minOrderInr: "",
-        maxOrderInr: "",
-      }));
-      toast.success("Vendor listing saved");
+      await updateVendor({ data: { vendorId, action, reason } });
+      await load();
+      toast.success("Vendor updated");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save listing");
+      toast.error(error instanceof Error ? error.message : "Could not update vendor");
     } finally {
       setWorking(false);
     }
@@ -105,102 +71,102 @@ function AdminTradingVendorsPage() {
     <div className="space-y-6">
       <SectionHeader
         title="Trading Vendors"
-        description="Approved vendor inventory for Buy from WTRON / verified vendors."
+        description="Vendor self-registration review and lifecycle controls."
       />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <form className="panel space-y-3 p-5" onSubmit={createVendor}>
-          <h2 className="font-semibold">Create vendor</h2>
-          <Input
-            value={vendorName}
-            onChange={(event) => setVendorName(event.target.value)}
-            placeholder="Vendor name"
-          />
-          <Button disabled={working || !vendorName.trim()}>
-            {working ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="mr-1.5 h-4 w-4" />
-            )}
-            Save vendor
-          </Button>
-        </form>
-        <form className="panel space-y-3 p-5" onSubmit={createListing}>
-          <h2 className="font-semibold">Create listing</h2>
-          <select
-            value={listing.vendorId}
-            onChange={(event) =>
-              setListing((current) => ({ ...current, vendorId: event.target.value }))
-            }
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+      <div className="flex flex-wrap gap-2">
+        {(["pending", "approved", "rejected", "suspended"] as const).map((status) => (
+          <Button
+            key={status}
+            variant={tab === status ? "default" : "secondary"}
+            onClick={() => setTab(status)}
           >
-            <option value="">Select vendor</option>
-            {vendors.map((vendor) => (
-              <option key={vendor.id} value={vendor.id}>
-                {vendor.name}
-              </option>
-            ))}
-          </select>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              value={listing.rateInr}
-              onChange={(event) =>
-                setListing((current) => ({ ...current, rateInr: event.target.value }))
-              }
-              placeholder="Rate INR"
-            />
-            <Input
-              value={listing.availableUsdt}
-              onChange={(event) =>
-                setListing((current) => ({ ...current, availableUsdt: event.target.value }))
-              }
-              placeholder="Available USDT"
-            />
-            <Input
-              value={listing.minOrderInr}
-              onChange={(event) =>
-                setListing((current) => ({ ...current, minOrderInr: event.target.value }))
-              }
-              placeholder="Min INR"
-            />
-            <Input
-              value={listing.maxOrderInr}
-              onChange={(event) =>
-                setListing((current) => ({ ...current, maxOrderInr: event.target.value }))
-              }
-              placeholder="Max INR"
-            />
-          </div>
-          <Input
-            value={listing.paymentRails}
-            onChange={(event) =>
-              setListing((current) => ({ ...current, paymentRails: event.target.value }))
-            }
-            placeholder="Rails comma separated"
-          />
-          <Button disabled={working || !listing.vendorId}>Save listing</Button>
-        </form>
+            {status.replace("_", " ")} (
+            {vendors.filter((vendor) => vendor.status === status).length})
+          </Button>
+        ))}
       </div>
       <div className="panel overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-secondary/50 text-xs tracking-wide text-muted-foreground uppercase">
             <tr>
               <th className="px-4 py-2.5 text-left font-medium">Vendor</th>
+              <th className="px-4 py-2.5 text-left font-medium">Email</th>
+              <th className="px-4 py-2.5 text-left font-medium">Registered</th>
               <th className="px-4 py-2.5 text-left font-medium">Status</th>
               <th className="px-4 py-2.5 text-left font-medium">Performance</th>
               <th className="px-4 py-2.5 text-left font-medium">Disputes</th>
+              <th className="px-4 py-2.5 text-left font-medium">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {vendors.map((vendor) => (
+            {filtered.map((vendor) => (
               <tr key={vendor.id}>
-                <td className="px-4 py-2.5 font-medium">{vendor.name}</td>
+                <td className="px-4 py-2.5">
+                  <p className="font-medium">{vendor.name}</p>
+                  <p className="text-xs text-muted-foreground">{vendor.contact_name}</p>
+                </td>
+                <td className="px-4 py-2.5">{vendor.email ?? "-"}</td>
+                <td className="mono px-4 py-2.5 text-xs">
+                  {vendor.created_at ? new Date(vendor.created_at).toLocaleString() : "-"}
+                </td>
                 <td className="px-4 py-2.5">{vendor.status}</td>
                 <td className="mono px-4 py-2.5">
-                  {vendor.completed_orders} orders / {Number(vendor.success_rate).toFixed(1)}%
+                  {vendor.completed_orders ?? 0} orders /{" "}
+                  {Number(vendor.success_rate ?? 0).toFixed(1)}%
                 </td>
-                <td className="mono px-4 py-2.5">{vendor.disputed_orders}</td>
+                <td className="mono px-4 py-2.5">{vendor.disputed_orders ?? 0}</td>
+                <td className="px-4 py-2.5">
+                  <div className="flex flex-wrap gap-2">
+                    {vendor.status === "pending" || vendor.status === "rejected" ? (
+                      <Button
+                        size="sm"
+                        disabled={working}
+                        onClick={() => void runAction(vendor.id, "approve")}
+                      >
+                        {working ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                        Approve
+                      </Button>
+                    ) : null}
+                    {vendor.status === "pending" ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={working}
+                        onClick={() => void runAction(vendor.id, "reject")}
+                      >
+                        Reject
+                      </Button>
+                    ) : null}
+                    {vendor.status === "approved" ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={working}
+                        onClick={() => void runAction(vendor.id, "suspend")}
+                      >
+                        Suspend
+                      </Button>
+                    ) : null}
+                    {vendor.status === "suspended" ? (
+                      <Button
+                        size="sm"
+                        disabled={working}
+                        onClick={() => void runAction(vendor.id, "reactivate")}
+                      >
+                        Reactivate
+                      </Button>
+                    ) : null}
+                  </div>
+                </td>
               </tr>
             ))}
+            {!filtered.length ? (
+              <tr>
+                <td className="px-4 py-8 text-center text-muted-foreground" colSpan={7}>
+                  No {tab} vendors.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

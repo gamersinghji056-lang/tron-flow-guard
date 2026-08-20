@@ -67,7 +67,11 @@ export function useAuth(): AuthState {
         ? "super_admin"
         : held.includes("admin")
           ? "admin"
-          : "trader";
+          : held.includes("employee")
+            ? "employee"
+            : held.includes("vendor")
+              ? "vendor"
+              : "trader";
 
       setState({
         loading: false,
@@ -82,7 +86,7 @@ export function useAuth(): AuthState {
           : null,
         role,
         permissions: (perms ?? []).map((row) => row.permission),
-        isAdmin: role === "admin" || role === "super_admin",
+        isAdmin: role === "admin" || role === "super_admin" || role === "employee",
         isSuperAdmin: role === "super_admin",
       });
     }

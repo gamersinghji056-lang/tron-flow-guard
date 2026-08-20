@@ -1,10 +1,35 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+﻿export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.15";
+  };
+  graphql_public: {
+    Tables: {
+      [_ in never]: never;
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
   public: {
     Tables: {
@@ -1547,6 +1572,84 @@ export type Database = {
         };
         Relationships: [];
       };
+      service_heartbeats: {
+        Row: {
+          error_count_24h: number;
+          last_error_at: string | null;
+          last_error_message: string | null;
+          last_heartbeat_at: string | null;
+          last_success_at: string | null;
+          metadata: Json;
+          service: string;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          error_count_24h?: number;
+          last_error_at?: string | null;
+          last_error_message?: string | null;
+          last_heartbeat_at?: string | null;
+          last_success_at?: string | null;
+          metadata?: Json;
+          service: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          error_count_24h?: number;
+          last_error_at?: string | null;
+          last_error_message?: string | null;
+          last_heartbeat_at?: string | null;
+          last_success_at?: string | null;
+          metadata?: Json;
+          service?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      system_error_logs: {
+        Row: {
+          created_at: string;
+          error_code: string | null;
+          id: string;
+          related_order_id: string | null;
+          related_txid: string | null;
+          related_user_id: string | null;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          safe_message: string;
+          service: string;
+          severity: string;
+        };
+        Insert: {
+          created_at?: string;
+          error_code?: string | null;
+          id?: string;
+          related_order_id?: string | null;
+          related_txid?: string | null;
+          related_user_id?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          safe_message: string;
+          service: string;
+          severity?: string;
+        };
+        Update: {
+          created_at?: string;
+          error_code?: string | null;
+          id?: string;
+          related_order_id?: string | null;
+          related_txid?: string | null;
+          related_user_id?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          safe_message?: string;
+          service?: string;
+          severity?: string;
+        };
+        Relationships: [];
+      };
       system_settings: {
         Row: {
           description: string | null;
@@ -1920,38 +2023,74 @@ export type Database = {
       };
       trading_vendors: {
         Row: {
+          application_terms_accepted_at: string | null;
+          approved_at: string | null;
+          approved_by: string | null;
           completed_orders: number;
+          contact_name: string | null;
           created_at: string;
           disputed_orders: number;
+          email: string | null;
           id: string;
           name: string;
+          rejected_at: string | null;
+          rejected_by: string | null;
+          rejection_reason: string | null;
           risk_state: string;
           status: string;
           success_rate: number;
+          suspended_at: string | null;
+          suspended_by: string | null;
+          suspension_reason: string | null;
+          telegram_username: string | null;
           updated_at: string;
           user_id: string | null;
         };
         Insert: {
+          application_terms_accepted_at?: string | null;
+          approved_at?: string | null;
+          approved_by?: string | null;
           completed_orders?: number;
+          contact_name?: string | null;
           created_at?: string;
           disputed_orders?: number;
+          email?: string | null;
           id?: string;
           name: string;
+          rejected_at?: string | null;
+          rejected_by?: string | null;
+          rejection_reason?: string | null;
           risk_state?: string;
           status?: string;
           success_rate?: number;
+          suspended_at?: string | null;
+          suspended_by?: string | null;
+          suspension_reason?: string | null;
+          telegram_username?: string | null;
           updated_at?: string;
           user_id?: string | null;
         };
         Update: {
+          application_terms_accepted_at?: string | null;
+          approved_at?: string | null;
+          approved_by?: string | null;
           completed_orders?: number;
+          contact_name?: string | null;
           created_at?: string;
           disputed_orders?: number;
+          email?: string | null;
           id?: string;
           name?: string;
+          rejected_at?: string | null;
+          rejected_by?: string | null;
+          rejection_reason?: string | null;
           risk_state?: string;
           status?: string;
           success_rate?: number;
+          suspended_at?: string | null;
+          suspended_by?: string | null;
+          suspension_reason?: string | null;
+          telegram_username?: string | null;
           updated_at?: string;
           user_id?: string | null;
         };
@@ -2107,6 +2246,8 @@ export type Database = {
           network: Database["public"]["Enums"]["chain_network"];
           onchain_balance: number | null;
           onchain_checked_at: string | null;
+          onchain_trx_balance: number | null;
+          onchain_trx_checked_at: string | null;
           public_key: string | null;
           selected_at: string | null;
           status: string;
@@ -2135,6 +2276,8 @@ export type Database = {
           network?: Database["public"]["Enums"]["chain_network"];
           onchain_balance?: number | null;
           onchain_checked_at?: string | null;
+          onchain_trx_balance?: number | null;
+          onchain_trx_checked_at?: string | null;
           public_key?: string | null;
           selected_at?: string | null;
           status?: string;
@@ -2163,6 +2306,8 @@ export type Database = {
           network?: Database["public"]["Enums"]["chain_network"];
           onchain_balance?: number | null;
           onchain_checked_at?: string | null;
+          onchain_trx_balance?: number | null;
+          onchain_trx_checked_at?: string | null;
           public_key?: string | null;
           selected_at?: string | null;
           status?: string;
@@ -2182,10 +2327,13 @@ export type Database = {
           id: string;
           max_order_inr: number;
           min_order_inr: number;
+          payment_account_id: string | null;
           payment_rails: string[];
           rate_inr: number;
           reserved_usdt: number;
           status: string;
+          terms: string | null;
+          total_usdt: number;
           updated_at: string;
           vendor_id: string;
         };
@@ -2198,10 +2346,13 @@ export type Database = {
           id?: string;
           max_order_inr?: number;
           min_order_inr?: number;
+          payment_account_id?: string | null;
           payment_rails?: string[];
           rate_inr: number;
           reserved_usdt?: number;
           status?: string;
+          terms?: string | null;
+          total_usdt?: number;
           updated_at?: string;
           vendor_id: string;
         };
@@ -2214,14 +2365,24 @@ export type Database = {
           id?: string;
           max_order_inr?: number;
           min_order_inr?: number;
+          payment_account_id?: string | null;
           payment_rails?: string[];
           rate_inr?: number;
           reserved_usdt?: number;
           status?: string;
+          terms?: string | null;
+          total_usdt?: number;
           updated_at?: string;
           vendor_id?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "vendor_listings_payment_account_id_fkey";
+            columns: ["payment_account_id"];
+            isOneToOne: false;
+            referencedRelation: "vendor_payment_accounts";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "vendor_listings_vendor_id_fkey";
             columns: ["vendor_id"];
@@ -2233,6 +2394,7 @@ export type Database = {
       };
       vendor_orders: {
         Row: {
+          buyer_fee_rate_percent: number;
           buyer_fee_usdt: number;
           buyer_user_id: string;
           completed_at: string | null;
@@ -2255,10 +2417,12 @@ export type Database = {
           updated_at: string;
           usdt_amount: number;
           utr_reference: string | null;
+          vendor_fee_rate_percent: number;
           vendor_fee_usdt: number;
           vendor_id: string;
         };
         Insert: {
+          buyer_fee_rate_percent?: number;
           buyer_fee_usdt?: number;
           buyer_user_id: string;
           completed_at?: string | null;
@@ -2281,10 +2445,12 @@ export type Database = {
           updated_at?: string;
           usdt_amount: number;
           utr_reference?: string | null;
+          vendor_fee_rate_percent?: number;
           vendor_fee_usdt?: number;
           vendor_id: string;
         };
         Update: {
+          buyer_fee_rate_percent?: number;
           buyer_fee_usdt?: number;
           buyer_user_id?: string;
           completed_at?: string | null;
@@ -2307,6 +2473,7 @@ export type Database = {
           updated_at?: string;
           usdt_amount?: number;
           utr_reference?: string | null;
+          vendor_fee_rate_percent?: number;
           vendor_fee_usdt?: number;
           vendor_id?: string;
         };
@@ -2329,39 +2496,63 @@ export type Database = {
       };
       vendor_payment_accounts: {
         Row: {
+          account_number: string | null;
           account_ref: string;
           bank_name: string | null;
           created_at: string;
+          daily_limit_inr: number;
+          enabled: boolean;
+          frozen: boolean;
           holder_name: string | null;
           id: string;
           ifsc: string | null;
           is_default: boolean;
+          label: string | null;
+          max_inr: number;
+          min_inr: number;
+          priority: number;
           rail: string;
           status: string;
           updated_at: string;
           vendor_id: string;
         };
         Insert: {
+          account_number?: string | null;
           account_ref: string;
           bank_name?: string | null;
           created_at?: string;
+          daily_limit_inr?: number;
+          enabled?: boolean;
+          frozen?: boolean;
           holder_name?: string | null;
           id?: string;
           ifsc?: string | null;
           is_default?: boolean;
+          label?: string | null;
+          max_inr?: number;
+          min_inr?: number;
+          priority?: number;
           rail: string;
           status?: string;
           updated_at?: string;
           vendor_id: string;
         };
         Update: {
+          account_number?: string | null;
           account_ref?: string;
           bank_name?: string | null;
           created_at?: string;
+          daily_limit_inr?: number;
+          enabled?: boolean;
+          frozen?: boolean;
           holder_name?: string | null;
           id?: string;
           ifsc?: string | null;
           is_default?: boolean;
+          label?: string | null;
+          max_inr?: number;
+          min_inr?: number;
+          priority?: number;
           rail?: string;
           status?: string;
           updated_at?: string;
@@ -2385,6 +2576,7 @@ export type Database = {
           counterparty_address: string | null;
           counterparty_wallet_id: string | null;
           created_at: string;
+          currency: string;
           deposit_request_id: string | null;
           direction: Database["public"]["Enums"]["wallet_tx_direction"];
           failure_reason: string | null;
@@ -2407,6 +2599,7 @@ export type Database = {
           counterparty_address?: string | null;
           counterparty_wallet_id?: string | null;
           created_at?: string;
+          currency?: string;
           deposit_request_id?: string | null;
           direction: Database["public"]["Enums"]["wallet_tx_direction"];
           failure_reason?: string | null;
@@ -2429,6 +2622,7 @@ export type Database = {
           counterparty_address?: string | null;
           counterparty_wallet_id?: string | null;
           created_at?: string;
+          currency?: string;
           deposit_request_id?: string | null;
           direction?: Database["public"]["Enums"]["wallet_tx_direction"];
           failure_reason?: string | null;
@@ -2708,14 +2902,26 @@ export type Database = {
           _vendor_id: string;
         };
         Returns: {
+          application_terms_accepted_at: string | null;
+          approved_at: string | null;
+          approved_by: string | null;
           completed_orders: number;
+          contact_name: string | null;
           created_at: string;
           disputed_orders: number;
+          email: string | null;
           id: string;
           name: string;
+          rejected_at: string | null;
+          rejected_by: string | null;
+          rejection_reason: string | null;
           risk_state: string;
           status: string;
           success_rate: number;
+          suspended_at: string | null;
+          suspended_by: string | null;
+          suspension_reason: string | null;
+          telegram_username: string | null;
           updated_at: string;
           user_id: string | null;
         };
@@ -2746,16 +2952,52 @@ export type Database = {
           id: string;
           max_order_inr: number;
           min_order_inr: number;
+          payment_account_id: string | null;
           payment_rails: string[];
           rate_inr: number;
           reserved_usdt: number;
           status: string;
+          terms: string | null;
+          total_usdt: number;
           updated_at: string;
           vendor_id: string;
         };
         SetofOptions: {
           from: "*";
           to: "vendor_listings";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      approve_trading_vendor: {
+        Args: { _vendor_id: string };
+        Returns: {
+          application_terms_accepted_at: string | null;
+          approved_at: string | null;
+          approved_by: string | null;
+          completed_orders: number;
+          contact_name: string | null;
+          created_at: string;
+          disputed_orders: number;
+          email: string | null;
+          id: string;
+          name: string;
+          rejected_at: string | null;
+          rejected_by: string | null;
+          rejection_reason: string | null;
+          risk_state: string;
+          status: string;
+          success_rate: number;
+          suspended_at: string | null;
+          suspended_by: string | null;
+          suspension_reason: string | null;
+          telegram_username: string | null;
+          updated_at: string;
+          user_id: string | null;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "trading_vendors";
           isOneToOne: true;
           isSetofReturn: false;
         };
@@ -2839,6 +3081,7 @@ export type Database = {
       create_vendor_order: {
         Args: { _listing_id: string; _rail: string; _usdt: number };
         Returns: {
+          buyer_fee_rate_percent: number;
           buyer_fee_usdt: number;
           buyer_user_id: string;
           completed_at: string | null;
@@ -2861,6 +3104,7 @@ export type Database = {
           updated_at: string;
           usdt_amount: number;
           utr_reference: string | null;
+          vendor_fee_rate_percent: number;
           vendor_fee_usdt: number;
           vendor_id: string;
         };
@@ -3133,6 +3377,39 @@ export type Database = {
         };
       };
       process_order_timers: { Args: never; Returns: Json };
+      reactivate_trading_vendor: {
+        Args: { _vendor_id: string };
+        Returns: {
+          application_terms_accepted_at: string | null;
+          approved_at: string | null;
+          approved_by: string | null;
+          completed_orders: number;
+          contact_name: string | null;
+          created_at: string;
+          disputed_orders: number;
+          email: string | null;
+          id: string;
+          name: string;
+          rejected_at: string | null;
+          rejected_by: string | null;
+          rejection_reason: string | null;
+          risk_state: string;
+          status: string;
+          success_rate: number;
+          suspended_at: string | null;
+          suspended_by: string | null;
+          suspension_reason: string | null;
+          telegram_username: string | null;
+          updated_at: string;
+          user_id: string | null;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "trading_vendors";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       record_p2p_system_event: {
         Args: {
           _actor: string;
@@ -3143,6 +3420,39 @@ export type Database = {
         };
         Returns: undefined;
       };
+      reject_trading_vendor: {
+        Args: { _reason?: string; _vendor_id: string };
+        Returns: {
+          application_terms_accepted_at: string | null;
+          approved_at: string | null;
+          approved_by: string | null;
+          completed_orders: number;
+          contact_name: string | null;
+          created_at: string;
+          disputed_orders: number;
+          email: string | null;
+          id: string;
+          name: string;
+          rejected_at: string | null;
+          rejected_by: string | null;
+          rejection_reason: string | null;
+          risk_state: string;
+          status: string;
+          success_rate: number;
+          suspended_at: string | null;
+          suspended_by: string | null;
+          suspension_reason: string | null;
+          telegram_username: string | null;
+          updated_at: string;
+          user_id: string | null;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "trading_vendors";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       submit_vendor_payment: {
         Args: {
           _amount: number;
@@ -3151,6 +3461,39 @@ export type Database = {
           _utr: string;
         };
         Returns: boolean;
+      };
+      suspend_trading_vendor: {
+        Args: { _reason?: string; _vendor_id: string };
+        Returns: {
+          application_terms_accepted_at: string | null;
+          approved_at: string | null;
+          approved_by: string | null;
+          completed_orders: number;
+          contact_name: string | null;
+          created_at: string;
+          disputed_orders: number;
+          email: string | null;
+          id: string;
+          name: string;
+          rejected_at: string | null;
+          rejected_by: string | null;
+          rejection_reason: string | null;
+          risk_state: string;
+          status: string;
+          success_rate: number;
+          suspended_at: string | null;
+          suspended_by: string | null;
+          suspension_reason: string | null;
+          telegram_username: string | null;
+          updated_at: string;
+          user_id: string | null;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "trading_vendors";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
       };
       wallet_transfer: {
         Args: {
@@ -3181,7 +3524,7 @@ export type Database = {
       };
     };
     Enums: {
-      app_role: "admin" | "trader" | "super_admin";
+      app_role: "admin" | "trader" | "super_admin" | "vendor" | "employee";
       chain_network: "trc20-mainnet" | "trc20-nile";
       deposit_status:
         | "waiting"
@@ -3378,9 +3721,12 @@ export type CompositeTypes<
     : never;
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
-      app_role: ["admin", "trader", "super_admin"],
+      app_role: ["admin", "trader", "super_admin", "vendor", "employee"],
       chain_network: ["trc20-mainnet", "trc20-nile"],
       deposit_status: [
         "waiting",

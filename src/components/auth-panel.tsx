@@ -59,6 +59,8 @@ async function readRole(userId: string) {
   const held = (data ?? []).map((row) => row.role as string);
   if (held.includes("super_admin")) return "super_admin";
   if (held.includes("admin")) return "admin";
+  if (held.includes("employee")) return "employee";
+  if (held.includes("vendor")) return "vendor";
   return "trader";
 }
 
@@ -98,7 +100,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
     }
 
     const role = await readRole(data.user.id);
-    const isStaff = role === "admin" || role === "super_admin";
+    const isStaff = role === "admin" || role === "super_admin" || role === "employee";
 
     if (audience === "admin" && !isStaff) {
       await supabase.auth.signOut();

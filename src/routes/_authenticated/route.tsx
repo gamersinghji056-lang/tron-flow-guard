@@ -15,6 +15,7 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
   const pathname = window.location.pathname;
   if (pathname.startsWith("/admin")) return <Outlet />;
+  if (pathname.startsWith("/vendor")) return <Outlet />;
   return (
     <UserShell>
       <Outlet />

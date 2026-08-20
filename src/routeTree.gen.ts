@@ -13,6 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as MiniAppRouteImport } from './routes/mini-app'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RiskDisclosureRouteImport } from './routes/risk-disclosure'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
@@ -33,6 +36,8 @@ import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminRegisterRouteImport } from './routes/admin.register'
 import { Route as TraderLoginRouteImport } from './routes/trader.login'
 import { Route as TraderRegisterRouteImport } from './routes/trader.register'
+import { Route as VendorLoginRouteImport } from './routes/vendor.login'
+import { Route as VendorRegisterRouteImport } from './routes/vendor.register'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminAdsRouteImport } from './routes/_authenticated/admin/ads'
 import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin/analytics'
@@ -42,6 +47,7 @@ import { Route as AuthenticatedAdminBlockchainMonitorRouteImport } from './route
 import { Route as AuthenticatedAdminDepositsRouteImport } from './routes/_authenticated/admin/deposits'
 import { Route as AuthenticatedAdminDirectSellRouteImport } from './routes/_authenticated/admin/direct-sell'
 import { Route as AuthenticatedAdminDisputesRouteImport } from './routes/_authenticated/admin/disputes'
+import { Route as AuthenticatedAdminEmployeesRouteImport } from './routes/_authenticated/admin/employees'
 import { Route as AuthenticatedAdminFeesRouteImport } from './routes/_authenticated/admin/fees'
 import { Route as AuthenticatedAdminLedgerRouteImport } from './routes/_authenticated/admin/ledger'
 import { Route as AuthenticatedAdminP2pOrdersRouteImport } from './routes/_authenticated/admin/p2p-orders'
@@ -49,6 +55,7 @@ import { Route as AuthenticatedAdminPaymentMethodsRouteImport } from './routes/_
 import { Route as AuthenticatedAdminPaymentOperationsRouteImport } from './routes/_authenticated/admin/payment-operations'
 import { Route as AuthenticatedAdminReferralsRouteImport } from './routes/_authenticated/admin/referrals'
 import { Route as AuthenticatedAdminRiskSecurityRouteImport } from './routes/_authenticated/admin/risk-security'
+import { Route as AuthenticatedAdminSystemHealthRouteImport } from './routes/_authenticated/admin/system-health'
 import { Route as AuthenticatedAdminSystemSettingsRouteImport } from './routes/_authenticated/admin/system-settings'
 import { Route as AuthenticatedAdminTelegramRouteImport } from './routes/_authenticated/admin/telegram'
 import { Route as AuthenticatedAdminTradingVendorsRouteImport } from './routes/_authenticated/admin/trading-vendors'
@@ -59,6 +66,7 @@ import { Route as AuthenticatedAdminWalletsRouteImport } from './routes/_authent
 import { Route as AuthenticatedAdminWebhooksRouteImport } from './routes/_authenticated/admin/webhooks'
 import { Route as AuthenticatedAdminWithdrawalsRouteImport } from './routes/_authenticated/admin/withdrawals'
 import { Route as AuthenticatedOrdersOrderIdRouteImport } from './routes/_authenticated/orders.$orderId'
+import { Route as AuthenticatedVendorIndexRouteImport } from './routes/_authenticated/vendor.index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet.index'
 import { Route as AuthenticatedWalletWalletIdRouteImport } from './routes/_authenticated/wallet.$walletId'
 import { Route as ApiV1BalanceRouteImport } from './routes/api/v1/balance'
@@ -88,6 +96,21 @@ const AuthRoute = AuthRouteImport.update({
 const MiniAppRoute = MiniAppRouteImport.update({
   id: '/mini-app',
   path: '/mini-app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RiskDisclosureRoute = RiskDisclosureRouteImport.update({
+  id: '/risk-disclosure',
+  path: '/risk-disclosure',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
@@ -194,6 +217,16 @@ const TraderRegisterRoute = TraderRegisterRouteImport.update({
   path: '/trader/register',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VendorLoginRoute = VendorLoginRouteImport.update({
+  id: '/vendor/login',
+  path: '/vendor/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VendorRegisterRoute = VendorRegisterRouteImport.update({
+  id: '/vendor/register',
+  path: '/vendor/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -246,6 +279,12 @@ const AuthenticatedAdminDisputesRoute =
     path: '/disputes',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
+const AuthenticatedAdminEmployeesRoute =
+  AuthenticatedAdminEmployeesRouteImport.update({
+    id: '/employees',
+    path: '/employees',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminFeesRoute = AuthenticatedAdminFeesRouteImport.update({
   id: '/fees',
   path: '/fees',
@@ -285,6 +324,12 @@ const AuthenticatedAdminRiskSecurityRoute =
   AuthenticatedAdminRiskSecurityRouteImport.update({
     id: '/risk-security',
     path: '/risk-security',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminSystemHealthRoute =
+  AuthenticatedAdminSystemHealthRouteImport.update({
+    id: '/system-health',
+    path: '/system-health',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminSystemSettingsRoute =
@@ -345,6 +390,12 @@ const AuthenticatedOrdersOrderIdRoute =
     id: '/$orderId',
     path: '/$orderId',
     getParentRoute: () => AuthenticatedOrdersRoute,
+  } as any)
+const AuthenticatedVendorIndexRoute =
+  AuthenticatedVendorIndexRouteImport.update({
+    id: '/vendor/',
+    path: '/vendor/',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedWalletIndexRoute =
   AuthenticatedWalletIndexRouteImport.update({
@@ -408,6 +459,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/mini-app': typeof MiniAppRoute
+  '/privacy': typeof PrivacyRoute
+  '/risk-disclosure': typeof RiskDisclosureRoute
+  '/terms': typeof TermsRoute
   '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/assets': typeof AuthenticatedAssetsRoute
@@ -428,6 +482,8 @@ export interface FileRoutesByFullPath {
   '/admin/register': typeof AdminRegisterRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
+  '/vendor/login': typeof VendorLoginRoute
+  '/vendor/register': typeof VendorRegisterRoute
   '/admin/ads': typeof AuthenticatedAdminAdsRoute
   '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/admin/api-management': typeof AuthenticatedAdminApiManagementRoute
@@ -436,6 +492,7 @@ export interface FileRoutesByFullPath {
   '/admin/deposits': typeof AuthenticatedAdminDepositsRoute
   '/admin/direct-sell': typeof AuthenticatedAdminDirectSellRoute
   '/admin/disputes': typeof AuthenticatedAdminDisputesRoute
+  '/admin/employees': typeof AuthenticatedAdminEmployeesRoute
   '/admin/fees': typeof AuthenticatedAdminFeesRoute
   '/admin/ledger': typeof AuthenticatedAdminLedgerRoute
   '/admin/p2p-orders': typeof AuthenticatedAdminP2pOrdersRoute
@@ -443,6 +500,7 @@ export interface FileRoutesByFullPath {
   '/admin/payment-operations': typeof AuthenticatedAdminPaymentOperationsRoute
   '/admin/referrals': typeof AuthenticatedAdminReferralsRoute
   '/admin/risk-security': typeof AuthenticatedAdminRiskSecurityRoute
+  '/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
   '/admin/system-settings': typeof AuthenticatedAdminSystemSettingsRoute
   '/admin/telegram': typeof AuthenticatedAdminTelegramRoute
   '/admin/trading-vendors': typeof AuthenticatedAdminTradingVendorsRoute
@@ -459,6 +517,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
   '/api/v1/health': typeof ApiV1HealthRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
+  '/vendor/': typeof AuthenticatedVendorIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
   '/api/v1/deposits/$id': typeof ApiV1DepositsIdRouteWithChildren
@@ -470,6 +529,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/mini-app': typeof MiniAppRoute
+  '/privacy': typeof PrivacyRoute
+  '/risk-disclosure': typeof RiskDisclosureRoute
+  '/terms': typeof TermsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/assets': typeof AuthenticatedAssetsRoute
   '/bank-accounts': typeof AuthenticatedBankAccountsRoute
@@ -489,6 +551,8 @@ export interface FileRoutesByTo {
   '/admin/register': typeof AdminRegisterRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
+  '/vendor/login': typeof VendorLoginRoute
+  '/vendor/register': typeof VendorRegisterRoute
   '/admin/ads': typeof AuthenticatedAdminAdsRoute
   '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/admin/api-management': typeof AuthenticatedAdminApiManagementRoute
@@ -497,6 +561,7 @@ export interface FileRoutesByTo {
   '/admin/deposits': typeof AuthenticatedAdminDepositsRoute
   '/admin/direct-sell': typeof AuthenticatedAdminDirectSellRoute
   '/admin/disputes': typeof AuthenticatedAdminDisputesRoute
+  '/admin/employees': typeof AuthenticatedAdminEmployeesRoute
   '/admin/fees': typeof AuthenticatedAdminFeesRoute
   '/admin/ledger': typeof AuthenticatedAdminLedgerRoute
   '/admin/p2p-orders': typeof AuthenticatedAdminP2pOrdersRoute
@@ -504,6 +569,7 @@ export interface FileRoutesByTo {
   '/admin/payment-operations': typeof AuthenticatedAdminPaymentOperationsRoute
   '/admin/referrals': typeof AuthenticatedAdminReferralsRoute
   '/admin/risk-security': typeof AuthenticatedAdminRiskSecurityRoute
+  '/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
   '/admin/system-settings': typeof AuthenticatedAdminSystemSettingsRoute
   '/admin/telegram': typeof AuthenticatedAdminTelegramRoute
   '/admin/trading-vendors': typeof AuthenticatedAdminTradingVendorsRoute
@@ -520,6 +586,7 @@ export interface FileRoutesByTo {
   '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
   '/api/v1/health': typeof ApiV1HealthRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
+  '/vendor': typeof AuthenticatedVendorIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
   '/api/v1/deposits/$id': typeof ApiV1DepositsIdRouteWithChildren
@@ -533,6 +600,9 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/mini-app': typeof MiniAppRoute
+  '/privacy': typeof PrivacyRoute
+  '/risk-disclosure': typeof RiskDisclosureRoute
+  '/terms': typeof TermsRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/assets': typeof AuthenticatedAssetsRoute
@@ -553,6 +623,8 @@ export interface FileRoutesById {
   '/admin/register': typeof AdminRegisterRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
+  '/vendor/login': typeof VendorLoginRoute
+  '/vendor/register': typeof VendorRegisterRoute
   '/_authenticated/admin/ads': typeof AuthenticatedAdminAdsRoute
   '/_authenticated/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/_authenticated/admin/api-management': typeof AuthenticatedAdminApiManagementRoute
@@ -561,6 +633,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/deposits': typeof AuthenticatedAdminDepositsRoute
   '/_authenticated/admin/direct-sell': typeof AuthenticatedAdminDirectSellRoute
   '/_authenticated/admin/disputes': typeof AuthenticatedAdminDisputesRoute
+  '/_authenticated/admin/employees': typeof AuthenticatedAdminEmployeesRoute
   '/_authenticated/admin/fees': typeof AuthenticatedAdminFeesRoute
   '/_authenticated/admin/ledger': typeof AuthenticatedAdminLedgerRoute
   '/_authenticated/admin/p2p-orders': typeof AuthenticatedAdminP2pOrdersRoute
@@ -568,6 +641,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/payment-operations': typeof AuthenticatedAdminPaymentOperationsRoute
   '/_authenticated/admin/referrals': typeof AuthenticatedAdminReferralsRoute
   '/_authenticated/admin/risk-security': typeof AuthenticatedAdminRiskSecurityRoute
+  '/_authenticated/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
   '/_authenticated/admin/system-settings': typeof AuthenticatedAdminSystemSettingsRoute
   '/_authenticated/admin/telegram': typeof AuthenticatedAdminTelegramRoute
   '/_authenticated/admin/trading-vendors': typeof AuthenticatedAdminTradingVendorsRoute
@@ -584,6 +658,7 @@ export interface FileRoutesById {
   '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
   '/api/v1/health': typeof ApiV1HealthRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
+  '/_authenticated/vendor/': typeof AuthenticatedVendorIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/api/public/listener/tick': typeof ApiPublicListenerTickRoute
   '/api/v1/deposits/$id': typeof ApiV1DepositsIdRouteWithChildren
@@ -597,6 +672,9 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/mini-app'
+    | '/privacy'
+    | '/risk-disclosure'
+    | '/terms'
     | '/admin'
     | '/analytics'
     | '/assets'
@@ -617,6 +695,8 @@ export interface FileRouteTypes {
     | '/admin/register'
     | '/trader/login'
     | '/trader/register'
+    | '/vendor/login'
+    | '/vendor/register'
     | '/admin/ads'
     | '/admin/analytics'
     | '/admin/api-management'
@@ -625,6 +705,7 @@ export interface FileRouteTypes {
     | '/admin/deposits'
     | '/admin/direct-sell'
     | '/admin/disputes'
+    | '/admin/employees'
     | '/admin/fees'
     | '/admin/ledger'
     | '/admin/p2p-orders'
@@ -632,6 +713,7 @@ export interface FileRouteTypes {
     | '/admin/payment-operations'
     | '/admin/referrals'
     | '/admin/risk-security'
+    | '/admin/system-health'
     | '/admin/system-settings'
     | '/admin/telegram'
     | '/admin/trading-vendors'
@@ -648,6 +730,7 @@ export interface FileRouteTypes {
     | '/api/v1/direct-sell'
     | '/api/v1/health'
     | '/admin/'
+    | '/vendor/'
     | '/wallet/'
     | '/api/public/listener/tick'
     | '/api/v1/deposits/$id'
@@ -659,6 +742,9 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/mini-app'
+    | '/privacy'
+    | '/risk-disclosure'
+    | '/terms'
     | '/analytics'
     | '/assets'
     | '/bank-accounts'
@@ -678,6 +764,8 @@ export interface FileRouteTypes {
     | '/admin/register'
     | '/trader/login'
     | '/trader/register'
+    | '/vendor/login'
+    | '/vendor/register'
     | '/admin/ads'
     | '/admin/analytics'
     | '/admin/api-management'
@@ -686,6 +774,7 @@ export interface FileRouteTypes {
     | '/admin/deposits'
     | '/admin/direct-sell'
     | '/admin/disputes'
+    | '/admin/employees'
     | '/admin/fees'
     | '/admin/ledger'
     | '/admin/p2p-orders'
@@ -693,6 +782,7 @@ export interface FileRouteTypes {
     | '/admin/payment-operations'
     | '/admin/referrals'
     | '/admin/risk-security'
+    | '/admin/system-health'
     | '/admin/system-settings'
     | '/admin/telegram'
     | '/admin/trading-vendors'
@@ -709,6 +799,7 @@ export interface FileRouteTypes {
     | '/api/v1/direct-sell'
     | '/api/v1/health'
     | '/admin'
+    | '/vendor'
     | '/wallet'
     | '/api/public/listener/tick'
     | '/api/v1/deposits/$id'
@@ -721,6 +812,9 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/mini-app'
+    | '/privacy'
+    | '/risk-disclosure'
+    | '/terms'
     | '/_authenticated/admin'
     | '/_authenticated/analytics'
     | '/_authenticated/assets'
@@ -741,6 +835,8 @@ export interface FileRouteTypes {
     | '/admin/register'
     | '/trader/login'
     | '/trader/register'
+    | '/vendor/login'
+    | '/vendor/register'
     | '/_authenticated/admin/ads'
     | '/_authenticated/admin/analytics'
     | '/_authenticated/admin/api-management'
@@ -749,6 +845,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/deposits'
     | '/_authenticated/admin/direct-sell'
     | '/_authenticated/admin/disputes'
+    | '/_authenticated/admin/employees'
     | '/_authenticated/admin/fees'
     | '/_authenticated/admin/ledger'
     | '/_authenticated/admin/p2p-orders'
@@ -756,6 +853,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/payment-operations'
     | '/_authenticated/admin/referrals'
     | '/_authenticated/admin/risk-security'
+    | '/_authenticated/admin/system-health'
     | '/_authenticated/admin/system-settings'
     | '/_authenticated/admin/telegram'
     | '/_authenticated/admin/trading-vendors'
@@ -772,6 +870,7 @@ export interface FileRouteTypes {
     | '/api/v1/direct-sell'
     | '/api/v1/health'
     | '/_authenticated/admin/'
+    | '/_authenticated/vendor/'
     | '/_authenticated/wallet/'
     | '/api/public/listener/tick'
     | '/api/v1/deposits/$id'
@@ -785,10 +884,15 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   MiniAppRoute: typeof MiniAppRoute
+  PrivacyRoute: typeof PrivacyRoute
+  RiskDisclosureRoute: typeof RiskDisclosureRoute
+  TermsRoute: typeof TermsRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminRegisterRoute: typeof AdminRegisterRoute
   TraderLoginRoute: typeof TraderLoginRoute
   TraderRegisterRoute: typeof TraderRegisterRoute
+  VendorLoginRoute: typeof VendorLoginRoute
+  VendorRegisterRoute: typeof VendorRegisterRoute
   ApiV1BalanceRoute: typeof ApiV1BalanceRoute
   ApiV1DepositsRoute: typeof ApiV1DepositsRouteWithChildren
   ApiV1DirectSellRoute: typeof ApiV1DirectSellRouteWithChildren
@@ -825,6 +929,27 @@ declare module '@tanstack/react-router' {
       path: '/mini-app'
       fullPath: '/mini-app'
       preLoaderRoute: typeof MiniAppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/risk-disclosure': {
+      id: '/risk-disclosure'
+      path: '/risk-disclosure'
+      fullPath: '/risk-disclosure'
+      preLoaderRoute: typeof RiskDisclosureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/admin': {
@@ -967,6 +1092,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TraderRegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vendor/login': {
+      id: '/vendor/login'
+      path: '/vendor/login'
+      fullPath: '/vendor/login'
+      preLoaderRoute: typeof VendorLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vendor/register': {
+      id: '/vendor/register'
+      path: '/vendor/register'
+      fullPath: '/vendor/register'
+      preLoaderRoute: typeof VendorRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/admin/': {
       id: '/_authenticated/admin/'
       path: '/'
@@ -1030,6 +1169,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminDisputesRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/employees': {
+      id: '/_authenticated/admin/employees'
+      path: '/employees'
+      fullPath: '/admin/employees'
+      preLoaderRoute: typeof AuthenticatedAdminEmployeesRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/fees': {
       id: '/_authenticated/admin/fees'
       path: '/fees'
@@ -1077,6 +1223,13 @@ declare module '@tanstack/react-router' {
       path: '/risk-security'
       fullPath: '/admin/risk-security'
       preLoaderRoute: typeof AuthenticatedAdminRiskSecurityRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/system-health': {
+      id: '/_authenticated/admin/system-health'
+      path: '/system-health'
+      fullPath: '/admin/system-health'
+      preLoaderRoute: typeof AuthenticatedAdminSystemHealthRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/system-settings': {
@@ -1148,6 +1301,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orders/$orderId'
       preLoaderRoute: typeof AuthenticatedOrdersOrderIdRouteImport
       parentRoute: typeof AuthenticatedOrdersRoute
+    }
+    '/_authenticated/vendor/': {
+      id: '/_authenticated/vendor/'
+      path: '/vendor'
+      fullPath: '/vendor/'
+      preLoaderRoute: typeof AuthenticatedVendorIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/wallet/': {
       id: '/_authenticated/wallet/'
@@ -1238,6 +1398,7 @@ interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminDepositsRoute: typeof AuthenticatedAdminDepositsRoute
   AuthenticatedAdminDirectSellRoute: typeof AuthenticatedAdminDirectSellRoute
   AuthenticatedAdminDisputesRoute: typeof AuthenticatedAdminDisputesRoute
+  AuthenticatedAdminEmployeesRoute: typeof AuthenticatedAdminEmployeesRoute
   AuthenticatedAdminFeesRoute: typeof AuthenticatedAdminFeesRoute
   AuthenticatedAdminLedgerRoute: typeof AuthenticatedAdminLedgerRoute
   AuthenticatedAdminP2pOrdersRoute: typeof AuthenticatedAdminP2pOrdersRoute
@@ -1245,6 +1406,7 @@ interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminPaymentOperationsRoute: typeof AuthenticatedAdminPaymentOperationsRoute
   AuthenticatedAdminReferralsRoute: typeof AuthenticatedAdminReferralsRoute
   AuthenticatedAdminRiskSecurityRoute: typeof AuthenticatedAdminRiskSecurityRoute
+  AuthenticatedAdminSystemHealthRoute: typeof AuthenticatedAdminSystemHealthRoute
   AuthenticatedAdminSystemSettingsRoute: typeof AuthenticatedAdminSystemSettingsRoute
   AuthenticatedAdminTelegramRoute: typeof AuthenticatedAdminTelegramRoute
   AuthenticatedAdminTradingVendorsRoute: typeof AuthenticatedAdminTradingVendorsRoute
@@ -1268,6 +1430,7 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
     AuthenticatedAdminDepositsRoute: AuthenticatedAdminDepositsRoute,
     AuthenticatedAdminDirectSellRoute: AuthenticatedAdminDirectSellRoute,
     AuthenticatedAdminDisputesRoute: AuthenticatedAdminDisputesRoute,
+    AuthenticatedAdminEmployeesRoute: AuthenticatedAdminEmployeesRoute,
     AuthenticatedAdminFeesRoute: AuthenticatedAdminFeesRoute,
     AuthenticatedAdminLedgerRoute: AuthenticatedAdminLedgerRoute,
     AuthenticatedAdminP2pOrdersRoute: AuthenticatedAdminP2pOrdersRoute,
@@ -1277,6 +1440,7 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
       AuthenticatedAdminPaymentOperationsRoute,
     AuthenticatedAdminReferralsRoute: AuthenticatedAdminReferralsRoute,
     AuthenticatedAdminRiskSecurityRoute: AuthenticatedAdminRiskSecurityRoute,
+    AuthenticatedAdminSystemHealthRoute: AuthenticatedAdminSystemHealthRoute,
     AuthenticatedAdminSystemSettingsRoute:
       AuthenticatedAdminSystemSettingsRoute,
     AuthenticatedAdminTelegramRoute: AuthenticatedAdminTelegramRoute,
@@ -1325,6 +1489,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTradeRoute: typeof AuthenticatedTradeRoute
   AuthenticatedWithdrawRoute: typeof AuthenticatedWithdrawRoute
   AuthenticatedWalletWalletIdRoute: typeof AuthenticatedWalletWalletIdRoute
+  AuthenticatedVendorIndexRoute: typeof AuthenticatedVendorIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
 
@@ -1346,6 +1511,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTradeRoute: AuthenticatedTradeRoute,
   AuthenticatedWithdrawRoute: AuthenticatedWithdrawRoute,
   AuthenticatedWalletWalletIdRoute: AuthenticatedWalletWalletIdRoute,
+  AuthenticatedVendorIndexRoute: AuthenticatedVendorIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }
 
@@ -1393,10 +1559,15 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   MiniAppRoute: MiniAppRoute,
+  PrivacyRoute: PrivacyRoute,
+  RiskDisclosureRoute: RiskDisclosureRoute,
+  TermsRoute: TermsRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminRegisterRoute: AdminRegisterRoute,
   TraderLoginRoute: TraderLoginRoute,
   TraderRegisterRoute: TraderRegisterRoute,
+  VendorLoginRoute: VendorLoginRoute,
+  VendorRegisterRoute: VendorRegisterRoute,
   ApiV1BalanceRoute: ApiV1BalanceRoute,
   ApiV1DepositsRoute: ApiV1DepositsRouteWithChildren,
   ApiV1DirectSellRoute: ApiV1DirectSellRouteWithChildren,

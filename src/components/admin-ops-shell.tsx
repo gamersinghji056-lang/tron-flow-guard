@@ -30,6 +30,7 @@ import { NotificationBell } from "@/components/notification-bell";
 const adminLinks = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/users", label: "Users", icon: Users },
+  { to: "/admin/employees", label: "Employees", icon: UserRoundCog },
   { to: "/admin/p2p-orders", label: "P2P Orders", icon: BriefcaseBusiness },
   { to: "/admin/ads", label: "Ads", icon: BadgeDollarSign },
   { to: "/admin/direct-sell", label: "Direct Sell", icon: Building2 },
@@ -44,6 +45,7 @@ const adminLinks = [
   { to: "/admin/payment-methods", label: "Bank/UPI Management", icon: BadgeDollarSign },
   { to: "/admin/analytics", label: "Analytics", icon: Activity },
   { to: "/admin/blockchain-monitor", label: "Blockchain Monitor", icon: Blocks },
+  { to: "/admin/system-health", label: "System Health", icon: AlertTriangle },
   { to: "/admin/api-management", label: "API Management", icon: FileKey2 },
   { to: "/admin/webhooks", label: "Webhooks", icon: Webhook },
   { to: "/admin/telegram", label: "Telegram", icon: Bot },

@@ -31,13 +31,17 @@ export async function readAccess(client: Client, userId: string): Promise<Access
     ? "super_admin"
     : held.includes("admin")
       ? "admin"
-      : "trader";
+      : held.includes("employee")
+        ? "employee"
+        : held.includes("vendor")
+          ? "vendor"
+          : "trader";
 
   return {
     userId,
     role,
     permissions: (perms ?? []).map((row) => row.permission),
-    isAdmin: role === "admin" || role === "super_admin",
+    isAdmin: role === "admin" || role === "super_admin" || role === "employee",
     isSuperAdmin: role === "super_admin",
   };
 }

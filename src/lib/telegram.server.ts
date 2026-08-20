@@ -700,6 +700,8 @@ export async function fetchTelegramOverview(initData: string) {
   const [
     { data: profile },
     { data: orders },
+    { data: directSellOrders },
+    { data: directSellPaymentItems },
     { data: transactions },
     { data: notifications },
     { data: wallets },
@@ -716,6 +718,22 @@ export async function fetchTelegramOverview(initData: string) {
       .order("created_at", { ascending: false })
       .limit(8),
     supabaseAdmin
+      .from("direct_sell_orders" as never)
+      .select(
+        "id, order_ref, deposit_request_id, expected_usdt, received_usdt, expected_inr, locked_rate_inr, status, assigned_company_address, txid, confirmations, required_confirmations, expires_at, created_at",
+      )
+      .eq("user_id", userId as never)
+      .order("created_at", { ascending: false })
+      .limit(12),
+    supabaseAdmin
+      .from("direct_sell_payment_items" as never)
+      .select(
+        "id, direct_sell_order_id, amount_inr, utr_reference, proof_path, status, confirmation_deadline, confirmed_at, disputed_at, created_at",
+      )
+      .eq("user_id", userId as never)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabaseAdmin
       .from("ledger_entries" as never)
       .select("id, entry_type, currency, amount, bucket, reference_id, memo, created_at")
       .eq("user_id", userId as never)
@@ -730,7 +748,7 @@ export async function fetchTelegramOverview(initData: string) {
     supabaseAdmin
       .from("user_wallets" as never)
       .select(
-        "id, name, address, network, balance, onchain_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
+        "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
       )
       .eq("user_id", userId as never)
       .eq("is_archived", false as never)
@@ -753,6 +771,8 @@ export async function fetchTelegramOverview(initData: string) {
         ].includes(String(order.status)),
       ) ?? [],
     orders: orders ?? [],
+    directSellOrders: directSellOrders ?? [],
+    directSellPaymentItems: directSellPaymentItems ?? [],
     transactions: transactions ?? [],
     notifications: notifications ?? [],
     wallets: wallets ?? [],
