@@ -230,7 +230,8 @@ export async function importPersonalWallet(params: {
 
   const derived = deriveTronWalletFromMnemonic(params.mnemonic);
   const encrypted = encryptMnemonic(derived.mnemonic, params.transactionPassword);
-  const gasStatus = params.walletType === "gasfree" ? await readGasfreeStatus() : "unavailable";
+  const importedWalletType = "standard";
+  const gasStatus = "unavailable";
   const networkDecision = await detectImportedNetwork(
     derived.address,
     params.network,
@@ -257,16 +258,27 @@ export async function importPersonalWallet(params: {
     .maybeSingle();
   if (duplicateError) throw new Error(duplicateError.message);
   if (duplicate) {
-    const duplicateRow = duplicate as { id: string; network?: ChainNetwork };
-    if (duplicateRow.network !== detectedNetwork) {
+    const duplicateRow = duplicate as {
+      id: string;
+      network?: ChainNetwork;
+      wallet_type?: string | null;
+      backup_status?: string | null;
+    };
+    const importedGasfree =
+      duplicateRow.wallet_type === "gasfree" && duplicateRow.backup_status === "imported";
+    if (duplicateRow.network !== detectedNetwork || importedGasfree) {
+      const update = {
+        network: detectedNetwork,
+        ...(importedGasfree
+          ? { wallet_type: importedWalletType, gas_sponsorship_status: gasStatus }
+          : {}),
+        onchain_checked_at: null,
+        onchain_trx_checked_at: null,
+        last_synced_at: null,
+      };
       await supabaseAdmin
         .from("user_wallets" as never)
-        .update({
-          network: detectedNetwork,
-          onchain_checked_at: null,
-          onchain_trx_checked_at: null,
-          last_synced_at: null,
-        } as never)
+        .update(update as never)
         .eq("id", duplicateRow.id as never);
     }
     if (params.makeDefault) {
@@ -277,7 +289,13 @@ export async function importPersonalWallet(params: {
     }
     await refreshPersonalWalletOnChainBalance(params.userId, duplicateRow.id);
     return {
-      wallet: { ...(duplicate as Record<string, unknown>), network: detectedNetwork },
+      wallet: {
+        ...(duplicate as Record<string, unknown>),
+        network: detectedNetwork,
+        ...(importedGasfree
+          ? { wallet_type: importedWalletType, gas_sponsorship_status: gasStatus }
+          : {}),
+      },
       existing: true,
       detectedNetwork,
     };
@@ -300,7 +318,7 @@ export async function importPersonalWallet(params: {
       address: derived.address,
       public_key: derived.publicKeyHex,
       custody: "non_custodial",
-      wallet_type: params.walletType,
+      wallet_type: importedWalletType,
       backup_status: "imported",
       derivation_path: derived.derivationPath,
       gas_sponsorship_status: gasStatus,
@@ -346,7 +364,7 @@ export async function importPersonalWallet(params: {
       address: row.address,
       network: detectedNetwork,
       requested_network: params.network,
-      wallet_type: params.walletType,
+      wallet_type: importedWalletType,
       derivation_path: derived.derivationPath,
     },
   });

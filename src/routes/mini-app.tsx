@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   Bell,
   ChevronLeft,
+  ChevronDown,
   ExternalLink,
   Loader2,
   MoreHorizontal,
@@ -90,8 +91,12 @@ type MiniScreen =
   | "wallet-create"
   | "wallet-import"
   | "wallet-detail"
+  | "wallet-history"
+  | "wallet-transaction-detail"
+  | "wallet-asset-detail"
   | "wallet-receive"
   | "wallet-backup"
+  | "wallet-more"
   | "platform-deposit"
   | "direct-sell-detail"
   | "send"
@@ -107,6 +112,8 @@ type P2pTab = "buy" | "sell" | "myAds" | "myOrders";
 type TradeTab = "sell" | "buy";
 type ReceiveAsset = "USDT" | "TRX";
 type WalletType = "standard" | "gasfree";
+type WalletHistoryAssetFilter = "ALL" | ReceiveAsset;
+type WalletHistoryDirectionFilter = "ALL" | "in" | "out";
 
 interface TelegramWebApp {
   initData?: string;
@@ -171,6 +178,7 @@ interface TransactionRow {
   txid?: string | null;
   status?: string | null;
   memo?: string | null;
+  counterparty_address?: string | null;
   created_at?: string | null;
 }
 
@@ -342,6 +350,16 @@ function tabForScreen(screen: MiniScreen): PrimaryTab {
   return screen as PrimaryTab;
 }
 
+function backScreenFor(screen: MiniScreen, transactionBackScreen: MiniScreen): MiniScreen {
+  if (screen === "wallet-transaction-detail") return transactionBackScreen;
+  if (screen === "wallet-history" || screen === "wallet-asset-detail") return "wallet-detail";
+  if (screen === "wallet-detail" || screen === "wallet-create" || screen === "wallet-import")
+    return "wallet";
+  if (screen === "wallet-receive" || screen === "wallet-backup" || screen === "wallet-more")
+    return "wallet-detail";
+  return tabForScreen(screen);
+}
+
 async function getTelegramLaunch() {
   if (typeof window === "undefined") return { initData: "", sdkPresent: false };
   for (let attempt = 0; attempt < 15; attempt += 1) {
@@ -450,6 +468,13 @@ function TelegramMiniApp() {
   const [walletTransactions, setWalletTransactions] = useState<TransactionRow[]>([]);
   const [selectedDirectSellId, setSelectedDirectSellId] = useState("");
   const [createdDirectSell, setCreatedDirectSell] = useState<DirectSellOrderCreated | null>(null);
+  const [walletTransactionHasMore, setWalletTransactionHasMore] = useState(false);
+  const [walletHistoryAsset, setWalletHistoryAsset] = useState<WalletHistoryAssetFilter>("ALL");
+  const [walletHistoryDirection, setWalletHistoryDirection] =
+    useState<WalletHistoryDirectionFilter>("ALL");
+  const [selectedWalletAsset, setSelectedWalletAsset] = useState<ReceiveAsset>("USDT");
+  const [selectedWalletTransactionId, setSelectedWalletTransactionId] = useState("");
+  const [transactionBackScreen, setTransactionBackScreen] = useState<MiniScreen>("wallet-history");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -496,6 +521,8 @@ function TelegramMiniApp() {
   const wallets = overview?.wallets ?? [];
   const selectedWallet = selectActiveWallet(wallets, selectedWalletId);
   const selectedAddress = safeAddress(selectedWallet?.address);
+  const selectedWalletTransaction =
+    walletTransactions.find((row) => row.id === selectedWalletTransactionId) ?? null;
   const primaryTab = tabForScreen(screen);
   const platformBalance = Number(profile?.balance ?? 0);
   const lockedBalance = Number(profile?.locked_balance ?? 0);
@@ -756,27 +783,46 @@ function TelegramMiniApp() {
     void QRCode.toDataURL(payload, { width: 260, margin: 1 }).then(setDirectSellQr);
   }, [selectedDirectSell?.assigned_company_address, selectedDirectSell?.expected_usdt]);
 
+  async function loadSelectedWalletTransactions(walletId: string, reset = false) {
+    const pageSize = 50;
+    const offset = reset ? 0 : walletTransactions.length;
+    const { data, error } = await supabase
+      .from("wallet_transactions" as never)
+      .select(
+        "id, wallet_id, direction, kind, currency, amount, fee, network, txid, status, memo, counterparty_address, created_at",
+      )
+      .eq("wallet_id", walletId as never)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      toast.error("Unable to load selected wallet history");
+      if (reset) setWalletTransactions([]);
+      setWalletTransactionHasMore(false);
+      return;
+    }
+
+    const rows = (data ?? []) as unknown as TransactionRow[];
+    setWalletTransactions((current) => {
+      const merged = reset ? rows : [...current, ...rows];
+      const seen = new Set<string>();
+      return merged.filter((row) => {
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
+    });
+    setWalletTransactionHasMore(rows.length === pageSize);
+  }
+
   useEffect(() => {
     if (!selectedWallet?.id || !hasSession) {
       setWalletTransactions([]);
+      setWalletTransactionHasMore(false);
       return;
     }
-    void supabase
-      .from("wallet_transactions" as never)
-      .select(
-        "id, wallet_id, direction, kind, currency, amount, fee, network, txid, status, memo, created_at",
-      )
-      .eq("wallet_id", selectedWallet.id as never)
-      .order("created_at", { ascending: false })
-      .limit(50)
-      .then(({ data, error }) => {
-        if (error) {
-          toast.error("Unable to load selected wallet history");
-          setWalletTransactions([]);
-        } else {
-          setWalletTransactions((data ?? []) as unknown as TransactionRow[]);
-        }
-      });
+    setSelectedWalletTransactionId("");
+    void loadSelectedWalletTransactions(selectedWallet.id, true);
   }, [selectedWallet?.id, hasSession]);
 
   useEffect(() => {
@@ -792,12 +838,12 @@ function TelegramMiniApp() {
       typeof window !== "undefined" ? (window as TelegramWindow).Telegram?.WebApp : undefined;
     const backable = !["home", "p2p", "trade", "wallet", "more"].includes(screen);
     if (!webApp?.BackButton) return;
-    const handler = () => setScreen(tabForScreen(screen));
+    const handler = () => setScreen(backScreenFor(screen, transactionBackScreen));
     if (backable) webApp.BackButton.show();
     else webApp.BackButton.hide();
     webApp.BackButton.onClick(handler);
     return () => webApp.BackButton?.offClick(handler);
-  }, [screen]);
+  }, [screen, transactionBackScreen]);
 
   async function navigate(next: MiniScreen) {
     setRevealedPhrase("");
@@ -1046,7 +1092,7 @@ function TelegramMiniApp() {
         data: {
           name: createWalletName,
           network: createWalletNetwork,
-          walletType: createWalletType,
+          walletType: "standard",
           makeDefault: wallets.length === 0,
           transactionPassword: walletPassword,
         },
@@ -1127,7 +1173,8 @@ function TelegramMiniApp() {
     try {
       await refreshBalance({ data: { walletId: selectedWallet.id } });
       await refresh("wallet-detail");
-      toast.success("On-chain balance refreshed");
+      await loadSelectedWalletTransactions(selectedWallet.id, true);
+      toast.success("Wallet sync completed");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not refresh balance");
     } finally {
@@ -1281,7 +1328,7 @@ function TelegramMiniApp() {
           onProfile={() => void navigate("profile")}
         />
         {!["home", "p2p", "trade", "wallet", "more"].includes(screen) ? (
-          <BackButton onClick={() => setScreen(tabForScreen(screen))} />
+          <BackButton onClick={() => setScreen(backScreenFor(screen, transactionBackScreen))} />
         ) : null}
         {screen === "home" ? (
           <HomeScreen
@@ -1323,8 +1370,6 @@ function TelegramMiniApp() {
             setName={setCreateWalletName}
             phrase={importPhrase}
             setPhrase={setImportPhrase}
-            walletType={createWalletType}
-            setWalletType={setCreateWalletType}
             network={createWalletNetwork}
             setNetwork={setCreateWalletNetwork}
             networkRequired={importNetworkRequired}
@@ -1340,8 +1385,63 @@ function TelegramMiniApp() {
             transactions={walletTransactions}
             busy={busy}
             onNavigate={navigate}
+            onSelectAsset={(asset) => {
+              setSelectedWalletAsset(asset);
+              void navigate("wallet-asset-detail");
+            }}
+            onSelectTransaction={(transaction, backTo = "wallet-detail") => {
+              setSelectedWalletTransactionId(transaction.id);
+              setTransactionBackScreen(backTo);
+              void navigate("wallet-transaction-detail");
+            }}
             onRefresh={() => void refreshSelectedWalletBalance()}
             onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
+          />
+        ) : null}
+        {screen === "wallet-history" ? (
+          <WalletHistoryScreen
+            wallet={selectedWallet}
+            rows={walletTransactions}
+            assetFilter={walletHistoryAsset}
+            setAssetFilter={setWalletHistoryAsset}
+            directionFilter={walletHistoryDirection}
+            setDirectionFilter={setWalletHistoryDirection}
+            hasMore={walletTransactionHasMore}
+            busy={busy}
+            onLoadMore={() =>
+              selectedWallet?.id && void loadSelectedWalletTransactions(selectedWallet.id)
+            }
+            onSelectTransaction={(transaction) => {
+              setSelectedWalletTransactionId(transaction.id);
+              setTransactionBackScreen("wallet-history");
+              void navigate("wallet-transaction-detail");
+            }}
+          />
+        ) : null}
+        {screen === "wallet-asset-detail" ? (
+          <WalletAssetDetailScreen
+            wallet={selectedWallet}
+            asset={selectedWalletAsset}
+            rows={walletTransactions}
+            onSend={() => {
+              setSendAsset(selectedWalletAsset);
+              void navigate("send");
+            }}
+            onReceive={() => {
+              setReceiveAsset(selectedWalletAsset);
+              void navigate("wallet-receive");
+            }}
+            onSelectTransaction={(transaction) => {
+              setSelectedWalletTransactionId(transaction.id);
+              setTransactionBackScreen("wallet-asset-detail");
+              void navigate("wallet-transaction-detail");
+            }}
+          />
+        ) : null}
+        {screen === "wallet-transaction-detail" ? (
+          <WalletTransactionDetailScreen
+            wallet={selectedWallet}
+            transaction={selectedWalletTransaction}
           />
         ) : null}
         {screen === "wallet-receive" ? (
@@ -1350,6 +1450,13 @@ function TelegramMiniApp() {
             asset={receiveAsset}
             setAsset={setReceiveAsset}
             qr={walletQr}
+          />
+        ) : null}
+        {screen === "wallet-more" ? (
+          <WalletMoreScreen
+            wallet={selectedWallet}
+            onNavigate={navigate}
+            onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
           />
         ) : null}
         {screen === "wallet-backup" ? (
@@ -1828,8 +1935,6 @@ function WalletImportScreen(props: {
   setName: (value: string) => void;
   phrase: string;
   setPhrase: (value: string) => void;
-  walletType: WalletType;
-  setWalletType: (value: WalletType) => void;
   network: ChainNetwork;
   setNetwork: (value: ChainNetwork) => void;
   networkRequired: { reason: "multiple_active" | "no_activity"; address: string } | null;
@@ -1852,21 +1957,16 @@ function WalletImportScreen(props: {
           />
         </FormCard>
         <FormCard title="Wallet Type">
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant={props.walletType === "standard" ? "default" : "secondary"}
-              onClick={() => props.setWalletType("standard")}
-            >
-              Standard
-            </Button>
-            <Button
-              type="button"
-              variant={props.walletType === "gasfree" ? "default" : "secondary"}
-              onClick={() => props.setWalletType("gasfree")}
-            >
-              GasFree
-            </Button>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div className="flex items-center gap-3">
+              <TronIcon className="h-8 w-8" />
+              <div>
+                <p className="text-sm font-semibold">Standard TRON Wallet</p>
+                <p className="text-xs text-slate-400">
+                  External mnemonic imports are treated as standard self-custody wallets.
+                </p>
+              </div>
+            </div>
           </div>
         </FormCard>
         <FormCard title="Network">
@@ -1914,6 +2014,8 @@ function WalletDetailScreen({
   transactions,
   busy,
   onNavigate,
+  onSelectAsset,
+  onSelectTransaction,
   onRefresh,
   onSetDefault,
 }: {
@@ -1921,6 +2023,8 @@ function WalletDetailScreen({
   transactions: TransactionRow[];
   busy: boolean;
   onNavigate: (screen: MiniScreen) => Promise<void>;
+  onSelectAsset: (asset: ReceiveAsset) => void;
+  onSelectTransaction: (transaction: TransactionRow, backTo?: MiniScreen) => void;
   onRefresh: () => void;
   onSetDefault: () => void;
 }) {
@@ -1931,17 +2035,47 @@ function WalletDetailScreen({
       </Screen>
     );
   const balance = walletDisplayBalance(wallet);
+  const network = networkConfig(wallet.network);
+  const typeLabel = (wallet.wallet_type ?? "standard").toUpperCase();
+  const recentRows = transactions.slice(0, 5);
   return (
-    <Screen title={wallet.name ?? "Wallet"} subtitle="TRON personal wallet detail">
-      <div className="rounded-3xl border border-white/10 bg-blue-600/18 p-5">
-        <div className="flex items-center justify-between gap-3">
+    <Screen title="Wallet" subtitle="Self-custody TRON wallet">
+      <div className="rounded-[2rem] border border-white/10 bg-[#101826] p-5 shadow-[0_18px_60px_-35px_rgba(37,99,235,0.9)]">
+        <div className="flex items-start justify-between gap-3">
+          <button className="min-w-0 text-left" onClick={() => onNavigate("wallet")}>
+            <span className="flex items-center gap-2 text-xs text-slate-400">
+              <TronIcon className="h-5 w-5" />
+              {typeLabel} / {network.label}
+            </span>
+            <span className="mt-2 flex items-center gap-1 text-xl font-semibold text-white">
+              <span className="truncate">{wallet.name ?? "Wallet"}</span>
+              <ChevronDown className="h-4 w-4 text-slate-400" />
+            </span>
+          </button>
+          <button
+            className="grid h-10 w-10 place-items-center rounded-full bg-white/8 text-slate-100"
+            onClick={() => onNavigate("wallet-receive")}
+          >
+            <MiniIcons.upi className="h-5 w-5" />
+          </button>
+        </div>
+        <button
+          className="mono mt-3 rounded-full bg-black/25 px-3 py-1 text-xs text-slate-300"
+          onClick={() => copyText(safeAddress(wallet.address), "Address copied")}
+        >
+          {shortenHash(safeAddress(wallet.address), 8)}
+        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
           <NetworkBadge wallet={wallet} />
           <StatusBadge status={wallet.wallet_type ?? "standard"} />
         </div>
-        <p className="mt-4 text-xs text-slate-400">Address</p>
-        <p className="mono mt-1 break-all text-sm">{wallet.address}</p>
-        <p className="mt-5 text-xs text-slate-400">Total Wallet Value</p>
-        <p className="mono mt-1 text-3xl font-semibold">{money(balance)}</p>
+        <p className="mt-6 text-xs text-slate-400">Portfolio Balance</p>
+        <div className="mt-2 grid gap-1">
+          <p className="mono text-3xl font-semibold text-white">{money(balance)} USDT</p>
+          <p className="mono text-sm text-slate-300">
+            {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
+          </p>
+        </div>
       </div>
       <div className="grid grid-cols-4 gap-2">
         <Action
@@ -1950,16 +2084,21 @@ function WalletDetailScreen({
           onClick={() => onNavigate("wallet-receive")}
         />
         <Action icon={MiniIcons.send} label="Send" onClick={() => onNavigate("send")} />
-        <Action icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
-        <Action icon={MiniIcons.history} label="History" onClick={() => onNavigate("history")} />
+        <Action
+          icon={MiniIcons.history}
+          label="History"
+          onClick={() => onNavigate("wallet-history")}
+        />
+        <Action icon={MoreHorizontal} label="More" onClick={() => onNavigate("wallet-more")} />
       </div>
-      <Section title="Assets" action="Refresh" onAction={onRefresh}>
+      <Section title="Assets" action={busy ? "Refreshing..." : "Refresh"} onAction={onRefresh}>
         <AssetRow
           icon={<UsdtIcon />}
           symbol="USDT"
           name="Tether USD"
           network="TRC20"
           amount={`${money(balance)} USDT`}
+          onClick={() => onSelectAsset("USDT")}
         />
         <AssetRow
           icon={<TronIcon />}
@@ -1967,6 +2106,7 @@ function WalletDetailScreen({
           name="TRON"
           network="TRON"
           amount={`${money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX`}
+          onClick={() => onSelectAsset("TRX")}
         />
       </Section>
       <Section title="Wallet Settings">
@@ -2000,11 +2140,289 @@ function WalletDetailScreen({
         />
       </Section>
       <TransactionList
-        title="Selected Wallet History"
-        rows={transactions}
+        title="Recent Wallet Activity"
+        rows={recentRows}
         empty="No on-chain wallet activity for this wallet yet."
+        onSelect={(transaction) => onSelectTransaction(transaction)}
       />
       {busy ? <p className="text-center text-xs text-slate-500">Working...</p> : null}
+    </Screen>
+  );
+}
+
+function filterWalletTransactions(
+  rows: TransactionRow[],
+  asset: WalletHistoryAssetFilter,
+  direction: WalletHistoryDirectionFilter,
+) {
+  return rows.filter((row) => {
+    const currency = String(row.currency ?? "").toUpperCase();
+    const rowDirection = String(row.direction ?? "");
+    return (
+      (asset === "ALL" || currency === asset) && (direction === "ALL" || rowDirection === direction)
+    );
+  });
+}
+
+function WalletHistoryScreen({
+  wallet,
+  rows,
+  assetFilter,
+  setAssetFilter,
+  directionFilter,
+  setDirectionFilter,
+  hasMore,
+  busy,
+  onLoadMore,
+  onSelectTransaction,
+}: {
+  wallet: WalletRow | null;
+  rows: TransactionRow[];
+  assetFilter: WalletHistoryAssetFilter;
+  setAssetFilter: (filter: WalletHistoryAssetFilter) => void;
+  directionFilter: WalletHistoryDirectionFilter;
+  setDirectionFilter: (filter: WalletHistoryDirectionFilter) => void;
+  hasMore: boolean;
+  busy: boolean;
+  onLoadMore: () => void;
+  onSelectTransaction: (transaction: TransactionRow) => void;
+}) {
+  const filtered = useMemo(
+    () => filterWalletTransactions(rows, assetFilter, directionFilter),
+    [rows, assetFilter, directionFilter],
+  );
+  return (
+    <Screen title="Wallet History" subtitle={wallet?.name ?? "Selected wallet"}>
+      {wallet ? (
+        <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold">{wallet.name ?? "Wallet"}</p>
+              <p className="mono truncate text-xs text-slate-400">{wallet.address}</p>
+            </div>
+            <NetworkBadge wallet={wallet} />
+          </div>
+        </div>
+      ) : null}
+      <Tabs
+        value={assetFilter}
+        setValue={(value) => setAssetFilter(value as WalletHistoryAssetFilter)}
+        items={[
+          ["ALL", "All"],
+          ["USDT", "USDT"],
+          ["TRX", "TRX"],
+        ]}
+      />
+      <Tabs
+        value={directionFilter}
+        setValue={(value) => setDirectionFilter(value as WalletHistoryDirectionFilter)}
+        items={[
+          ["ALL", "All"],
+          ["in", "Received"],
+          ["out", "Sent"],
+        ]}
+      />
+      <WalletTransactionRows rows={filtered} onSelect={onSelectTransaction} />
+      {hasMore ? (
+        <Button className="w-full bg-blue-600" disabled={busy} onClick={onLoadMore}>
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Load More
+        </Button>
+      ) : null}
+    </Screen>
+  );
+}
+
+function WalletAssetDetailScreen({
+  wallet,
+  asset,
+  rows,
+  onSend,
+  onReceive,
+  onSelectTransaction,
+}: {
+  wallet: WalletRow | null;
+  asset: ReceiveAsset;
+  rows: TransactionRow[];
+  onSend: () => void;
+  onReceive: () => void;
+  onSelectTransaction: (transaction: TransactionRow) => void;
+}) {
+  const balance =
+    asset === "USDT" ? walletDisplayBalance(wallet) : Number(wallet?.onchain_trx_balance ?? 0);
+  const assetRows = useMemo(
+    () => rows.filter((row) => String(row.currency ?? "").toUpperCase() === asset),
+    [rows, asset],
+  );
+  const Icon = asset === "USDT" ? UsdtIcon : TronIcon;
+  return (
+    <Screen title={asset} subtitle={asset === "USDT" ? "Tether USD / TRC20" : "TRON"}>
+      <div className="rounded-3xl border border-white/10 bg-white/6 p-5">
+        <div className="flex items-center gap-3">
+          <Icon className="h-10 w-10" />
+          <div>
+            <p className="font-semibold">{asset === "USDT" ? "Tether USD" : "TRON"}</p>
+            <p className="text-xs text-slate-400">{networkConfig(wallet?.network).label}</p>
+          </div>
+        </div>
+        <p className="mt-6 text-xs text-slate-400">Balance</p>
+        <p className="mono mt-1 text-3xl font-semibold">
+          {money(balance, asset)} {asset}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Action icon={MiniIcons.send} label="Send" onClick={onSend} />
+        <Action icon={MiniIcons.receive} label="Receive" onClick={onReceive} />
+      </div>
+      <Section title={`${asset} Transactions`}>
+        <WalletTransactionRows rows={assetRows} onSelect={onSelectTransaction} />
+      </Section>
+    </Screen>
+  );
+}
+
+function WalletTransactionDetailScreen({
+  wallet,
+  transaction,
+}: {
+  wallet: WalletRow | null;
+  transaction: TransactionRow | null;
+}) {
+  if (!wallet || !transaction) {
+    return (
+      <Screen title="Transaction" subtitle="Wallet activity">
+        <EmptyLine>Select a transaction first.</EmptyLine>
+      </Screen>
+    );
+  }
+  const network = networkConfig(wallet.network);
+  const direction = transaction.direction === "in" ? "Received" : "Sent";
+  const counterparty = safeAddress(transaction.counterparty_address);
+  const from = transaction.direction === "in" ? counterparty : safeAddress(wallet.address);
+  const to = transaction.direction === "in" ? safeAddress(wallet.address) : counterparty;
+  return (
+    <Screen title={`${direction} ${transaction.currency ?? "USDT"}`} subtitle={network.label}>
+      <div className="rounded-3xl border border-white/10 bg-white/6 p-5 text-center">
+        {String(transaction.currency ?? "").toUpperCase() === "TRX" ? (
+          <TronIcon className="mx-auto h-12 w-12" />
+        ) : (
+          <UsdtIcon className="mx-auto h-12 w-12" />
+        )}
+        <p className="mono mt-4 text-3xl font-semibold">
+          {transaction.direction === "in" ? "+" : "-"}
+          {money(transaction.amount, transaction.currency ?? "USDT")}{" "}
+          {transaction.currency ?? "USDT"}
+        </p>
+        <StatusBadge status={transaction.status ?? "completed"} />
+      </div>
+      <MetricGrid
+        items={[
+          ["Direction", direction],
+          ["Network", network.label],
+          ["From", from ? shortenHash(from, 8) : "-"],
+          ["To", to ? shortenHash(to, 8) : "-"],
+          ["Fee", money(transaction.fee ?? 0, transaction.currency ?? "USDT")],
+          [
+            "Date",
+            transaction.created_at ? new Date(transaction.created_at).toLocaleString() : "-",
+          ],
+        ]}
+      />
+      <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+        <p className="text-xs text-slate-400">TXID</p>
+        <p className="mono mt-1 break-all text-xs">{transaction.txid ?? "-"}</p>
+        {transaction.txid ? (
+          <Button
+            className="mt-3 w-full bg-blue-600"
+            onClick={() =>
+              window.open(
+                network.explorerTx(transaction.txid ?? ""),
+                "_blank",
+                "noopener,noreferrer",
+              )
+            }
+          >
+            View on TRONSCAN
+          </Button>
+        ) : null}
+      </div>
+    </Screen>
+  );
+}
+
+function WalletMoreScreen({
+  wallet,
+  onNavigate,
+  onSetDefault,
+}: {
+  wallet: WalletRow | null;
+  onNavigate: (screen: MiniScreen) => void | Promise<void>;
+  onSetDefault: () => void;
+}) {
+  if (!wallet) {
+    return (
+      <Screen title="Wallet More" subtitle="Selected wallet">
+        <EmptyLine>Select a wallet first.</EmptyLine>
+      </Screen>
+    );
+  }
+  const network = networkConfig(wallet.network);
+  const address = safeAddress(wallet.address);
+  return (
+    <Screen title="Wallet More" subtitle={wallet.name ?? "Selected wallet"}>
+      <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold">{wallet.name ?? "Wallet"}</p>
+            <p className="mono truncate text-xs text-slate-400">{address}</p>
+          </div>
+          <NetworkBadge wallet={wallet} />
+        </div>
+        <MetricGrid
+          items={[
+            ["Network", network.label],
+            ["Wallet Type", (wallet.wallet_type ?? "standard").toUpperCase()],
+            ["Default", wallet.is_default ? "Yes" : "No"],
+            ["GasFree", wallet.gas_sponsorship_status ?? "unavailable"],
+          ]}
+        />
+      </div>
+      <Section title="Actions">
+        <SettingRow
+          icon={MiniIcons.backup}
+          title="Backup"
+          body={wallet.backup_status ?? "not_backed_up"}
+          onClick={() => onNavigate("wallet-backup")}
+        />
+        <SettingRow
+          icon={MiniIcons.security}
+          title="Security"
+          body="Transaction password protected"
+          onClick={() => onNavigate("security")}
+        />
+        <SettingRow
+          icon={MiniIcons.wallet}
+          title="Set Default"
+          body={wallet.is_default ? "Already active" : "Make active wallet"}
+          onClick={onSetDefault}
+        />
+        <SettingRow
+          icon={ExternalLink}
+          title="Explorer"
+          body="Open selected wallet address"
+          onClick={() => {
+            window.open(network.explorerAddress(address), "_blank", "noopener,noreferrer");
+          }}
+        />
+      </Section>
+      <Section title="Wallet Information">
+        <button
+          className="mono w-full rounded-2xl border border-white/10 bg-white/6 p-3 text-left text-xs"
+          onClick={() => copyText(address, "Address copied")}
+        >
+          {address}
+        </button>
+      </Section>
     </Screen>
   );
 }
@@ -2225,6 +2643,10 @@ function SendScreen({
   setAmount: (value: string) => void;
 }) {
   const enabled = onChainSendEnabled(wallet);
+  const network = networkConfig(wallet?.network);
+  const available =
+    asset === "USDT" ? walletDisplayBalance(wallet) : Number(wallet?.onchain_trx_balance ?? 0);
+  const mainnetDisabled = wallet?.network === "trc20-mainnet" && !enabled;
   return (
     <Screen title="Send" subtitle="Prepared for on-chain personal wallet sending">
       <div className="grid grid-cols-2 gap-2">
@@ -2252,14 +2674,16 @@ function SendScreen({
         <MetricGrid
           items={[
             ["Selected wallet", wallet?.name ?? "None"],
-            ["Available", money(walletDisplayBalance(wallet))],
-            ["Network", "TRON"],
+            ["Available", `${money(available, asset)} ${asset}`],
+            ["Network", network.label],
             ["Fees", "Signer required"],
           ]}
         />
       </div>
       <p className="rounded-2xl border border-yellow-500/25 bg-yellow-500/10 p-3 text-sm text-yellow-100">
-        Sending is currently unavailable while secure wallet signing is being configured.
+        {mainnetDisabled
+          ? "MAINNET SEND CURRENTLY DISABLED. Secure signing remains off for Mainnet."
+          : "Sending is currently unavailable while secure wallet signing is being configured."}
       </p>
       <Button className="w-full" disabled={!enabled}>
         Continue
@@ -3240,15 +3664,21 @@ function AssetRow({
   name,
   network,
   amount,
+  onClick,
 }: {
   icon: React.ReactNode;
   symbol: string;
   name: string;
   network: string;
   amount: string;
+  onClick?: () => void;
 }) {
+  const Element = onClick ? "button" : "div";
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/6 p-3">
+    <Element
+      className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/6 p-3 text-left"
+      onClick={onClick}
+    >
       <div className="flex items-center gap-3">
         {icon}
         <div>
@@ -3259,7 +3689,7 @@ function AssetRow({
         </div>
       </div>
       <p className="mono text-sm font-semibold">{amount}</p>
-    </div>
+    </Element>
   );
 }
 function SettingRow({
@@ -3583,48 +4013,78 @@ function TransactionList({
   title,
   rows,
   empty,
+  onSelect,
 }: {
   title: string;
   rows: TransactionRow[];
   empty: string;
+  onSelect?: (transaction: TransactionRow) => void;
 }) {
   const filtered = useMemo(() => rows.slice(0, 8), [rows]);
   return (
     <Section title={title}>
       {filtered.length ? (
-        filtered.map((row) => (
-          <div key={row.id} className="rounded-2xl border border-white/10 bg-white/6 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">
-                  {String(
-                    row.direction === "in"
-                      ? "Incoming"
-                      : row.direction === "out"
-                        ? "Outgoing"
-                        : (row.entry_type ?? row.kind ?? "transaction"),
-                  ).replaceAll("_", " ")}
-                </p>
-                <p className="truncate text-xs text-slate-400">
-                  {row.memo ?? row.reference_id ?? "WTRON record"}
-                </p>
-              </div>
-              <p className="mono text-sm">{money(row.amount, row.currency ?? "USDT")}</p>
-            </div>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
-              <span className="truncate">TXID {row.txid ? shortenHash(row.txid, 8) : "-"}</span>
-              <span className="text-right">{row.status ?? "completed"}</span>
-              <span>{row.network ?? "TRON"}</span>
-              <span className="text-right">
-                {row.created_at ? new Date(row.created_at).toLocaleString() : ""}
-              </span>
-            </div>
-          </div>
-        ))
+        <WalletTransactionRows rows={filtered} onSelect={onSelect} />
       ) : (
         <EmptyLine>{empty}</EmptyLine>
       )}
     </Section>
+  );
+}
+
+function WalletTransactionRows({
+  rows,
+  onSelect,
+}: {
+  rows: TransactionRow[];
+  onSelect?: ((transaction: TransactionRow) => void) | undefined;
+}) {
+  if (!rows.length) return <EmptyLine>No transactions yet.</EmptyLine>;
+  return (
+    <div className="space-y-2">
+      {rows.map((row) => {
+        const currency = String(row.currency ?? "USDT").toUpperCase();
+        const incoming = row.direction === "in";
+        const Icon = currency === "TRX" ? TronIcon : UsdtIcon;
+        return (
+          <button
+            key={row.id}
+            className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/6 p-3 text-left"
+            onClick={() => onSelect?.(row)}
+          >
+            <Icon className="h-9 w-9 shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">
+                {incoming ? "Received" : "Sent"} {currency}
+              </span>
+              <span className="block truncate text-xs text-slate-400">
+                {row.counterparty_address
+                  ? shortenHash(row.counterparty_address, 8)
+                  : row.txid
+                    ? shortenHash(row.txid, 8)
+                    : "On-chain transaction"}
+              </span>
+              <span className="block text-[11px] text-slate-500">
+                {row.created_at ? new Date(row.created_at).toLocaleString() : ""}
+              </span>
+            </span>
+            <span className="text-right">
+              <span
+                className={`mono block text-sm font-semibold ${
+                  incoming ? "text-emerald-300" : "text-white"
+                }`}
+              >
+                {incoming ? "+" : "-"}
+                {money(row.amount, currency)} {currency}
+              </span>
+              <span className="block text-[11px] capitalize text-slate-500">
+                {row.status ?? "completed"}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 function GenericRow({ row }: { row: Record<string, unknown> }) {

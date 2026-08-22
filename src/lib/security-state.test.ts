@@ -49,6 +49,17 @@ import {
 import { chooseImportedWalletNetwork, decideImportedWalletNetwork } from "./wallet-network.ts";
 import { collectPaginatedTronGridRows } from "./tron-pagination.ts";
 import {
+  canAccessKnownWalletHistory,
+  filterMiniWalletTransactions,
+  importedMnemonicWalletType,
+  miniWalletBackScreen,
+  miniWalletHistoryMerge,
+  newestFirstMiniWalletTransactions,
+  preserveWalletTypeForExplicitCreation,
+  walletBottomTab,
+  walletHistoryNavigationTarget,
+} from "./mini-wallet-ui.ts";
+import {
   hashTransactionPassword,
   shouldLockTransactionPassword,
   verifyTransactionPasswordHash,
@@ -620,6 +631,115 @@ describe("historical wallet history sync helpers", () => {
       rows.map((row) => row.txid),
       ["new", "middle", "old"],
     );
+  });
+});
+
+describe("Mini App wallet UX routing and classification", () => {
+  const rows = [
+    {
+      id: "w1-usdt-in",
+      wallet_id: "wallet-1",
+      currency: "USDT",
+      direction: "in",
+      created_at: "2026-08-11T06:53:03Z",
+    },
+    {
+      id: "w1-trx-out",
+      wallet_id: "wallet-1",
+      currency: "TRX",
+      direction: "out",
+      created_at: "2026-05-24T11:11:39Z",
+    },
+    {
+      id: "w2-usdt-in",
+      wallet_id: "wallet-2",
+      currency: "USDT",
+      direction: "in",
+      created_at: "2026-08-12T06:53:03Z",
+    },
+  ];
+
+  it("routes wallet History to wallet history, not generic trade history", () => {
+    assert.equal(walletHistoryNavigationTarget(), "wallet-history");
+    assert.notEqual(walletHistoryNavigationTarget(), "history");
+    assert.notEqual(walletBottomTab(walletHistoryNavigationTarget()), "trade");
+  });
+
+  it("keeps wallet history wallet-specific and can page all 76 known rows", () => {
+    assert.deepEqual(
+      filterMiniWalletTransactions(rows, "wallet-1", "ALL", "ALL").map((row) => row.id),
+      ["w1-usdt-in", "w1-trx-out"],
+    );
+    assert.equal(canAccessKnownWalletHistory(76, 50), true);
+  });
+
+  it("filters asset detail rows by USDT and TRX", () => {
+    assert.deepEqual(
+      filterMiniWalletTransactions(rows, "wallet-1", "USDT", "ALL").map((row) => row.id),
+      ["w1-usdt-in"],
+    );
+    assert.deepEqual(
+      filterMiniWalletTransactions(rows, "wallet-1", "TRX", "ALL").map((row) => row.id),
+      ["w1-trx-out"],
+    );
+  });
+
+  it("filters received and sent directions", () => {
+    assert.deepEqual(
+      filterMiniWalletTransactions(rows, "wallet-1", "ALL", "in").map((row) => row.id),
+      ["w1-usdt-in"],
+    );
+    assert.deepEqual(
+      filterMiniWalletTransactions(rows, "wallet-1", "ALL", "out").map((row) => row.id),
+      ["w1-trx-out"],
+    );
+  });
+
+  it("normal external imports are always Standard, regardless of Mainnet or Nile", () => {
+    assert.equal(importedMnemonicWalletType(), "standard");
+    assert.equal(importedMnemonicWalletType(), "standard");
+  });
+
+  it("does not infer GasFree from network or token balance", () => {
+    assert.equal(importedMnemonicWalletType(), "standard");
+    assert.notEqual(importedMnemonicWalletType(), "gasfree");
+  });
+
+  it("preserves explicit GasFree wallet creation", () => {
+    assert.equal(preserveWalletTypeForExplicitCreation("gasfree"), "gasfree");
+    assert.equal(preserveWalletTypeForExplicitCreation("standard"), "standard");
+  });
+
+  it("switching wallets changes selected-wallet history source", () => {
+    assert.deepEqual(
+      filterMiniWalletTransactions(rows, "wallet-2", "ALL", "ALL").map((row) => row.id),
+      ["w2-usdt-in"],
+    );
+  });
+
+  it("uses duplicate-safe history merge for load more", () => {
+    assert.deepEqual(
+      miniWalletHistoryMerge([rows[0]!, rows[1]!], [rows[1]!, rows[2]!]).map((row) => row.id),
+      ["w1-usdt-in", "w1-trx-out", "w2-usdt-in"],
+    );
+  });
+
+  it("keeps transaction ordering newest first", () => {
+    assert.deepEqual(
+      newestFirstMiniWalletTransactions([rows[1]!, rows[0]!]).map((row) => row.id),
+      ["w1-usdt-in", "w1-trx-out"],
+    );
+  });
+
+  it("keeps wallet back hierarchy under wallet screens", () => {
+    assert.equal(miniWalletBackScreen("wallet-history"), "wallet-detail");
+    assert.equal(miniWalletBackScreen("wallet-asset-detail"), "wallet-detail");
+    assert.equal(miniWalletBackScreen("wallet-more"), "wallet-detail");
+    assert.equal(
+      miniWalletBackScreen("wallet-transaction-detail", "wallet-history"),
+      "wallet-history",
+    );
+    assert.equal(walletBottomTab("wallet-transaction-detail"), "wallet");
   });
 });
 
