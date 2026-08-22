@@ -93,14 +93,11 @@ async function readGasfreeStatus() {
   return value === "available" || value === "limited" ? value : "unavailable";
 }
 
-async function detectImportedNetwork(
-  address: string,
-  requested: ChainNetwork,
-): Promise<ChainNetwork> {
+async function detectImportedNetwork(address: string, requested: ChainNetwork, confirmed: boolean) {
   const { getIncomingUsdtTransfers, getNativeTrxBalance, getOutgoingUsdtTransfers } =
     await import("@/lib/tron.server");
   const { readTrc20Balance } = await import("@/lib/tron-transfer.server");
-  const { chooseImportedWalletNetwork } = await import("@/lib/wallet-network");
+  const { decideImportedWalletNetwork } = await import("@/lib/wallet-network");
   const networks: ChainNetwork[] = ["trc20-mainnet", "trc20-nile"];
 
   const probes = await Promise.all(
@@ -120,7 +117,7 @@ async function detectImportedNetwork(
     }),
   );
 
-  return chooseImportedWalletNetwork(requested, probes);
+  return decideImportedWalletNetwork(requested, probes, confirmed);
 }
 
 export async function provisionPersonalWallet(params: {
@@ -222,6 +219,7 @@ export async function importPersonalWallet(params: {
   mnemonic: string;
   makeDefault: boolean;
   transactionPassword: string;
+  networkConfirmed?: boolean;
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { deriveTronWalletFromMnemonic } = await import("@/lib/tron-personal-wallet");
@@ -233,7 +231,20 @@ export async function importPersonalWallet(params: {
   const derived = deriveTronWalletFromMnemonic(params.mnemonic);
   const encrypted = encryptMnemonic(derived.mnemonic, params.transactionPassword);
   const gasStatus = params.walletType === "gasfree" ? await readGasfreeStatus() : "unavailable";
-  const detectedNetwork = await detectImportedNetwork(derived.address, params.network);
+  const networkDecision = await detectImportedNetwork(
+    derived.address,
+    params.network,
+    params.networkConfirmed === true,
+  );
+  if (networkDecision.type === "requires_selection") {
+    return {
+      requiresNetworkSelection: true,
+      reason: networkDecision.reason,
+      address: derived.address,
+      probes: networkDecision.probes,
+    };
+  }
+  const detectedNetwork = networkDecision.network;
 
   const { data: duplicate, error: duplicateError } = await supabaseAdmin
     .from("user_wallets" as never)

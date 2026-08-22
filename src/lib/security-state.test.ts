@@ -46,7 +46,7 @@ import {
   userOwnsWallet,
   walletDisplayBalance,
 } from "./wallet-state.ts";
-import { chooseImportedWalletNetwork } from "./wallet-network.ts";
+import { chooseImportedWalletNetwork, decideImportedWalletNetwork } from "./wallet-network.ts";
 import {
   hashTransactionPassword,
   shouldLockTransactionPassword,
@@ -437,23 +437,82 @@ describe("server-side signer safety", () => {
 });
 
 describe("imported wallet network detection", () => {
-  it("keeps the requested network when no supported chain has balance or activity", () => {
-    assert.equal(
-      chooseImportedWalletNetwork("trc20-nile", [
-        { network: "trc20-mainnet", trxBalance: 0, usdtBalance: 0, txCount: 0 },
-        { network: "trc20-nile", trxBalance: 0, usdtBalance: 0, txCount: 0 },
-      ]),
-      "trc20-nile",
-    );
-  });
-
-  it("selects Mainnet when the imported address has Mainnet funds or activity", () => {
+  it("selects Mainnet when only Mainnet has balance or activity", () => {
     assert.equal(
       chooseImportedWalletNetwork("trc20-nile", [
         { network: "trc20-mainnet", trxBalance: 7.954209, usdtBalance: 15, txCount: 4 },
         { network: "trc20-nile", trxBalance: 0, usdtBalance: 0, txCount: 0 },
       ]),
       "trc20-mainnet",
+    );
+  });
+
+  it("selects Nile when only Nile has balance or activity", () => {
+    assert.equal(
+      chooseImportedWalletNetwork("trc20-mainnet", [
+        { network: "trc20-mainnet", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+        { network: "trc20-nile", trxBalance: 5, usdtBalance: 10, txCount: 2 },
+      ]),
+      "trc20-nile",
+    );
+  });
+
+  it("requires user selection when both networks have activity", () => {
+    assert.deepEqual(
+      decideImportedWalletNetwork(
+        "trc20-nile",
+        [
+          { network: "trc20-mainnet", trxBalance: 7.954209, usdtBalance: 15, txCount: 4 },
+          { network: "trc20-nile", trxBalance: 1, usdtBalance: 0, txCount: 1 },
+        ],
+        false,
+      ),
+      {
+        type: "requires_selection",
+        reason: "multiple_active",
+        probes: [
+          { network: "trc20-mainnet", trxBalance: 7.954209, usdtBalance: 15, txCount: 4 },
+          { network: "trc20-nile", trxBalance: 1, usdtBalance: 0, txCount: 1 },
+        ],
+      },
+    );
+  });
+
+  it("requires user selection when no supported network has activity", () => {
+    const decision = decideImportedWalletNetwork(
+      "trc20-nile",
+      [
+        { network: "trc20-mainnet", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+        { network: "trc20-nile", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+      ],
+      false,
+    );
+    assert.equal(decision.type, "requires_selection");
+    if (decision.type === "requires_selection") assert.equal(decision.reason, "no_activity");
+  });
+
+  it("persists an explicitly confirmed imported wallet network", () => {
+    assert.deepEqual(
+      decideImportedWalletNetwork(
+        "trc20-mainnet",
+        [
+          { network: "trc20-mainnet", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+          { network: "trc20-nile", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+        ],
+        true,
+      ),
+      { type: "selected", network: "trc20-mainnet", reason: "confirmed" },
+    );
+  });
+
+  it("refresh and history use the persisted wallet network", () => {
+    const wallet = { network: "trc20-mainnet" as const };
+    assert.equal(
+      chooseImportedWalletNetwork(wallet.network, [
+        { network: "trc20-mainnet", trxBalance: 1, usdtBalance: 0, txCount: 1 },
+        { network: "trc20-nile", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+      ]),
+      wallet.network,
     );
   });
 });

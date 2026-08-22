@@ -84,6 +84,10 @@ function WalletsPage() {
     makeDefault: false,
   });
   const [importPhrase, setImportPhrase] = useState("");
+  const [importNetworkRequired, setImportNetworkRequired] = useState<{
+    reason: "multiple_active" | "no_activity";
+    address: string;
+  } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
 
@@ -185,7 +189,7 @@ function WalletsPage() {
     event.preventDefault();
     setPending(true);
     try {
-      await importExisting({
+      const result = await importExisting({
         data: {
           name: form.name.trim(),
           network: form.network,
@@ -193,11 +197,22 @@ function WalletsPage() {
           makeDefault: form.makeDefault,
           transactionPassword: form.transactionPassword,
           mnemonic: importPhrase,
+          networkConfirmed: importNetworkRequired !== null,
         },
       });
+      if ((result as { requiresNetworkSelection?: boolean }).requiresNetworkSelection) {
+        const selection = result as {
+          reason: "multiple_active" | "no_activity";
+          address: string;
+        };
+        setImportNetworkRequired({ reason: selection.reason, address: selection.address });
+        toast.info("Choose the wallet network to finish import");
+        return;
+      }
       toast.success("Wallet imported");
       setImportOpen(false);
       setImportPhrase("");
+      setImportNetworkRequired(null);
       setForm((current) => ({ ...current, transactionPassword: "" }));
       await load();
     } catch (error) {
@@ -324,6 +339,7 @@ function WalletsPage() {
           pending={pending}
           importPhrase={importPhrase}
           setImportPhrase={setImportPhrase}
+          importNetworkRequired={importNetworkRequired}
           onSubmit={submitImport}
         />
         <QuickLink
@@ -445,6 +461,7 @@ function WalletDialog({
   createdAddress,
   importPhrase,
   setImportPhrase,
+  importNetworkRequired,
   onSubmit,
 }: {
   mode: "create" | "import";
@@ -471,6 +488,7 @@ function WalletDialog({
   createdAddress?: string;
   importPhrase?: string;
   setImportPhrase?: (value: string) => void;
+  importNetworkRequired?: { reason: "multiple_active" | "no_activity"; address: string } | null;
   onSubmit: (event: React.FormEvent) => void;
 }) {
   const isImport = mode === "import";
@@ -550,6 +568,19 @@ function WalletDialog({
               </Button>
             </div>
             <Field label="Network">
+              {isImport && importNetworkRequired ? (
+                <div className="mb-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">
+                    {importNetworkRequired.reason === "multiple_active"
+                      ? "Activity was found on more than one TRON network."
+                      : "No activity was found on the supported TRON networks."}
+                  </p>
+                  <p className="mt-1">
+                    Confirm the correct network for {shortenHash(importNetworkRequired.address)} to
+                    finish import.
+                  </p>
+                </div>
+              ) : null}
               <select
                 value={form.network}
                 onChange={(event) =>

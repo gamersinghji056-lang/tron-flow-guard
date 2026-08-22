@@ -469,6 +469,11 @@ function TelegramMiniApp() {
   const [vendorRail, setVendorRail] = useState<"upi" | "imps" | "neft" | "rtgs">("upi");
   const [createWalletName, setCreateWalletName] = useState("Main Wallet");
   const [createWalletType, setCreateWalletType] = useState<WalletType>("standard");
+  const [createWalletNetwork, setCreateWalletNetwork] = useState<ChainNetwork>("trc20-nile");
+  const [importNetworkRequired, setImportNetworkRequired] = useState<{
+    reason: "multiple_active" | "no_activity";
+    address: string;
+  } | null>(null);
   const [walletPassword, setWalletPassword] = useState("");
   const [walletPasswordConfirm, setWalletPasswordConfirm] = useState("");
   const [importPhrase, setImportPhrase] = useState("");
@@ -1040,7 +1045,7 @@ function TelegramMiniApp() {
       const created = await createPersonalWallet({
         data: {
           name: createWalletName,
-          network: "trc20-nile",
+          network: createWalletNetwork,
           walletType: createWalletType,
           makeDefault: wallets.length === 0,
           transactionPassword: walletPassword,
@@ -1068,17 +1073,28 @@ function TelegramMiniApp() {
       const imported = await importPersonalWallet({
         data: {
           name: createWalletName,
-          network: "trc20-nile",
+          network: createWalletNetwork,
           walletType: createWalletType,
           makeDefault: wallets.length === 0,
           transactionPassword: walletPassword,
           mnemonic: importPhrase,
+          networkConfirmed: importNetworkRequired !== null,
         },
       });
+      if ((imported as { requiresNetworkSelection?: boolean }).requiresNetworkSelection) {
+        const selection = imported as {
+          reason: "multiple_active" | "no_activity";
+          address: string;
+        };
+        setImportNetworkRequired({ reason: selection.reason, address: selection.address });
+        toast.info("Choose the wallet network to finish import");
+        return;
+      }
       const walletId = (imported as { wallet?: { id?: string } }).wallet?.id;
       if (walletId) setSelectedWalletId(walletId);
       setImportPhrase("");
       setWalletPassword("");
+      setImportNetworkRequired(null);
       toast.success(
         (imported as { existing?: boolean }).existing
           ? "Existing wallet opened"
@@ -1291,6 +1307,8 @@ function TelegramMiniApp() {
             setName={setCreateWalletName}
             walletType={createWalletType}
             setWalletType={setCreateWalletType}
+            network={createWalletNetwork}
+            setNetwork={setCreateWalletNetwork}
             password={walletPassword}
             setPassword={setWalletPassword}
             confirm={walletPasswordConfirm}
@@ -1307,6 +1325,9 @@ function TelegramMiniApp() {
             setPhrase={setImportPhrase}
             walletType={createWalletType}
             setWalletType={setCreateWalletType}
+            network={createWalletNetwork}
+            setNetwork={setCreateWalletNetwork}
+            networkRequired={importNetworkRequired}
             password={walletPassword}
             setPassword={setWalletPassword}
             busy={busy}
@@ -1738,6 +1759,8 @@ function WalletCreateScreen(props: {
   setName: (value: string) => void;
   walletType: WalletType;
   setWalletType: (value: WalletType) => void;
+  network: ChainNetwork;
+  setNetwork: (value: ChainNetwork) => void;
   password: string;
   setPassword: (value: string) => void;
   confirm: string;
@@ -1773,7 +1796,10 @@ function WalletCreateScreen(props: {
             />
           </div>
         </FormCard>
-        <FormCard title="3. Transaction Password">
+        <FormCard title="3. Network">
+          <NetworkPicker network={props.network} setNetwork={props.setNetwork} />
+        </FormCard>
+        <FormCard title="4. Transaction Password">
           <div className="space-y-2">
             <Input
               type="password"
@@ -1804,6 +1830,9 @@ function WalletImportScreen(props: {
   setPhrase: (value: string) => void;
   walletType: WalletType;
   setWalletType: (value: WalletType) => void;
+  network: ChainNetwork;
+  setNetwork: (value: ChainNetwork) => void;
+  networkRequired: { reason: "multiple_active" | "no_activity"; address: string } | null;
   password: string;
   setPassword: (value: string) => void;
   busy: boolean;
@@ -1839,6 +1868,22 @@ function WalletImportScreen(props: {
               GasFree
             </Button>
           </div>
+        </FormCard>
+        <FormCard title="Network">
+          {props.networkRequired ? (
+            <div className="mb-3 rounded-xl border border-yellow-400/30 bg-yellow-400/10 p-3 text-xs text-slate-200">
+              <p className="font-semibold text-white">
+                {props.networkRequired.reason === "multiple_active"
+                  ? "Activity was found on more than one TRON network."
+                  : "No activity was found on the supported TRON networks."}
+              </p>
+              <p className="mt-1">
+                Confirm the correct network for {shortenHash(props.networkRequired.address)} to
+                finish import.
+              </p>
+            </div>
+          ) : null}
+          <NetworkPicker network={props.network} setNetwork={props.setNetwork} />
         </FormCard>
         <FormCard title="Recovery Phrase">
           <textarea
@@ -3020,6 +3065,31 @@ function FormCard({ title, children }: { title: string; children: React.ReactNod
     <div className="space-y-3 rounded-3xl border border-white/10 bg-white/6 p-4">
       <h2 className="text-sm font-semibold">{title}</h2>
       {children}
+    </div>
+  );
+}
+function NetworkPicker({
+  network,
+  setNetwork,
+}: {
+  network: ChainNetwork;
+  setNetwork: (value: ChainNetwork) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {(["trc20-nile", "trc20-mainnet"] as ChainNetwork[]).map((value) => {
+        const config = networkConfig(value);
+        return (
+          <Button
+            key={value}
+            type="button"
+            variant={network === value ? "default" : "secondary"}
+            onClick={() => setNetwork(value)}
+          >
+            {config.label}
+          </Button>
+        );
+      })}
     </div>
   );
 }

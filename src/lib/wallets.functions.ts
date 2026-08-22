@@ -18,6 +18,7 @@ const createWalletInput = z.object({
 
 const importWalletInput = createWalletInput.extend({
   mnemonic: z.string().trim().min(24).max(512),
+  networkConfirmed: z.boolean().optional(),
 });
 
 const walletIdInput = z.object({ walletId: z.string().uuid() });
@@ -77,6 +78,7 @@ export const importWallet = createServerFn({ method: "POST" })
       makeDefault: data.makeDefault ?? false,
       transactionPassword: data.transactionPassword,
       mnemonic: data.mnemonic,
+      networkConfirmed: data.networkConfirmed ?? false,
     });
   });
 
