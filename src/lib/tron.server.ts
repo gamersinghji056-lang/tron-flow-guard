@@ -6,6 +6,7 @@
  * rate-limited or temporarily unavailable.
  */
 import { networkConfig, type ChainNetwork } from "./chain";
+import { collectPaginatedTronGridRows } from "./tron-pagination";
 
 const REQUEST_TIMEOUT_MS = 12_000;
 
@@ -133,18 +134,39 @@ export async function getLatestBlock(network: ChainNetwork): Promise<number> {
 export async function getIncomingUsdtTransfers(
   network: ChainNetwork,
   address: string,
-  options: { limit?: number; minTimestamp?: number } = {},
+  options: { limit?: number; minTimestamp?: number; paginate?: boolean; maxPages?: number } = {},
 ): Promise<Trc20Transfer[]> {
   const config = networkConfig(network);
   const limit = Math.min(options.limit ?? 50, 200);
-  let url =
-    `${config.apiBase}/v1/accounts/${address}/transactions/trc20` +
-    `?only_to=true&limit=${limit}&order_by=block_timestamp,desc` +
-    `&contract_address=${config.usdtContract}`;
-  if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
+  const buildUrl = (fingerprint?: string) => {
+    let url =
+      `${config.apiBase}/v1/accounts/${address}/transactions/trc20` +
+      `?only_to=true&limit=${limit}&order_by=block_timestamp,desc` +
+      `&contract_address=${config.usdtContract}`;
+    if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
+    if (fingerprint) url += `&fingerprint=${encodeURIComponent(fingerprint)}`;
+    return url;
+  };
 
-  const payload = await chainFetch<{ data?: Trc20ApiRow[]; success?: boolean }>(url);
-  const rows = Array.isArray(payload.data) ? payload.data : [];
+  const rows = options.paginate
+    ? await collectPaginatedTronGridRows(
+        async (fingerprint) => {
+          const payload = await chainFetch<{
+            data?: Trc20ApiRow[];
+            meta?: { fingerprint?: string };
+            success?: boolean;
+          }>(buildUrl(fingerprint));
+          return {
+            rows: Array.isArray(payload.data) ? payload.data : [],
+            fingerprint: payload.meta?.fingerprint,
+          };
+        },
+        (row: Trc20ApiRow) => row.transaction_id,
+        { maxPages: options.maxPages },
+      )
+    : await chainFetch<{ data?: Trc20ApiRow[]; success?: boolean }>(buildUrl()).then((payload) =>
+        Array.isArray(payload.data) ? payload.data : [],
+      );
 
   return rows
     .filter((row) => row.transaction_id && row.to && row.value && row.type !== "Approval")
@@ -177,18 +199,39 @@ export async function getIncomingUsdtTransfers(
 export async function getOutgoingUsdtTransfers(
   network: ChainNetwork,
   address: string,
-  options: { limit?: number; minTimestamp?: number } = {},
+  options: { limit?: number; minTimestamp?: number; paginate?: boolean; maxPages?: number } = {},
 ): Promise<Trc20Transfer[]> {
   const config = networkConfig(network);
   const limit = Math.min(options.limit ?? 50, 200);
-  let url =
-    `${config.apiBase}/v1/accounts/${address}/transactions/trc20` +
-    `?only_from=true&limit=${limit}&order_by=block_timestamp,desc` +
-    `&contract_address=${config.usdtContract}`;
-  if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
+  const buildUrl = (fingerprint?: string) => {
+    let url =
+      `${config.apiBase}/v1/accounts/${address}/transactions/trc20` +
+      `?only_from=true&limit=${limit}&order_by=block_timestamp,desc` +
+      `&contract_address=${config.usdtContract}`;
+    if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
+    if (fingerprint) url += `&fingerprint=${encodeURIComponent(fingerprint)}`;
+    return url;
+  };
 
-  const payload = await chainFetch<{ data?: Trc20ApiRow[]; success?: boolean }>(url);
-  const rows = Array.isArray(payload.data) ? payload.data : [];
+  const rows = options.paginate
+    ? await collectPaginatedTronGridRows(
+        async (fingerprint) => {
+          const payload = await chainFetch<{
+            data?: Trc20ApiRow[];
+            meta?: { fingerprint?: string };
+            success?: boolean;
+          }>(buildUrl(fingerprint));
+          return {
+            rows: Array.isArray(payload.data) ? payload.data : [],
+            fingerprint: payload.meta?.fingerprint,
+          };
+        },
+        (row: Trc20ApiRow) => row.transaction_id,
+        { maxPages: options.maxPages },
+      )
+    : await chainFetch<{ data?: Trc20ApiRow[]; success?: boolean }>(buildUrl()).then((payload) =>
+        Array.isArray(payload.data) ? payload.data : [],
+      );
   return rows
     .filter((row) => row.transaction_id && row.from && row.value && row.type !== "Approval")
     .map((row) => {
@@ -275,18 +318,39 @@ export async function getNativeTrxTransfers(
   network: ChainNetwork,
   address: string,
   direction: "in" | "out",
-  options: { limit?: number; minTimestamp?: number } = {},
+  options: { limit?: number; minTimestamp?: number; paginate?: boolean; maxPages?: number } = {},
 ): Promise<TrxTransfer[]> {
   const config = networkConfig(network);
   const limit = Math.min(options.limit ?? 50, 200);
   const filter = direction === "in" ? "only_to=true" : "only_from=true";
-  let url =
-    `${config.apiBase}/v1/accounts/${address}/transactions?${filter}` +
-    `&only_confirmed=true&limit=${limit}&order_by=block_timestamp,desc`;
-  if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
+  const buildUrl = (fingerprint?: string) => {
+    let url =
+      `${config.apiBase}/v1/accounts/${address}/transactions?${filter}` +
+      `&only_confirmed=true&limit=${limit}&order_by=block_timestamp,desc`;
+    if (options.minTimestamp) url += `&min_timestamp=${options.minTimestamp}`;
+    if (fingerprint) url += `&fingerprint=${encodeURIComponent(fingerprint)}`;
+    return url;
+  };
 
-  const payload = await chainFetch<{ data?: TrxApiRow[] }>(url);
-  return (payload.data ?? [])
+  const rows = options.paginate
+    ? await collectPaginatedTronGridRows(
+        async (fingerprint) => {
+          const payload = await chainFetch<{ data?: TrxApiRow[]; meta?: { fingerprint?: string } }>(
+            buildUrl(fingerprint),
+          );
+          return {
+            rows: Array.isArray(payload.data) ? payload.data : [],
+            fingerprint: payload.meta?.fingerprint,
+          };
+        },
+        (row: TrxApiRow) => row.txID,
+        { maxPages: options.maxPages },
+      )
+    : await chainFetch<{ data?: TrxApiRow[] }>(buildUrl()).then((payload) =>
+        Array.isArray(payload.data) ? payload.data : [],
+      );
+
+  return rows
     .map(normalizeTrxTransfer)
     .filter((transfer): transfer is TrxTransfer => Boolean(transfer));
 }

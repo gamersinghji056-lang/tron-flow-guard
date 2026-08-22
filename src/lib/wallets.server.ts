@@ -275,6 +275,7 @@ export async function importPersonalWallet(params: {
         .update({ is_default: true, selected_at: new Date().toISOString() } as never)
         .eq("id", duplicateRow.id as never);
     }
+    await refreshPersonalWalletOnChainBalance(params.userId, duplicateRow.id);
     return {
       wallet: { ...(duplicate as Record<string, unknown>), network: detectedNetwork },
       existing: true,
@@ -349,6 +350,8 @@ export async function importPersonalWallet(params: {
       derivation_path: derived.derivationPath,
     },
   });
+
+  await refreshPersonalWalletOnChainBalance(params.userId, row.id);
 
   return { wallet };
 }
@@ -451,13 +454,14 @@ export async function refreshPersonalWalletOnChainBalance(userId: string, wallet
   if (!wallet || wallet.user_id !== userId || wallet.is_archived)
     throw new Error("Wallet not found");
 
+  const historyOptions = { limit: 200, paginate: true, maxPages: 20 };
   const [balance, trxBalance, incoming, outgoing, incomingTrx, outgoingTrx] = await Promise.all([
     readTrc20Balance(wallet.network, wallet.address),
     getNativeTrxBalance(wallet.network, wallet.address),
-    getIncomingUsdtTransfers(wallet.network, wallet.address, { limit: 100 }),
-    getOutgoingUsdtTransfers(wallet.network, wallet.address, { limit: 100 }),
-    getNativeTrxTransfers(wallet.network, wallet.address, "in", { limit: 100 }),
-    getNativeTrxTransfers(wallet.network, wallet.address, "out", { limit: 100 }),
+    getIncomingUsdtTransfers(wallet.network, wallet.address, historyOptions),
+    getOutgoingUsdtTransfers(wallet.network, wallet.address, historyOptions),
+    getNativeTrxTransfers(wallet.network, wallet.address, "in", historyOptions),
+    getNativeTrxTransfers(wallet.network, wallet.address, "out", historyOptions),
   ]);
   if (balance === null || trxBalance === null) {
     throw new Error("Could not refresh on-chain wallet balances");
@@ -536,18 +540,40 @@ export async function refreshPersonalWalletOnChainBalance(userId: string, wallet
 
   if (transactions.length) {
     const txids = Array.from(new Set(transactions.map((transaction) => transaction.txid)));
+    const historyKey = (transaction: {
+      network: string;
+      txid: string;
+      currency: string;
+      direction: string;
+    }) =>
+      `${transaction.network}:${transaction.txid}:${transaction.currency}:${transaction.direction}`;
+
     const { data: existingRows, error: existingError } = await supabaseAdmin
       .from("wallet_transactions")
-      .select("txid")
+      .select("txid, currency, direction, network")
       .eq("wallet_id", wallet.id)
       .in("txid", txids);
     if (existingError) throw new Error(`Could not read wallet history: ${existingError.message}`);
 
-    const existingTxids = new Set((existingRows ?? []).map((row) => row.txid));
-    const seenTxids = new Set<string>();
+    const existingKeys = new Set(
+      (existingRows ?? [])
+        .map((row) =>
+          row.txid
+            ? historyKey({
+                network: row.network,
+                txid: row.txid,
+                currency: row.currency,
+                direction: row.direction,
+              })
+            : null,
+        )
+        .filter((key): key is string => Boolean(key)),
+    );
+    const seenKeys = new Set<string>();
     const missingTransactions = transactions.filter((transaction) => {
-      if (existingTxids.has(transaction.txid) || seenTxids.has(transaction.txid)) return false;
-      seenTxids.add(transaction.txid);
+      const key = historyKey(transaction);
+      if (existingKeys.has(key) || seenKeys.has(key)) return false;
+      seenKeys.add(key);
       return true;
     });
 

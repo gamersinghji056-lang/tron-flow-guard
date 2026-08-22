@@ -47,6 +47,7 @@ import {
   walletDisplayBalance,
 } from "./wallet-state.ts";
 import { chooseImportedWalletNetwork, decideImportedWalletNetwork } from "./wallet-network.ts";
+import { collectPaginatedTronGridRows } from "./tron-pagination.ts";
 import {
   hashTransactionPassword,
   shouldLockTransactionPassword,
@@ -513,6 +514,111 @@ describe("imported wallet network detection", () => {
         { network: "trc20-nile", trxBalance: 0, usdtBalance: 0, txCount: 0 },
       ]),
       wallet.network,
+    );
+  });
+});
+
+describe("historical wallet history sync helpers", () => {
+  it("paginates TronGrid history and stops on exhausted cursors", async () => {
+    const pages = new Map([
+      [
+        undefined,
+        {
+          rows: [
+            { id: "mainnet-trx-in-1", network: "trc20-mainnet", timestamp: 300 },
+            { id: "mainnet-trx-in-2", network: "trc20-mainnet", timestamp: 200 },
+          ],
+          fingerprint: "next-page",
+        },
+      ],
+      [
+        "next-page",
+        {
+          rows: [{ id: "mainnet-trx-in-3", network: "trc20-mainnet", timestamp: 100 }],
+          fingerprint: undefined,
+        },
+      ],
+    ]);
+
+    const rows = await collectPaginatedTronGridRows(
+      async (fingerprint) => pages.get(fingerprint)!,
+      (row) => row.id,
+      { maxPages: 10 },
+    );
+
+    assert.deepEqual(
+      rows.map((row) => row.id),
+      ["mainnet-trx-in-1", "mainnet-trx-in-2", "mainnet-trx-in-3"],
+    );
+  });
+
+  it("prevents duplicate rows across repeated paginated responses", async () => {
+    const rows = await collectPaginatedTronGridRows(
+      async (fingerprint) =>
+        fingerprint
+          ? { rows: [{ id: "same-txid" }, { id: "second-txid" }], fingerprint: undefined }
+          : { rows: [{ id: "same-txid" }], fingerprint: "repeat" },
+      (row) => row.id,
+      { maxPages: 5 },
+    );
+
+    assert.deepEqual(
+      rows.map((row) => row.id),
+      ["same-txid", "second-txid"],
+    );
+  });
+
+  it("prevents infinite pagination when TronGrid repeats a fingerprint", async () => {
+    let calls = 0;
+    const rows = await collectPaginatedTronGridRows(
+      async () => {
+        calls += 1;
+        return { rows: [{ id: `tx-${calls}` }], fingerprint: "same-cursor" };
+      },
+      (row) => row.id,
+      { maxPages: 10 },
+    );
+
+    assert.equal(calls, 2);
+    assert.deepEqual(
+      rows.map((row) => row.id),
+      ["tx-1", "tx-2"],
+    );
+  });
+
+  it("keeps Mainnet and Nile history isolated by network", () => {
+    const rows = [
+      { txid: "a", currency: "TRX", direction: "in", network: "trc20-mainnet" },
+      { txid: "a", currency: "TRX", direction: "in", network: "trc20-nile" },
+    ];
+    const keys = new Set(
+      rows.map((row) => `${row.network}:${row.txid}:${row.currency}:${row.direction}`),
+    );
+    assert.equal(keys.size, 2);
+  });
+
+  it("allows a wallet imported today to show transactions from before import", () => {
+    const importedAt = Date.parse("2026-08-22T00:00:00Z");
+    const historical = [
+      { txid: "old-usdt", blockTimestamp: Date.parse("2026-02-27T12:50:15Z") },
+      { txid: "old-trx", blockTimestamp: Date.parse("2026-05-24T11:11:39Z") },
+    ];
+    assert.equal(
+      historical.every((row) => row.blockTimestamp < importedAt),
+      true,
+    );
+  });
+
+  it("orders wallet transactions newest first", () => {
+    const rows = [
+      { txid: "old", created_at: "2026-02-27T12:50:15Z" },
+      { txid: "new", created_at: "2026-08-11T06:53:03Z" },
+      { txid: "middle", created_at: "2026-05-24T11:11:39Z" },
+    ].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+
+    assert.deepEqual(
+      rows.map((row) => row.txid),
+      ["new", "middle", "old"],
     );
   });
 });

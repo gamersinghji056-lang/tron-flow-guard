@@ -237,7 +237,7 @@ function WalletDetailPage() {
     setRefreshingBalance(true);
     try {
       await refreshBalance({ data: { walletId: wallet.id } });
-      toast.success("On-chain balance refreshed");
+      toast.success("Wallet sync completed");
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not refresh balance");
@@ -296,7 +296,7 @@ function WalletDetailPage() {
               disabled={refreshingBalance}
             >
               <RefreshCw className={`h-3 w-3 ${refreshingBalance ? "animate-spin" : ""}`} />
-              Refresh chain balance
+              Sync balance & history
             </button>
           ) : null}
         </div>
