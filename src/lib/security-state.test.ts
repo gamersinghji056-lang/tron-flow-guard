@@ -60,6 +60,12 @@ import {
   walletHistoryNavigationTarget,
 } from "./mini-wallet-ui.ts";
 import {
+  createMiniT,
+  isMiniRtl,
+  normalizeMiniLocale,
+  technicalTextDirection,
+} from "./mini-i18n.ts";
+import {
   hashTransactionPassword,
   shouldLockTransactionPassword,
   verifyTransactionPasswordHash,
@@ -740,6 +746,48 @@ describe("Mini App wallet UX routing and classification", () => {
       "wallet-history",
     );
     assert.equal(walletBottomTab("wallet-transaction-detail"), "wallet");
+  });
+
+  it("renders wallet strings in English, Chinese, Russian and Persian", () => {
+    assert.equal(createMiniT("en")("portfolioBalance"), "Portfolio Balance");
+    assert.equal(createMiniT("zh")("portfolioBalance"), "资产余额");
+    assert.equal(createMiniT("ru")("portfolioBalance"), "Баланс портфеля");
+    assert.equal(createMiniT("fa")("portfolioBalance"), "موجودی پورتفو");
+  });
+
+  it("uses RTL only for Persian while keeping blockchain technical values LTR", () => {
+    assert.equal(isMiniRtl("fa"), true);
+    assert.equal(isMiniRtl("en"), false);
+    assert.equal(technicalTextDirection(), "ltr");
+  });
+
+  it("normalizes Telegram/browser locale values to supported Mini App languages", () => {
+    assert.equal(normalizeMiniLocale("zh-CN"), "zh");
+    assert.equal(normalizeMiniLocale("ru-RU"), "ru");
+    assert.equal(normalizeMiniLocale("fa-IR"), "fa");
+    assert.equal(normalizeMiniLocale("de-DE"), "en");
+  });
+
+  it("language switching preserves wallet identity, history state, network and type", () => {
+    const walletState = {
+      selectedWalletId: "wallet-1",
+      historyIds: filterMiniWalletTransactions(rows, "wallet-1", "ALL", "ALL").map((row) => row.id),
+      network: "trc20-mainnet",
+      walletType: importedMnemonicWalletType(),
+    };
+    const switchedLocale = normalizeMiniLocale("fa");
+    assert.equal(switchedLocale, "fa");
+    assert.deepEqual(walletState.historyIds, ["w1-usdt-in", "w1-trx-out"]);
+    assert.equal(walletState.selectedWalletId, "wallet-1");
+    assert.equal(walletState.network, "trc20-mainnet");
+    assert.equal(walletState.walletType, "standard");
+  });
+
+  it("language switching does not alter wallet classification or network values", () => {
+    assert.equal(createMiniT("fa")("wallet"), "کیف پول");
+    assert.equal(importedMnemonicWalletType(), "standard");
+    assert.equal(preserveWalletTypeForExplicitCreation("gasfree"), "gasfree");
+    assert.equal("trc20-mainnet", "trc20-mainnet");
   });
 });
 

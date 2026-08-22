@@ -66,6 +66,17 @@ import {
   fetchUserAnalytics,
 } from "@/lib/user-product.functions";
 import { formatUsdt, networkConfig, shortenHash, type ChainNetwork } from "@/lib/chain";
+import {
+  createMiniT,
+  isMiniRtl,
+  MINI_LOCALE_LABELS,
+  MINI_LOCALE_STORAGE_KEY,
+  normalizeMiniLocale,
+  networkLabelForMini,
+  technicalTextDirection,
+  type MiniLocale,
+  type MiniT,
+} from "@/lib/mini-i18n";
 import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
 import { onChainSendEnabled, selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
 
@@ -442,6 +453,10 @@ function TelegramMiniApp() {
   const loadReferral = useServerFn(fetchReferralSummary);
 
   const [screen, setScreen] = useState<MiniScreen>((search.tab as PrimaryTab) ?? "home");
+  const [locale, setLocale] = useState<MiniLocale>(() => {
+    if (typeof window === "undefined") return "en";
+    return normalizeMiniLocale(window.localStorage.getItem(MINI_LOCALE_STORAGE_KEY));
+  });
   const [authMode, setAuthMode] = useState<"login" | "register">(
     search.auth as "login" | "register",
   );
@@ -524,6 +539,8 @@ function TelegramMiniApp() {
   const selectedWalletTransaction =
     walletTransactions.find((row) => row.id === selectedWalletTransactionId) ?? null;
   const primaryTab = tabForScreen(screen);
+  const t = useMemo(() => createMiniT(locale), [locale]);
+  const isRtl = isMiniRtl(locale);
   const platformBalance = Number(profile?.balance ?? 0);
   const lockedBalance = Number(profile?.locked_balance ?? 0);
   const pendingBalance = Number(profile?.pending_balance ?? 0);
@@ -697,6 +714,11 @@ function TelegramMiniApp() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(MINI_LOCALE_STORAGE_KEY, locale);
+  }, [locale]);
+
+  useEffect(() => {
     if (!initData || !linked) return;
     const renew = async () => {
       const { error } = await supabase.auth.refreshSession();
@@ -796,7 +818,7 @@ function TelegramMiniApp() {
       .range(offset, offset + pageSize - 1);
 
     if (error) {
-      toast.error("Unable to load selected wallet history");
+      toast.error(t("unableLoadWalletHistory"));
       if (reset) setWalletTransactions([]);
       setWalletTransactionHasMore(false);
       return;
@@ -1174,7 +1196,7 @@ function TelegramMiniApp() {
       await refreshBalance({ data: { walletId: selectedWallet.id } });
       await refresh("wallet-detail");
       await loadSelectedWalletTransactions(selectedWallet.id, true);
-      toast.success("Wallet sync completed");
+      toast.success(t("walletSyncCompleted"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not refresh balance");
     } finally {
@@ -1251,7 +1273,7 @@ function TelegramMiniApp() {
 
   if (loading || !launchChecked) {
     return (
-      <MiniFrame>
+      <MiniFrame locale={locale}>
         <div className="grid min-h-[70vh] place-items-center text-center">
           <div>
             <WtronMark className="mx-auto h-14 w-14" />
@@ -1265,7 +1287,7 @@ function TelegramMiniApp() {
 
   if (!initData) {
     return (
-      <MiniFrame>
+      <MiniFrame locale={locale}>
         <EmptyState
           icon={ShieldCheck}
           title="Open WTRON through @wtron_bot"
@@ -1285,7 +1307,7 @@ function TelegramMiniApp() {
 
   if (bootstrapError) {
     return (
-      <MiniFrame>
+      <MiniFrame locale={locale}>
         <EmptyState
           icon={ShieldCheck}
           title="Session expired"
@@ -1302,7 +1324,7 @@ function TelegramMiniApp() {
 
   if (!linked) {
     return (
-      <MiniFrame>
+      <MiniFrame locale={locale}>
         <AuthScreen
           authMode={authMode}
           setAuthMode={setAuthMode}
@@ -1320,15 +1342,21 @@ function TelegramMiniApp() {
   }
 
   return (
-    <MiniFrame>
+    <MiniFrame locale={locale}>
       <div className="space-y-5 pb-28">
         <MiniHeader
           profile={profile}
+          locale={locale}
+          setLocale={setLocale}
+          t={t}
           onNotifications={() => void navigate("notifications")}
           onProfile={() => void navigate("profile")}
         />
         {!["home", "p2p", "trade", "wallet", "more"].includes(screen) ? (
-          <BackButton onClick={() => setScreen(backScreenFor(screen, transactionBackScreen))} />
+          <BackButton
+            label={t("back")}
+            onClick={() => setScreen(backScreenFor(screen, transactionBackScreen))}
+          />
         ) : null}
         {screen === "home" ? (
           <HomeScreen
@@ -1344,6 +1372,7 @@ function TelegramMiniApp() {
           <WalletScreen
             wallets={wallets}
             selectedWallet={selectedWallet}
+            t={t}
             onNavigate={navigate}
             onSelect={(wallet) => void activateWallet(wallet)}
           />
@@ -1361,6 +1390,7 @@ function TelegramMiniApp() {
             confirm={walletPasswordConfirm}
             setConfirm={setWalletPasswordConfirm}
             busy={busy}
+            t={t}
             onSubmit={submitCreateWallet}
           />
         ) : null}
@@ -1376,6 +1406,7 @@ function TelegramMiniApp() {
             password={walletPassword}
             setPassword={setWalletPassword}
             busy={busy}
+            t={t}
             onSubmit={submitImportWallet}
           />
         ) : null}
@@ -1384,6 +1415,7 @@ function TelegramMiniApp() {
             wallet={selectedWallet}
             transactions={walletTransactions}
             busy={busy}
+            t={t}
             onNavigate={navigate}
             onSelectAsset={(asset) => {
               setSelectedWalletAsset(asset);
@@ -1408,6 +1440,7 @@ function TelegramMiniApp() {
             setDirectionFilter={setWalletHistoryDirection}
             hasMore={walletTransactionHasMore}
             busy={busy}
+            t={t}
             onLoadMore={() =>
               selectedWallet?.id && void loadSelectedWalletTransactions(selectedWallet.id)
             }
@@ -1423,6 +1456,7 @@ function TelegramMiniApp() {
             wallet={selectedWallet}
             asset={selectedWalletAsset}
             rows={walletTransactions}
+            t={t}
             onSend={() => {
               setSendAsset(selectedWalletAsset);
               void navigate("send");
@@ -1442,6 +1476,7 @@ function TelegramMiniApp() {
           <WalletTransactionDetailScreen
             wallet={selectedWallet}
             transaction={selectedWalletTransaction}
+            t={t}
           />
         ) : null}
         {screen === "wallet-receive" ? (
@@ -1450,6 +1485,7 @@ function TelegramMiniApp() {
             asset={receiveAsset}
             setAsset={setReceiveAsset}
             qr={walletQr}
+            t={t}
           />
         ) : null}
         {screen === "wallet-more" ? (
@@ -1457,6 +1493,7 @@ function TelegramMiniApp() {
             wallet={selectedWallet}
             onNavigate={navigate}
             onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
+            t={t}
           />
         ) : null}
         {screen === "wallet-backup" ? (
@@ -1466,6 +1503,7 @@ function TelegramMiniApp() {
             setPassword={setBackupPassword}
             revealedPhrase={revealedPhrase}
             busy={busy}
+            t={t}
             onSubmit={revealBackupPhrase}
           />
         ) : null}
@@ -1502,6 +1540,7 @@ function TelegramMiniApp() {
             setAddress={setSendAddress}
             amount={sendAmount}
             setAmount={setSendAmount}
+            t={t}
           />
         ) : null}
         {screen === "p2p" ? (
@@ -1605,9 +1644,13 @@ function TelegramMiniApp() {
   );
 }
 
-function MiniFrame({ children }: { children: React.ReactNode }) {
+function MiniFrame({ children, locale }: { children: React.ReactNode; locale: MiniLocale }) {
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#05070B] px-4 pt-4 text-white antialiased">
+    <div
+      lang={locale}
+      dir={isMiniRtl(locale) ? "rtl" : "ltr"}
+      className="min-h-screen overflow-x-hidden bg-[#05070B] px-4 pt-4 text-white antialiased"
+    >
       {children}
     </div>
   );
@@ -1615,10 +1658,16 @@ function MiniFrame({ children }: { children: React.ReactNode }) {
 
 function MiniHeader({
   profile,
+  locale,
+  setLocale,
+  t,
   onNotifications,
   onProfile,
 }: {
   profile: ProfileSummary | null;
+  locale: MiniLocale;
+  setLocale: (locale: MiniLocale) => void;
+  t: MiniT;
   onNotifications: () => void;
   onProfile: () => void;
 }) {
@@ -1636,6 +1685,18 @@ function MiniHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <select
+          aria-label={t("language")}
+          className="h-10 rounded-full border border-white/10 bg-white/6 px-2 text-xs text-slate-200 outline-none"
+          value={locale}
+          onChange={(event) => setLocale(normalizeMiniLocale(event.target.value))}
+        >
+          {Object.entries(MINI_LOCALE_LABELS).map(([value, label]) => (
+            <option key={value} value={value} className="bg-slate-950">
+              {label}
+            </option>
+          ))}
+        </select>
         <IconButton icon={Bell} label="Notifications" onClick={onNotifications} />
         <IconButton icon={UserRound} label="Profile" onClick={onProfile} />
       </div>
@@ -1779,11 +1840,13 @@ function HomeScreen({
 function WalletScreen({
   wallets,
   selectedWallet,
+  t,
   onNavigate,
   onSelect,
 }: {
   wallets: WalletRow[];
   selectedWallet: WalletRow | null;
+  t: MiniT;
   onNavigate: (screen: MiniScreen) => Promise<void>;
   onSelect: (wallet: WalletRow) => void;
 }) {
@@ -1794,21 +1857,17 @@ function WalletScreen({
   );
   if (!wallets.length) {
     return (
-      <Screen title="My Wallets" subtitle="Personal non-custodial TRON wallets">
+      <Screen title={t("walletSelector")} subtitle={t("selfCustodyWallet")}>
         <div className="rounded-3xl border border-blue-500/25 bg-blue-600/12 p-6 text-center">
           <Wallet className="mx-auto h-10 w-10 text-blue-300" />
-          <h2 className="mt-4 text-xl font-semibold tracking-normal">
-            Your crypto wallet starts here.
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">
-            Create a secure TRON wallet to receive USDT and TRX.
-          </p>
+          <h2 className="mt-4 text-xl font-semibold tracking-normal">{t("createWallet")}</h2>
+          <p className="mt-2 text-sm text-slate-400">{t("selfCustodyWallet")}</p>
           <div className="mt-5 grid gap-2">
             <Button className="bg-blue-600" onClick={() => onNavigate("wallet-create")}>
-              Create Wallet
+              {t("createWallet")}
             </Button>
             <Button variant="secondary" onClick={() => onNavigate("wallet-import")}>
-              Import Existing Wallet
+              {t("importExistingWallet")}
             </Button>
           </div>
         </div>
@@ -1816,9 +1875,9 @@ function WalletScreen({
     );
   }
   return (
-    <Screen title="My Wallets" subtitle="Personal wallet only. Platform deposits are separate.">
+    <Screen title={t("walletSelector")} subtitle={t("selfCustodyWallet")}>
       <div className="rounded-3xl border border-white/10 bg-white p-5 text-slate-950">
-        <p className="text-xs font-semibold uppercase text-slate-500">Total Personal Assets</p>
+        <p className="text-xs font-semibold uppercase text-slate-500">{t("portfolioBalance")}</p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <TokenMetric icon={<UsdtIcon />} label="USDT" value={money(total)} sub="TRC20 on TRON" />
           <TokenMetric
@@ -1832,10 +1891,10 @@ function WalletScreen({
       <div className="grid grid-cols-2 gap-2">
         <Button className="bg-blue-600" onClick={() => onNavigate("wallet-create")}>
           <Plus className="mr-2 h-4 w-4" />
-          Create Wallet
+          {t("createWallet")}
         </Button>
         <Button variant="secondary" onClick={() => onNavigate("wallet-import")}>
-          Import Wallet
+          {t("importWallet")}
         </Button>
       </div>
       <div className="flex snap-x gap-3 overflow-x-auto pb-2">
@@ -1844,14 +1903,16 @@ function WalletScreen({
             key={wallet.id}
             wallet={wallet}
             active={wallet.id === selectedWallet?.id}
+            t={t}
             onSelect={() => onSelect(wallet)}
             onOpen={() => onNavigate("wallet-detail")}
           />
         ))}
       </div>
-      <Section title="Selected Wallet">
+      <Section title={t("selectedWallet")}>
         <WalletSummary
           wallet={selectedWallet}
+          t={t}
           onReceive={() => onNavigate("wallet-receive")}
           onSend={() => onNavigate("send")}
           onBackup={() => onNavigate("wallet-backup")}
@@ -1873,57 +1934,59 @@ function WalletCreateScreen(props: {
   confirm: string;
   setConfirm: (value: string) => void;
   busy: boolean;
+  t: MiniT;
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <Screen title="Create Wallet" subtitle="BIP39 TRON derivation m/44'/195'/0'/0/0">
+    <Screen title={props.t("createWallet")} subtitle={props.t("createWalletSubtitle")}>
       <form className="space-y-4" onSubmit={props.onSubmit}>
-        <FormCard title="1. Wallet Name">
+        <FormCard title={`1. ${props.t("walletName")}`}>
           <Input
             value={props.name}
             onChange={(event) => props.setName(event.target.value)}
-            placeholder="Main Wallet"
+            placeholder={props.t("mainWallet")}
           />
         </FormCard>
-        <FormCard title="2. Choose Wallet Type">
+        <FormCard title={`2. ${props.t("chooseWalletType")}`}>
           <div className="grid gap-2">
             <TypeOption
               active={props.walletType === "standard"}
               icon={<TronIcon />}
-              title="Standard TRON Wallet"
-              body="Normal TRON/TRC20 personal wallet"
+              title={props.t("standardTronWallet")}
+              body={props.t("standardWalletDescription")}
               onClick={() => props.setWalletType("standard")}
             />
             <TypeOption
               active={props.walletType === "gasfree"}
               icon={<GasFreeIcon />}
-              title="GasFree Wallet"
-              body="Resource-sponsored mode. Sponsorship status depends on backend configuration."
+              title={props.t("gasfreeWallet")}
+              body={props.t("gasfreeDescription")}
               onClick={() => props.setWalletType("gasfree")}
             />
           </div>
         </FormCard>
-        <FormCard title="3. Network">
-          <NetworkPicker network={props.network} setNetwork={props.setNetwork} />
+        <FormCard title={`3. ${props.t("network")}`}>
+          <NetworkPicker network={props.network} setNetwork={props.setNetwork} t={props.t} />
         </FormCard>
-        <FormCard title="4. Transaction Password">
+        <FormCard title={`4. ${props.t("transactionPassword")}`}>
           <div className="space-y-2">
             <Input
               type="password"
               value={props.password}
               onChange={(event) => props.setPassword(event.target.value)}
-              placeholder="Password"
+              placeholder={props.t("password")}
             />
             <Input
               type="password"
               value={props.confirm}
               onChange={(event) => props.setConfirm(event.target.value)}
-              placeholder="Confirm password"
+              placeholder={props.t("confirmPassword")}
             />
           </div>
         </FormCard>
         <Button className="w-full bg-blue-600" disabled={props.busy}>
-          {props.busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Create Wallet
+          {props.busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {props.t("createWallet")}
         </Button>
       </form>
     </Screen>
@@ -1941,68 +2004,65 @@ function WalletImportScreen(props: {
   password: string;
   setPassword: (value: string) => void;
   busy: boolean;
+  t: MiniT;
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <Screen
-      title="Import Wallet"
-      subtitle="Import with recovery phrase using the same TRON derivation path"
-    >
+    <Screen title={props.t("importWallet")} subtitle={props.t("importWalletSubtitle")}>
       <form className="space-y-4" onSubmit={props.onSubmit}>
-        <FormCard title="Wallet Name">
+        <FormCard title={props.t("walletName")}>
           <Input
             value={props.name}
             onChange={(event) => props.setName(event.target.value)}
-            placeholder="Trading Wallet"
+            placeholder={props.t("tradingWallet")}
           />
         </FormCard>
-        <FormCard title="Wallet Type">
+        <FormCard title={props.t("walletType")}>
           <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
             <div className="flex items-center gap-3">
               <TronIcon className="h-8 w-8" />
               <div>
-                <p className="text-sm font-semibold">Standard TRON Wallet</p>
-                <p className="text-xs text-slate-400">
-                  External mnemonic imports are treated as standard self-custody wallets.
-                </p>
+                <p className="text-sm font-semibold">{props.t("standardTronWallet")}</p>
+                <p className="text-xs text-slate-400">{props.t("externalImportStandard")}</p>
               </div>
             </div>
           </div>
         </FormCard>
-        <FormCard title="Network">
+        <FormCard title={props.t("network")}>
           {props.networkRequired ? (
             <div className="mb-3 rounded-xl border border-yellow-400/30 bg-yellow-400/10 p-3 text-xs text-slate-200">
               <p className="font-semibold text-white">
                 {props.networkRequired.reason === "multiple_active"
-                  ? "Activity was found on more than one TRON network."
-                  : "No activity was found on the supported TRON networks."}
+                  ? props.t("multipleNetworksFound")
+                  : props.t("noNetworkActivityFound")}
               </p>
               <p className="mt-1">
-                Confirm the correct network for {shortenHash(props.networkRequired.address)} to
-                finish import.
+                {props.t("confirmNetworkForAddress", {
+                  address: shortenHash(props.networkRequired.address),
+                })}
               </p>
             </div>
           ) : null}
-          <NetworkPicker network={props.network} setNetwork={props.setNetwork} />
+          <NetworkPicker network={props.network} setNetwork={props.setNetwork} t={props.t} />
         </FormCard>
-        <FormCard title="Recovery Phrase">
+        <FormCard title={props.t("recoveryPhrase")}>
           <textarea
             className="min-h-28 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white outline-none focus:border-blue-500"
             value={props.phrase}
             onChange={(event) => props.setPhrase(event.target.value)}
-            placeholder="Enter recovery phrase"
+            placeholder={props.t("enterRecoveryPhrase")}
           />
         </FormCard>
-        <FormCard title="Transaction Password">
+        <FormCard title={props.t("transactionPassword")}>
           <Input
             type="password"
             value={props.password}
             onChange={(event) => props.setPassword(event.target.value)}
-            placeholder="Password"
+            placeholder={props.t("password")}
           />
         </FormCard>
         <Button className="w-full bg-blue-600" disabled={props.busy}>
-          Import Wallet
+          {props.t("importWallet")}
         </Button>
       </form>
     </Screen>
@@ -2013,6 +2073,7 @@ function WalletDetailScreen({
   wallet,
   transactions,
   busy,
+  t,
   onNavigate,
   onSelectAsset,
   onSelectTransaction,
@@ -2022,6 +2083,7 @@ function WalletDetailScreen({
   wallet: WalletRow | null;
   transactions: TransactionRow[];
   busy: boolean;
+  t: MiniT;
   onNavigate: (screen: MiniScreen) => Promise<void>;
   onSelectAsset: (asset: ReceiveAsset) => void;
   onSelectTransaction: (transaction: TransactionRow, backTo?: MiniScreen) => void;
@@ -2030,8 +2092,8 @@ function WalletDetailScreen({
 }) {
   if (!wallet)
     return (
-      <Screen title="Wallet Detail" subtitle="Select a wallet first">
-        <EmptyLine>No wallet selected.</EmptyLine>
+      <Screen title={t("walletDetail")} subtitle={t("selectWalletFirst")}>
+        <EmptyLine>{t("noWalletSelected")}</EmptyLine>
       </Screen>
     );
   const balance = walletDisplayBalance(wallet);
@@ -2039,13 +2101,13 @@ function WalletDetailScreen({
   const typeLabel = (wallet.wallet_type ?? "standard").toUpperCase();
   const recentRows = transactions.slice(0, 5);
   return (
-    <Screen title="Wallet" subtitle="Self-custody TRON wallet">
+    <Screen title={t("wallet")} subtitle={t("selfCustodyWallet")}>
       <div className="rounded-[2rem] border border-white/10 bg-[#101826] p-5 shadow-[0_18px_60px_-35px_rgba(37,99,235,0.9)]">
         <div className="flex items-start justify-between gap-3">
           <button className="min-w-0 text-left" onClick={() => onNavigate("wallet")}>
             <span className="flex items-center gap-2 text-xs text-slate-400">
               <TronIcon className="h-5 w-5" />
-              {typeLabel} / {network.label}
+              {typeLabel} / {networkLabelForMini(wallet.network, t)}
             </span>
             <span className="mt-2 flex items-center gap-1 text-xl font-semibold text-white">
               <span className="truncate">{wallet.name ?? "Wallet"}</span>
@@ -2061,15 +2123,16 @@ function WalletDetailScreen({
         </div>
         <button
           className="mono mt-3 rounded-full bg-black/25 px-3 py-1 text-xs text-slate-300"
-          onClick={() => copyText(safeAddress(wallet.address), "Address copied")}
+          dir={technicalTextDirection()}
+          onClick={() => copyText(safeAddress(wallet.address), t("addressCopied"))}
         >
           {shortenHash(safeAddress(wallet.address), 8)}
         </button>
         <div className="mt-4 flex flex-wrap gap-2">
-          <NetworkBadge wallet={wallet} />
+          <NetworkBadge wallet={wallet} t={t} />
           <StatusBadge status={wallet.wallet_type ?? "standard"} />
         </div>
-        <p className="mt-6 text-xs text-slate-400">Portfolio Balance</p>
+        <p className="mt-6 text-xs text-slate-400">{t("portfolioBalance")}</p>
         <div className="mt-2 grid gap-1">
           <p className="mono text-3xl font-semibold text-white">{money(balance)} USDT</p>
           <p className="mono text-sm text-slate-300">
@@ -2080,22 +2143,26 @@ function WalletDetailScreen({
       <div className="grid grid-cols-4 gap-2">
         <Action
           icon={MiniIcons.receive}
-          label="Receive"
+          label={t("receive")}
           onClick={() => onNavigate("wallet-receive")}
         />
-        <Action icon={MiniIcons.send} label="Send" onClick={() => onNavigate("send")} />
+        <Action icon={MiniIcons.send} label={t("send")} onClick={() => onNavigate("send")} />
         <Action
           icon={MiniIcons.history}
-          label="History"
+          label={t("history")}
           onClick={() => onNavigate("wallet-history")}
         />
-        <Action icon={MoreHorizontal} label="More" onClick={() => onNavigate("wallet-more")} />
+        <Action icon={MoreHorizontal} label={t("more")} onClick={() => onNavigate("wallet-more")} />
       </div>
-      <Section title="Assets" action={busy ? "Refreshing..." : "Refresh"} onAction={onRefresh}>
+      <Section
+        title={t("assets")}
+        action={busy ? t("refreshing") : t("refresh")}
+        onAction={onRefresh}
+      >
         <AssetRow
           icon={<UsdtIcon />}
           symbol="USDT"
-          name="Tether USD"
+          name={t("tetherUsd")}
           network="TRC20"
           amount={`${money(balance)} USDT`}
           onClick={() => onSelectAsset("USDT")}
@@ -2109,29 +2176,29 @@ function WalletDetailScreen({
           onClick={() => onSelectAsset("TRX")}
         />
       </Section>
-      <Section title="Wallet Settings">
+      <Section title={t("walletInformation")}>
         <SettingRow
           icon={MiniIcons.backup}
-          title="Backup"
+          title={t("backup")}
           body={wallet.backup_status ?? "not_backed_up"}
           onClick={() => onNavigate("wallet-backup")}
         />
         <SettingRow
           icon={MiniIcons.security}
-          title="Security"
-          body="Transaction password protected"
+          title={t("security")}
+          body={t("transactionPasswordProtected")}
           onClick={() => onNavigate("security")}
         />
         <SettingRow
           icon={MiniIcons.wallet}
-          title="Set Default"
-          body={wallet.is_default ? "Already active" : "Make active wallet"}
+          title={t("setDefault")}
+          body={wallet.is_default ? t("alreadyActive") : t("makeActiveWallet")}
           onClick={onSetDefault}
         />
         <SettingRow
           icon={ExternalLink}
-          title="Explorer"
-          body="Open TRON explorer"
+          title={t("explorer")}
+          body={t("openTronExplorer")}
           onClick={() => {
             const network = networkConfig(wallet.network);
             const address = safeAddress(wallet.address);
@@ -2140,9 +2207,10 @@ function WalletDetailScreen({
         />
       </Section>
       <TransactionList
-        title="Recent Wallet Activity"
+        title={t("recentWalletActivity")}
         rows={recentRows}
-        empty="No on-chain wallet activity for this wallet yet."
+        empty={t("noOnchainWalletActivity")}
+        t={t}
         onSelect={(transaction) => onSelectTransaction(transaction)}
       />
       {busy ? <p className="text-center text-xs text-slate-500">Working...</p> : null}
@@ -2173,6 +2241,7 @@ function WalletHistoryScreen({
   setDirectionFilter,
   hasMore,
   busy,
+  t,
   onLoadMore,
   onSelectTransaction,
 }: {
@@ -2184,6 +2253,7 @@ function WalletHistoryScreen({
   setDirectionFilter: (filter: WalletHistoryDirectionFilter) => void;
   hasMore: boolean;
   busy: boolean;
+  t: MiniT;
   onLoadMore: () => void;
   onSelectTransaction: (transaction: TransactionRow) => void;
 }) {
@@ -2192,15 +2262,17 @@ function WalletHistoryScreen({
     [rows, assetFilter, directionFilter],
   );
   return (
-    <Screen title="Wallet History" subtitle={wallet?.name ?? "Selected wallet"}>
+    <Screen title={t("walletHistory")} subtitle={wallet?.name ?? t("selectedWalletSubtitle")}>
       {wallet ? (
         <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="font-semibold">{wallet.name ?? "Wallet"}</p>
-              <p className="mono truncate text-xs text-slate-400">{wallet.address}</p>
+              <p className="mono truncate text-xs text-slate-400" dir={technicalTextDirection()}>
+                {wallet.address}
+              </p>
             </div>
-            <NetworkBadge wallet={wallet} />
+            <NetworkBadge wallet={wallet} t={t} />
           </div>
         </div>
       ) : null}
@@ -2208,7 +2280,7 @@ function WalletHistoryScreen({
         value={assetFilter}
         setValue={(value) => setAssetFilter(value as WalletHistoryAssetFilter)}
         items={[
-          ["ALL", "All"],
+          ["ALL", t("all")],
           ["USDT", "USDT"],
           ["TRX", "TRX"],
         ]}
@@ -2217,16 +2289,16 @@ function WalletHistoryScreen({
         value={directionFilter}
         setValue={(value) => setDirectionFilter(value as WalletHistoryDirectionFilter)}
         items={[
-          ["ALL", "All"],
-          ["in", "Received"],
-          ["out", "Sent"],
+          ["ALL", t("all")],
+          ["in", t("received")],
+          ["out", t("sent")],
         ]}
       />
-      <WalletTransactionRows rows={filtered} onSelect={onSelectTransaction} />
+      <WalletTransactionRows rows={filtered} t={t} onSelect={onSelectTransaction} />
       {hasMore ? (
         <Button className="w-full bg-blue-600" disabled={busy} onClick={onLoadMore}>
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Load More
+          {t("loadMore")}
         </Button>
       ) : null}
     </Screen>
@@ -2237,6 +2309,7 @@ function WalletAssetDetailScreen({
   wallet,
   asset,
   rows,
+  t,
   onSend,
   onReceive,
   onSelectTransaction,
@@ -2244,6 +2317,7 @@ function WalletAssetDetailScreen({
   wallet: WalletRow | null;
   asset: ReceiveAsset;
   rows: TransactionRow[];
+  t: MiniT;
   onSend: () => void;
   onReceive: () => void;
   onSelectTransaction: (transaction: TransactionRow) => void;
@@ -2256,26 +2330,26 @@ function WalletAssetDetailScreen({
   );
   const Icon = asset === "USDT" ? UsdtIcon : TronIcon;
   return (
-    <Screen title={asset} subtitle={asset === "USDT" ? "Tether USD / TRC20" : "TRON"}>
+    <Screen title={asset} subtitle={asset === "USDT" ? `${t("tetherUsd")} / TRC20` : "TRON"}>
       <div className="rounded-3xl border border-white/10 bg-white/6 p-5">
         <div className="flex items-center gap-3">
           <Icon className="h-10 w-10" />
           <div>
-            <p className="font-semibold">{asset === "USDT" ? "Tether USD" : "TRON"}</p>
-            <p className="text-xs text-slate-400">{networkConfig(wallet?.network).label}</p>
+            <p className="font-semibold">{asset === "USDT" ? t("tetherUsd") : "TRON"}</p>
+            <p className="text-xs text-slate-400">{networkLabelForMini(wallet?.network, t)}</p>
           </div>
         </div>
-        <p className="mt-6 text-xs text-slate-400">Balance</p>
+        <p className="mt-6 text-xs text-slate-400">{t("available")}</p>
         <p className="mono mt-1 text-3xl font-semibold">
           {money(balance, asset)} {asset}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Action icon={MiniIcons.send} label="Send" onClick={onSend} />
-        <Action icon={MiniIcons.receive} label="Receive" onClick={onReceive} />
+        <Action icon={MiniIcons.send} label={t("send")} onClick={onSend} />
+        <Action icon={MiniIcons.receive} label={t("receive")} onClick={onReceive} />
       </div>
-      <Section title={`${asset} Transactions`}>
-        <WalletTransactionRows rows={assetRows} onSelect={onSelectTransaction} />
+      <Section title={`${asset} ${t("transactions")}`}>
+        <WalletTransactionRows rows={assetRows} t={t} onSelect={onSelectTransaction} />
       </Section>
     </Screen>
   );
@@ -2284,24 +2358,29 @@ function WalletAssetDetailScreen({
 function WalletTransactionDetailScreen({
   wallet,
   transaction,
+  t,
 }: {
   wallet: WalletRow | null;
   transaction: TransactionRow | null;
+  t: MiniT;
 }) {
   if (!wallet || !transaction) {
     return (
-      <Screen title="Transaction" subtitle="Wallet activity">
-        <EmptyLine>Select a transaction first.</EmptyLine>
+      <Screen title={t("transactionDetail")} subtitle={t("walletActivity")}>
+        <EmptyLine>{t("selectTransactionFirst")}</EmptyLine>
       </Screen>
     );
   }
   const network = networkConfig(wallet.network);
-  const direction = transaction.direction === "in" ? "Received" : "Sent";
+  const direction = transaction.direction === "in" ? t("received") : t("sent");
   const counterparty = safeAddress(transaction.counterparty_address);
   const from = transaction.direction === "in" ? counterparty : safeAddress(wallet.address);
   const to = transaction.direction === "in" ? safeAddress(wallet.address) : counterparty;
   return (
-    <Screen title={`${direction} ${transaction.currency ?? "USDT"}`} subtitle={network.label}>
+    <Screen
+      title={`${direction} ${transaction.currency ?? "USDT"}`}
+      subtitle={networkLabelForMini(wallet.network, t)}
+    >
       <div className="rounded-3xl border border-white/10 bg-white/6 p-5 text-center">
         {String(transaction.currency ?? "").toUpperCase() === "TRX" ? (
           <TronIcon className="mx-auto h-12 w-12" />
@@ -2317,20 +2396,22 @@ function WalletTransactionDetailScreen({
       </div>
       <MetricGrid
         items={[
-          ["Direction", direction],
-          ["Network", network.label],
-          ["From", from ? shortenHash(from, 8) : "-"],
-          ["To", to ? shortenHash(to, 8) : "-"],
-          ["Fee", money(transaction.fee ?? 0, transaction.currency ?? "USDT")],
+          [t("transactionDetail"), direction],
+          [t("network"), networkLabelForMini(wallet.network, t)],
+          [t("from"), from ? shortenHash(from, 8) : "-"],
+          [t("to"), to ? shortenHash(to, 8) : "-"],
+          [t("fee"), money(transaction.fee ?? 0, transaction.currency ?? "USDT")],
           [
-            "Date",
+            t("date"),
             transaction.created_at ? new Date(transaction.created_at).toLocaleString() : "-",
           ],
         ]}
       />
       <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
-        <p className="text-xs text-slate-400">TXID</p>
-        <p className="mono mt-1 break-all text-xs">{transaction.txid ?? "-"}</p>
+        <p className="text-xs text-slate-400">{t("txid")}</p>
+        <p className="mono mt-1 break-all text-xs" dir={technicalTextDirection()}>
+          {transaction.txid ?? "-"}
+        </p>
         {transaction.txid ? (
           <Button
             className="mt-3 w-full bg-blue-600"
@@ -2342,7 +2423,7 @@ function WalletTransactionDetailScreen({
               )
             }
           >
-            View on TRONSCAN
+            {t("viewOnTronscan")}
           </Button>
         ) : null}
       </div>
@@ -2354,71 +2435,76 @@ function WalletMoreScreen({
   wallet,
   onNavigate,
   onSetDefault,
+  t,
 }: {
   wallet: WalletRow | null;
   onNavigate: (screen: MiniScreen) => void | Promise<void>;
   onSetDefault: () => void;
+  t: MiniT;
 }) {
   if (!wallet) {
     return (
-      <Screen title="Wallet More" subtitle="Selected wallet">
-        <EmptyLine>Select a wallet first.</EmptyLine>
+      <Screen title={t("more")} subtitle={t("selectedWallet")}>
+        <EmptyLine>{t("noWalletSelected")}</EmptyLine>
       </Screen>
     );
   }
   const network = networkConfig(wallet.network);
   const address = safeAddress(wallet.address);
   return (
-    <Screen title="Wallet More" subtitle={wallet.name ?? "Selected wallet"}>
+    <Screen title={t("more")} subtitle={wallet.name ?? t("selectedWallet")}>
       <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="font-semibold">{wallet.name ?? "Wallet"}</p>
-            <p className="mono truncate text-xs text-slate-400">{address}</p>
+            <p className="mono truncate text-xs text-slate-400" dir={technicalTextDirection()}>
+              {address}
+            </p>
           </div>
-          <NetworkBadge wallet={wallet} />
+          <NetworkBadge wallet={wallet} t={t} />
         </div>
         <MetricGrid
           items={[
-            ["Network", network.label],
-            ["Wallet Type", (wallet.wallet_type ?? "standard").toUpperCase()],
-            ["Default", wallet.is_default ? "Yes" : "No"],
-            ["GasFree", wallet.gas_sponsorship_status ?? "unavailable"],
+            [t("network"), networkLabelForMini(wallet.network, t)],
+            [t("walletType"), (wallet.wallet_type ?? "standard").toUpperCase()],
+            [t("default"), wallet.is_default ? t("active") : "-"],
+            [t("gasSponsorship"), wallet.gas_sponsorship_status ?? t("unavailable")],
           ]}
         />
       </div>
-      <Section title="Actions">
+      <Section title={t("more")}>
         <SettingRow
           icon={MiniIcons.backup}
-          title="Backup"
+          title={t("backup")}
           body={wallet.backup_status ?? "not_backed_up"}
           onClick={() => onNavigate("wallet-backup")}
         />
         <SettingRow
           icon={MiniIcons.security}
-          title="Security"
-          body="Transaction password protected"
+          title={t("security")}
+          body={t("transactionPasswordProtected")}
           onClick={() => onNavigate("security")}
         />
         <SettingRow
           icon={MiniIcons.wallet}
-          title="Set Default"
-          body={wallet.is_default ? "Already active" : "Make active wallet"}
+          title={t("setDefault")}
+          body={wallet.is_default ? t("alreadyActive") : t("makeActiveWallet")}
           onClick={onSetDefault}
         />
         <SettingRow
           icon={ExternalLink}
-          title="Explorer"
-          body="Open selected wallet address"
+          title={t("explorer")}
+          body={t("openSelectedWalletAddress")}
           onClick={() => {
             window.open(network.explorerAddress(address), "_blank", "noopener,noreferrer");
           }}
         />
       </Section>
-      <Section title="Wallet Information">
+      <Section title={t("walletInformation")}>
         <button
           className="mono w-full rounded-2xl border border-white/10 bg-white/6 p-3 text-left text-xs"
-          onClick={() => copyText(address, "Address copied")}
+          dir={technicalTextDirection()}
+          onClick={() => copyText(address, t("addressCopied"))}
         >
           {address}
         </button>
@@ -2432,18 +2518,17 @@ function ReceiveScreen({
   asset,
   setAsset,
   qr,
+  t,
 }: {
   wallet: WalletRow | null;
   asset: ReceiveAsset;
   setAsset: (asset: ReceiveAsset) => void;
   qr: string;
+  t: MiniT;
 }) {
   const address = safeAddress(wallet?.address);
   return (
-    <Screen
-      title="Personal Wallet Receive"
-      subtitle="This is not the WTRON platform deposit address"
-    >
+    <Screen title={t("personalWalletReceive")} subtitle={t("receiveSubtitle")}>
       <div className="grid grid-cols-2 gap-2">
         <Button
           variant={asset === "USDT" ? "default" : "secondary"}
@@ -2468,22 +2553,23 @@ function ReceiveScreen({
         <p className="mt-4 text-sm font-semibold">
           {asset === "USDT" ? "USDT / TRC20" : "TRX / TRON Network"}
         </p>
-        <p className="mono mt-2 break-all text-sm">{address || "No wallet selected"}</p>
+        <p className="mono mt-2 break-all text-sm" dir={technicalTextDirection()}>
+          {address || t("noWalletSelected")}
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Button className="bg-blue-600" onClick={() => copyText(address, "Address copied")}>
-          Copy Address
+        <Button className="bg-blue-600" onClick={() => copyText(address, t("addressCopied"))}>
+          {t("copyAddress")}
         </Button>
         <Button
           variant="secondary"
           onClick={() => navigator.share?.({ text: address }).catch(() => copyText(address))}
         >
-          Share
+          {t("share")}
         </Button>
       </div>
       <p className="rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-100">
-        Only send {asset} using the TRON network to this address. USDT TRC20 and TRX use the same
-        underlying TRON address.
+        {asset === "USDT" ? t("receiveUsdtWarning") : t("receiveTrxWarning")}
       </p>
     </Screen>
   );
@@ -2495,6 +2581,7 @@ function BackupScreen({
   setPassword,
   revealedPhrase,
   busy,
+  t,
   onSubmit,
 }: {
   wallet: WalletRow | null;
@@ -2502,11 +2589,12 @@ function BackupScreen({
   setPassword: (value: string) => void;
   revealedPhrase: string;
   busy: boolean;
+  t: MiniT;
   onSubmit: (event: FormEvent) => void;
 }) {
   const words = revealedPhrase.trim().split(/\s+/).filter(Boolean);
   return (
-    <Screen title="Backup Wallet" subtitle={wallet?.name ?? "Selected wallet"}>
+    <Screen title={t("backup")} subtitle={wallet?.name ?? t("selectedWallet")}>
       <p className="rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-100">
         Never share your recovery phrase. Anyone with this phrase can control the wallet.
       </p>
@@ -2516,10 +2604,10 @@ function BackupScreen({
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="Transaction password"
+            placeholder={t("transactionPassword")}
           />
           <Button className="w-full bg-blue-600" disabled={busy}>
-            Reveal Recovery Phrase
+            {t("recoveryPhrase")}
           </Button>
         </form>
       ) : (
@@ -2529,6 +2617,7 @@ function BackupScreen({
               <div
                 key={`${word}-${index}`}
                 className="rounded-xl border border-white/10 bg-white/6 p-2 text-sm"
+                dir={technicalTextDirection()}
               >
                 <span className="mr-2 text-slate-500">{index + 1}</span>
                 {word}
@@ -2537,9 +2626,9 @@ function BackupScreen({
           </div>
           <Button
             className="w-full bg-blue-600"
-            onClick={() => copyText(revealedPhrase, "Recovery phrase copied")}
+            onClick={() => copyText(revealedPhrase, t("copied"))}
           >
-            Copy
+            {t("copyAddress")}
           </Button>
           <Button
             variant="secondary"
@@ -2633,6 +2722,7 @@ function SendScreen({
   setAddress,
   amount,
   setAmount,
+  t,
 }: {
   wallet: WalletRow | null;
   asset: ReceiveAsset;
@@ -2641,6 +2731,7 @@ function SendScreen({
   setAddress: (value: string) => void;
   amount: string;
   setAmount: (value: string) => void;
+  t: MiniT;
 }) {
   const enabled = onChainSendEnabled(wallet);
   const network = networkConfig(wallet?.network);
@@ -2648,7 +2739,7 @@ function SendScreen({
     asset === "USDT" ? walletDisplayBalance(wallet) : Number(wallet?.onchain_trx_balance ?? 0);
   const mainnetDisabled = wallet?.network === "trc20-mainnet" && !enabled;
   return (
-    <Screen title="Send" subtitle="Prepared for on-chain personal wallet sending">
+    <Screen title={t("send")} subtitle={t("selfCustodyWallet")}>
       <div className="grid grid-cols-2 gap-2">
         <Button
           variant={asset === "USDT" ? "default" : "secondary"}
@@ -2664,29 +2755,27 @@ function SendScreen({
         <Input
           value={address}
           onChange={(event) => setAddress(event.target.value)}
-          placeholder="Recipient TRON T... address"
+          placeholder={t("recipientAddressPlaceholder")}
         />
         <Input
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
-          placeholder="Amount"
+          placeholder={t("amount")}
         />
         <MetricGrid
           items={[
-            ["Selected wallet", wallet?.name ?? "None"],
-            ["Available", `${money(available, asset)} ${asset}`],
-            ["Network", network.label],
-            ["Fees", "Signer required"],
+            [t("selectedWallet"), wallet?.name ?? t("noWalletSelected")],
+            [t("available"), `${money(available, asset)} ${asset}`],
+            [t("network"), networkLabelForMini(wallet?.network, t)],
+            [t("fees"), t("signerRequired")],
           ]}
         />
       </div>
       <p className="rounded-2xl border border-yellow-500/25 bg-yellow-500/10 p-3 text-sm text-yellow-100">
-        {mainnetDisabled
-          ? "MAINNET SEND CURRENTLY DISABLED. Secure signing remains off for Mainnet."
-          : "Sending is currently unavailable while secure wallet signing is being configured."}
+        {mainnetDisabled ? t("mainnetSendDisabled") : t("sendUnavailable")}
       </p>
       <Button className="w-full" disabled={!enabled}>
-        Continue
+        {t("confirm")}
       </Button>
     </Screen>
   );
@@ -3338,11 +3427,11 @@ function Screen({
     </main>
   );
 }
-function BackButton({ onClick }: { onClick: () => void }) {
+function BackButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button className="inline-flex items-center gap-1 text-sm text-slate-300" onClick={onClick}>
       <ChevronLeft className="h-4 w-4" />
-      Back
+      {label}
     </button>
   );
 }
@@ -3495,14 +3584,15 @@ function FormCard({ title, children }: { title: string; children: React.ReactNod
 function NetworkPicker({
   network,
   setNetwork,
+  t,
 }: {
   network: ChainNetwork;
   setNetwork: (value: ChainNetwork) => void;
+  t: MiniT;
 }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       {(["trc20-nile", "trc20-mainnet"] as ChainNetwork[]).map((value) => {
-        const config = networkConfig(value);
         return (
           <Button
             key={value}
@@ -3510,7 +3600,7 @@ function NetworkPicker({
             variant={network === value ? "default" : "secondary"}
             onClick={() => setNetwork(value)}
           >
-            {config.label}
+            {networkLabelForMini(value, t)}
           </Button>
         );
       })}
@@ -3569,11 +3659,13 @@ function TokenMetric({
 function WalletCard({
   wallet,
   active,
+  t,
   onSelect,
   onOpen,
 }: {
   wallet: WalletRow;
   active: boolean;
+  t: MiniT;
   onSelect: () => void;
   onOpen: () => void;
 }) {
@@ -3586,7 +3678,7 @@ function WalletCard({
       }}
     >
       <div className="flex items-center justify-between">
-        <NetworkBadge wallet={wallet} />
+        <NetworkBadge wallet={wallet} t={t} />
         {wallet.wallet_type === "gasfree" ? <GasFreeIcon /> : <TronIcon />}
       </div>
       <p className="mt-5 text-lg font-semibold">{wallet.name ?? "Wallet"}</p>
@@ -3600,32 +3692,34 @@ function WalletCard({
         </div>
         {wallet.is_default ? (
           <span className="rounded-full bg-blue-600 px-2 py-1 text-[10px] font-semibold">
-            Active
+            {t("active")}
           </span>
         ) : null}
       </div>
       <p className="mt-3 text-xs text-slate-400">
-        Gas sponsorship: {wallet.gas_sponsorship_status ?? "unavailable"}
+        {t("gasSponsorship")}: {wallet.gas_sponsorship_status ?? t("unavailable")}
       </p>
     </button>
   );
 }
-function NetworkBadge({ wallet }: { wallet: WalletRow }) {
-  const network = networkConfig(wallet.network);
+function NetworkBadge({ wallet, t }: { wallet: WalletRow; t?: MiniT }) {
+  const network = t ? networkLabelForMini(wallet.network, t) : networkConfig(wallet.network).label;
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs">
       <TronIcon className="h-4 w-4" />
-      {network.label} {(wallet.wallet_type ?? "standard").toUpperCase()}
+      {network} {(wallet.wallet_type ?? "standard").toUpperCase()}
     </span>
   );
 }
 function WalletSummary({
   wallet,
+  t,
   onReceive,
   onSend,
   onBackup,
 }: {
   wallet: WalletRow | null;
+  t: MiniT;
   onReceive: () => void;
   onSend: () => void;
   onBackup: () => void;
@@ -3636,26 +3730,26 @@ function WalletSummary({
       <p className="mono mt-1 break-all text-xs text-slate-400">{wallet.address}</p>
       <MetricGrid
         items={[
-          ["Wallet Type", (wallet.wallet_type ?? "standard").toUpperCase()],
-          ["Network", networkConfig(wallet.network).label],
-          ["Backup", wallet.backup_status ?? "not_backed_up"],
-          ["Gas", wallet.gas_sponsorship_status ?? "unavailable"],
+          [t("walletType"), (wallet.wallet_type ?? "standard").toUpperCase()],
+          [t("network"), networkLabelForMini(wallet.network, t)],
+          [t("backup"), wallet.backup_status ?? "not_backed_up"],
+          [t("gasSponsorship"), wallet.gas_sponsorship_status ?? t("unavailable")],
         ]}
       />
       <div className="mt-3 grid grid-cols-3 gap-2">
         <Button size="sm" onClick={onReceive}>
-          Receive
+          {t("receive")}
         </Button>
         <Button size="sm" variant="secondary" onClick={onSend}>
-          Send
+          {t("send")}
         </Button>
         <Button size="sm" variant="secondary" onClick={onBackup}>
-          Backup
+          {t("backup")}
         </Button>
       </div>
     </div>
   ) : (
-    <EmptyLine>No wallet selected.</EmptyLine>
+    <EmptyLine>{t("noWalletSelected")}</EmptyLine>
   );
 }
 function AssetRow({
@@ -4013,18 +4107,24 @@ function TransactionList({
   title,
   rows,
   empty,
+  t,
   onSelect,
 }: {
   title: string;
   rows: TransactionRow[];
   empty: string;
+  t?: MiniT;
   onSelect?: (transaction: TransactionRow) => void;
 }) {
   const filtered = useMemo(() => rows.slice(0, 8), [rows]);
   return (
     <Section title={title}>
       {filtered.length ? (
-        <WalletTransactionRows rows={filtered} onSelect={onSelect} />
+        <WalletTransactionRows
+          rows={filtered}
+          {...(t ? { t } : {})}
+          {...(onSelect ? { onSelect } : {})}
+        />
       ) : (
         <EmptyLine>{empty}</EmptyLine>
       )}
@@ -4034,12 +4134,15 @@ function TransactionList({
 
 function WalletTransactionRows({
   rows,
+  t,
   onSelect,
 }: {
   rows: TransactionRow[];
+  t?: MiniT;
   onSelect?: ((transaction: TransactionRow) => void) | undefined;
 }) {
-  if (!rows.length) return <EmptyLine>No transactions yet.</EmptyLine>;
+  if (!rows.length)
+    return <EmptyLine>{t ? t("noTransactionsYet") : "No transactions yet."}</EmptyLine>;
   return (
     <div className="space-y-2">
       {rows.map((row) => {
@@ -4055,16 +4158,22 @@ function WalletTransactionRows({
             <Icon className="h-9 w-9 shrink-0" />
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold">
-                {incoming ? "Received" : "Sent"} {currency}
+                {t ? (incoming ? t("received") : t("sent")) : incoming ? "Received" : "Sent"}{" "}
+                {currency}
               </span>
-              <span className="block truncate text-xs text-slate-400">
+              <span
+                className="block truncate text-xs text-slate-400"
+                dir={technicalTextDirection()}
+              >
                 {row.counterparty_address
                   ? shortenHash(row.counterparty_address, 8)
                   : row.txid
                     ? shortenHash(row.txid, 8)
-                    : "On-chain transaction"}
+                    : t
+                      ? t("onchainTransaction")
+                      : "On-chain transaction"}
               </span>
-              <span className="block text-[11px] text-slate-500">
+              <span className="block text-[11px] text-slate-500" dir={technicalTextDirection()}>
                 {row.created_at ? new Date(row.created_at).toLocaleString() : ""}
               </span>
             </span>
