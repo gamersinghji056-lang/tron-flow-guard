@@ -108,6 +108,7 @@ type MiniScreen =
   | "wallet-receive"
   | "wallet-backup"
   | "wallet-more"
+  | "wallet-gasfree"
   | "platform-deposit"
   | "direct-sell-detail"
   | "send"
@@ -366,7 +367,12 @@ function backScreenFor(screen: MiniScreen, transactionBackScreen: MiniScreen): M
   if (screen === "wallet-history" || screen === "wallet-asset-detail") return "wallet-detail";
   if (screen === "wallet-detail" || screen === "wallet-create" || screen === "wallet-import")
     return "wallet";
-  if (screen === "wallet-receive" || screen === "wallet-backup" || screen === "wallet-more")
+  if (
+    screen === "wallet-receive" ||
+    screen === "wallet-backup" ||
+    screen === "wallet-more" ||
+    screen === "wallet-gasfree"
+  )
     return "wallet-detail";
   return tabForScreen(screen);
 }
@@ -417,6 +423,14 @@ function safeAddress(address?: string | null) {
 function copyText(value: string, label = "Copied") {
   if (!value) return;
   void navigator.clipboard.writeText(value).then(() => toast.success(label));
+}
+
+function gasfreeStatusLabel(status: string | null | undefined, t: MiniT) {
+  const normalized = String(status ?? "unavailable").toLowerCase();
+  if (normalized === "available") return t("available");
+  if (normalized === "limited") return t("limited");
+  if (normalized === "enabled") return t("enabled");
+  return t("unavailable");
 }
 
 function TelegramMiniApp() {
@@ -1413,10 +1427,12 @@ function TelegramMiniApp() {
         {screen === "wallet-detail" ? (
           <WalletDetailScreen
             wallet={selectedWallet}
+            wallets={wallets}
             transactions={walletTransactions}
             busy={busy}
             t={t}
             onNavigate={navigate}
+            onSelectWallet={(wallet) => void activateWallet(wallet)}
             onSelectAsset={(asset) => {
               setSelectedWalletAsset(asset);
               void navigate("wallet-asset-detail");
@@ -1496,6 +1512,7 @@ function TelegramMiniApp() {
             t={t}
           />
         ) : null}
+        {screen === "wallet-gasfree" ? <WalletGasFreeScreen wallet={selectedWallet} t={t} /> : null}
         {screen === "wallet-backup" ? (
           <BackupScreen
             wallet={selectedWallet}
@@ -1957,11 +1974,12 @@ function WalletCreateScreen(props: {
               onClick={() => props.setWalletType("standard")}
             />
             <TypeOption
-              active={props.walletType === "gasfree"}
+              active={false}
               icon={<GasFreeIcon />}
               title={props.t("gasfreeWallet")}
-              body={props.t("gasfreeDescription")}
-              onClick={() => props.setWalletType("gasfree")}
+              body={`${props.t("gasfreeDescription")} ${props.t("comingSoonUnavailable")}`}
+              disabled
+              onClick={() => props.setWalletType("standard")}
             />
           </div>
         </FormCard>
@@ -2071,25 +2089,30 @@ function WalletImportScreen(props: {
 
 function WalletDetailScreen({
   wallet,
+  wallets,
   transactions,
   busy,
   t,
   onNavigate,
+  onSelectWallet,
   onSelectAsset,
   onSelectTransaction,
   onRefresh,
   onSetDefault,
 }: {
   wallet: WalletRow | null;
+  wallets: WalletRow[];
   transactions: TransactionRow[];
   busy: boolean;
   t: MiniT;
   onNavigate: (screen: MiniScreen) => Promise<void>;
+  onSelectWallet: (wallet: WalletRow) => void;
   onSelectAsset: (asset: ReceiveAsset) => void;
   onSelectTransaction: (transaction: TransactionRow, backTo?: MiniScreen) => void;
   onRefresh: () => void;
   onSetDefault: () => void;
 }) {
+  const [selectorOpen, setSelectorOpen] = useState(false);
   if (!wallet)
     return (
       <Screen title={t("walletDetail")} subtitle={t("selectWalletFirst")}>
@@ -2097,50 +2120,80 @@ function WalletDetailScreen({
       </Screen>
     );
   const balance = walletDisplayBalance(wallet);
-  const network = networkConfig(wallet.network);
   const typeLabel = (wallet.wallet_type ?? "standard").toUpperCase();
+  const gasStatus = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
   const recentRows = transactions.slice(0, 5);
   return (
-    <Screen title={t("wallet")} subtitle={t("selfCustodyWallet")}>
-      <div className="rounded-[2rem] border border-white/10 bg-[#101826] p-5 shadow-[0_18px_60px_-35px_rgba(37,99,235,0.9)]">
-        <div className="flex items-start justify-between gap-3">
-          <button className="min-w-0 text-left" onClick={() => onNavigate("wallet")}>
-            <span className="flex items-center gap-2 text-xs text-slate-400">
-              <TronIcon className="h-5 w-5" />
-              {typeLabel} / {networkLabelForMini(wallet.network, t)}
+    <Screen title={t("wallet")} subtitle={t("selfCustodyWallet")} compact>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            className="flex min-w-0 items-center gap-3 text-left"
+            onClick={() => setSelectorOpen(true)}
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/8">
+              <Wallet className="h-5 w-5 text-blue-300" />
             </span>
-            <span className="mt-2 flex items-center gap-1 text-xl font-semibold text-white">
-              <span className="truncate">{wallet.name ?? "Wallet"}</span>
-              <ChevronDown className="h-4 w-4 text-slate-400" />
+            <span className="min-w-0">
+              <span className="flex items-center gap-1 text-lg font-semibold text-white">
+                <span className="truncate">{wallet.name ?? t("wallet")}</span>
+                <ChevronDown className="h-4 w-4 text-slate-400" />
+              </span>
+              <span className="mt-1 flex flex-wrap gap-2 text-xs text-slate-400">
+                <span>{networkLabelForMini(wallet.network, t)}</span>
+                <span>{typeLabel}</span>
+              </span>
             </span>
           </button>
           <button
             className="grid h-10 w-10 place-items-center rounded-full bg-white/8 text-slate-100"
-            onClick={() => onNavigate("wallet-receive")}
+            onClick={() => onNavigate("wallet-more")}
           >
-            <MiniIcons.upi className="h-5 w-5" />
+            <MoreHorizontal className="h-5 w-5" />
           </button>
         </div>
         <button
-          className="mono mt-3 rounded-full bg-black/25 px-3 py-1 text-xs text-slate-300"
+          className="mono rounded-full bg-white/6 px-3 py-1 text-xs text-slate-300"
           dir={technicalTextDirection()}
           onClick={() => copyText(safeAddress(wallet.address), t("addressCopied"))}
         >
           {shortenHash(safeAddress(wallet.address), 8)}
         </button>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <NetworkBadge wallet={wallet} t={t} />
-          <StatusBadge status={wallet.wallet_type ?? "standard"} />
+
+        <button
+          className="flex w-full items-center justify-between rounded-2xl bg-white/5 px-4 py-3 text-left"
+          onClick={() => onNavigate("wallet-gasfree")}
+        >
+          <span className="flex items-center gap-3">
+            <GasFreeIcon className="h-8 w-8" />
+            <span>
+              <span className="block text-sm font-semibold">GasFree</span>
+              <span className="block text-xs text-slate-400">{t("gasfreeCapability")}</span>
+            </span>
+          </span>
+          <span className="text-right text-xs text-slate-300">
+            {gasStatus}
+            <ChevronDown className="ml-1 inline h-3 w-3 -rotate-90" />
+          </span>
+        </button>
+
+        <div className="py-4">
+          <p className="text-xs text-slate-500">{t("portfolioBalance")}</p>
+          <div className="mt-2 grid gap-1">
+            <p className="mono text-4xl font-semibold text-white">{money(balance)} USDT</p>
+            <p className="mono text-base text-slate-300">
+              {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
+            </p>
+          </div>
         </div>
-        <p className="mt-6 text-xs text-slate-400">{t("portfolioBalance")}</p>
-        <div className="mt-2 grid gap-1">
-          <p className="mono text-3xl font-semibold text-white">{money(balance)} USDT</p>
-          <p className="mono text-sm text-slate-300">
-            {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
-          </p>
+
+        <div className="grid grid-cols-2 gap-2">
+          <ResourcePill label={t("energy")} value={t("resourceUnavailable")} />
+          <ResourcePill label={t("bandwidth")} value={t("resourceUnavailable")} />
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-2">
+
+      <div className="grid grid-cols-4 gap-3">
         <Action
           icon={MiniIcons.receive}
           label={t("receive")}
@@ -2155,7 +2208,7 @@ function WalletDetailScreen({
         <Action icon={MoreHorizontal} label={t("more")} onClick={() => onNavigate("wallet-more")} />
       </div>
       <Section
-        title={t("assets")}
+        title={t("tokens")}
         action={busy ? t("refreshing") : t("refresh")}
         onAction={onRefresh}
       >
@@ -2176,36 +2229,6 @@ function WalletDetailScreen({
           onClick={() => onSelectAsset("TRX")}
         />
       </Section>
-      <Section title={t("walletInformation")}>
-        <SettingRow
-          icon={MiniIcons.backup}
-          title={t("backup")}
-          body={wallet.backup_status ?? "not_backed_up"}
-          onClick={() => onNavigate("wallet-backup")}
-        />
-        <SettingRow
-          icon={MiniIcons.security}
-          title={t("security")}
-          body={t("transactionPasswordProtected")}
-          onClick={() => onNavigate("security")}
-        />
-        <SettingRow
-          icon={MiniIcons.wallet}
-          title={t("setDefault")}
-          body={wallet.is_default ? t("alreadyActive") : t("makeActiveWallet")}
-          onClick={onSetDefault}
-        />
-        <SettingRow
-          icon={ExternalLink}
-          title={t("explorer")}
-          body={t("openTronExplorer")}
-          onClick={() => {
-            const network = networkConfig(wallet.network);
-            const address = safeAddress(wallet.address);
-            window.open(network.explorerAddress(address), "_blank", "noopener,noreferrer");
-          }}
-        />
-      </Section>
       <TransactionList
         title={t("recentWalletActivity")}
         rows={recentRows}
@@ -2213,7 +2236,19 @@ function WalletDetailScreen({
         t={t}
         onSelect={(transaction) => onSelectTransaction(transaction)}
       />
-      {busy ? <p className="text-center text-xs text-slate-500">Working...</p> : null}
+      {busy ? <p className="text-center text-xs text-slate-500">{t("refreshing")}</p> : null}
+      {selectorOpen ? (
+        <WalletSelectorSheet
+          wallets={wallets}
+          selectedWalletId={wallet.id}
+          t={t}
+          onClose={() => setSelectorOpen(false)}
+          onSelect={(nextWallet) => {
+            onSelectWallet(nextWallet);
+            setSelectorOpen(false);
+          }}
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -2468,7 +2503,7 @@ function WalletMoreScreen({
             [t("network"), networkLabelForMini(wallet.network, t)],
             [t("walletType"), (wallet.wallet_type ?? "standard").toUpperCase()],
             [t("default"), wallet.is_default ? t("active") : "-"],
-            [t("gasSponsorship"), wallet.gas_sponsorship_status ?? t("unavailable")],
+            [t("gasSponsorship"), gasfreeStatusLabel(wallet.gas_sponsorship_status, t)],
           ]}
         />
       </div>
@@ -2509,6 +2544,39 @@ function WalletMoreScreen({
           {address}
         </button>
       </Section>
+    </Screen>
+  );
+}
+
+function WalletGasFreeScreen({ wallet, t }: { wallet: WalletRow | null; t: MiniT }) {
+  if (!wallet) {
+    return (
+      <Screen title="GasFree" subtitle={t("gasfreeCapability")}>
+        <EmptyLine>{t("noWalletSelected")}</EmptyLine>
+      </Screen>
+    );
+  }
+  const status = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
+  return (
+    <Screen title={t("gasfreeTransactions")} subtitle={wallet.name ?? t("wallet")}>
+      <div className="rounded-3xl bg-white/6 p-4">
+        <div className="flex items-center gap-3">
+          <GasFreeIcon className="h-10 w-10" />
+          <div>
+            <p className="font-semibold">GasFree</p>
+            <p className="text-xs text-slate-400">{t("gasfreeCapability")}</p>
+          </div>
+        </div>
+        <MetricGrid
+          items={[
+            [t("status"), status],
+            [t("currentSponsorship"), status],
+            [t("supportedAssets"), "USDT / TRX"],
+            [t("resourceStatus"), t("resourceUnavailable")],
+          ]}
+        />
+      </div>
+      <EmptyLine>{t("gasfreeUnavailableMessage")}</EmptyLine>
     </Screen>
   );
 }
@@ -3411,15 +3479,17 @@ function BankAccountsScreen(props: {
 function Screen({
   title,
   subtitle,
+  compact,
   children,
 }: {
   title: string;
   subtitle: string;
+  compact?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <main className="space-y-4">
-      <div>
+      <div className={compact ? "sr-only" : undefined}>
         <h1 className="text-2xl font-semibold tracking-normal">{title}</h1>
         <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
       </div>
@@ -3485,11 +3555,8 @@ function Action({
   onClick: () => void | Promise<void>;
 }) {
   return (
-    <button
-      className="rounded-2xl border border-white/10 bg-white/6 p-2 text-center"
-      onClick={() => void onClick()}
-    >
-      <span className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-blue-600/18 text-blue-300">
+    <button className="text-center" onClick={() => void onClick()}>
+      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white/8 text-blue-300 shadow-[0_10px_28px_-22px_rgba(59,130,246,0.9)]">
         <Icon className="h-5 w-5" />
       </span>
       <span className="mt-2 block text-[11px] text-slate-200">{label}</span>
@@ -3612,18 +3679,27 @@ function TypeOption({
   icon,
   title,
   body,
+  disabled,
   onClick,
 }: {
   active: boolean;
   icon: React.ReactNode;
   title: string;
   body: string;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      className={`flex items-center gap-3 rounded-2xl border p-3 text-left ${active ? "border-blue-500 bg-blue-600/18" : "border-white/10 bg-black/20"}`}
+      disabled={disabled}
+      className={`flex items-center gap-3 rounded-2xl border p-3 text-left ${
+        disabled
+          ? "border-white/10 bg-black/10 opacity-60"
+          : active
+            ? "border-blue-500 bg-blue-600/18"
+            : "border-white/10 bg-black/20"
+      }`}
       onClick={onClick}
     >
       <span>{icon}</span>
@@ -3656,6 +3732,83 @@ function TokenMetric({
     </div>
   );
 }
+
+function ResourcePill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-white/5 px-3 py-2">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 text-xs font-semibold text-slate-300">{value}</p>
+    </div>
+  );
+}
+
+function WalletSelectorSheet({
+  wallets,
+  selectedWalletId,
+  t,
+  onSelect,
+  onClose,
+}: {
+  wallets: WalletRow[];
+  selectedWalletId: string;
+  t: MiniT;
+  onSelect: (wallet: WalletRow) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/60 p-3" onClick={onClose}>
+      <div
+        className="max-h-[80vh] w-full overflow-y-auto rounded-[1.75rem] bg-[#0D121C] p-4 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-semibold">{t("walletSelector")}</h2>
+          <button className="text-sm text-slate-400" onClick={onClose}>
+            {t("cancel")}
+          </button>
+        </div>
+        <div className="space-y-2">
+          {wallets.map((wallet) => (
+            <button
+              key={wallet.id}
+              className={`w-full rounded-2xl p-3 text-left ${
+                wallet.id === selectedWalletId ? "bg-blue-600/20" : "bg-white/5"
+              }`}
+              onClick={() => onSelect(wallet)}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{wallet.name ?? t("wallet")}</p>
+                  <p
+                    className="mono truncate text-xs text-slate-400"
+                    dir={technicalTextDirection()}
+                  >
+                    {shortenHash(wallet.address, 8)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {networkLabelForMini(wallet.network, t)} ·{" "}
+                    {(wallet.wallet_type ?? "standard").toUpperCase()}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="mono text-sm">{money(walletDisplayBalance(wallet))} USDT</p>
+                  <p className="mono text-xs text-slate-400">
+                    {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    GasFree {gasfreeStatusLabel(wallet.gas_sponsorship_status, t)}
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WalletCard({
   wallet,
   active,
@@ -3697,7 +3850,7 @@ function WalletCard({
         ) : null}
       </div>
       <p className="mt-3 text-xs text-slate-400">
-        {t("gasSponsorship")}: {wallet.gas_sponsorship_status ?? t("unavailable")}
+        {t("gasSponsorship")}: {gasfreeStatusLabel(wallet.gas_sponsorship_status, t)}
       </p>
     </button>
   );
@@ -3733,7 +3886,7 @@ function WalletSummary({
           [t("walletType"), (wallet.wallet_type ?? "standard").toUpperCase()],
           [t("network"), networkLabelForMini(wallet.network, t)],
           [t("backup"), wallet.backup_status ?? "not_backed_up"],
-          [t("gasSponsorship"), wallet.gas_sponsorship_status ?? t("unavailable")],
+          [t("gasSponsorship"), gasfreeStatusLabel(wallet.gas_sponsorship_status, t)],
         ]}
       />
       <div className="mt-3 grid grid-cols-3 gap-2">

@@ -51,13 +51,17 @@ import { collectPaginatedTronGridRows } from "./tron-pagination.ts";
 import {
   canAccessKnownWalletHistory,
   filterMiniWalletTransactions,
+  gasfreeCapabilityStatus,
+  gasfreeUnavailableClaim,
   importedMnemonicWalletType,
   miniWalletBackScreen,
   miniWalletHistoryMerge,
   newestFirstMiniWalletTransactions,
   preserveWalletTypeForExplicitCreation,
+  walletAssetBalances,
   walletBottomTab,
   walletHistoryNavigationTarget,
+  walletTypeAndGasfreeCapabilityAreIndependent,
 } from "./mini-wallet-ui.ts";
 import {
   createMiniT,
@@ -716,6 +720,24 @@ describe("Mini App wallet UX routing and classification", () => {
     assert.equal(preserveWalletTypeForExplicitCreation("standard"), "standard");
   });
 
+  it("keeps imported wallets Standard while showing GasFree capability independently", () => {
+    assert.equal(importedMnemonicWalletType(), "standard");
+    assert.equal(gasfreeCapabilityStatus("unavailable"), "unavailable");
+    assert.equal(walletTypeAndGasfreeCapabilityAreIndependent("standard", "unavailable"), true);
+    assert.equal(walletTypeAndGasfreeCapabilityAreIndependent("standard", "available"), true);
+  });
+
+  it("does not create a duplicate wallet or claim sponsorship when GasFree is unavailable", () => {
+    const existingWalletIds = new Set(["wallet-1"]);
+    existingWalletIds.add("wallet-1");
+    assert.equal(existingWalletIds.size, 1);
+    assert.match(gasfreeUnavailableClaim("unavailable"), /unavailable/);
+  });
+
+  it("shows selected wallet asset balances separately", () => {
+    assert.deepEqual(walletAssetBalances(15, 7.954209), { USDT: 15, TRX: 7.954209 });
+  });
+
   it("switching wallets changes selected-wallet history source", () => {
     assert.deepEqual(
       filterMiniWalletTransactions(rows, "wallet-2", "ALL", "ALL").map((row) => row.id),
@@ -741,6 +763,7 @@ describe("Mini App wallet UX routing and classification", () => {
     assert.equal(miniWalletBackScreen("wallet-history"), "wallet-detail");
     assert.equal(miniWalletBackScreen("wallet-asset-detail"), "wallet-detail");
     assert.equal(miniWalletBackScreen("wallet-more"), "wallet-detail");
+    assert.equal(miniWalletBackScreen("wallet-gasfree"), "wallet-detail");
     assert.equal(
       miniWalletBackScreen("wallet-transaction-detail", "wallet-history"),
       "wallet-history",

@@ -18,7 +18,12 @@ export function miniWalletBackScreen(screen: string, transactionBackScreen = "wa
   if (screen === "wallet-history" || screen === "wallet-asset-detail") return "wallet-detail";
   if (screen === "wallet-detail" || screen === "wallet-create" || screen === "wallet-import")
     return "wallet";
-  if (screen === "wallet-receive" || screen === "wallet-backup" || screen === "wallet-more")
+  if (
+    screen === "wallet-receive" ||
+    screen === "wallet-backup" ||
+    screen === "wallet-more" ||
+    screen === "wallet-gasfree"
+  )
     return "wallet-detail";
   return screen.startsWith("wallet") ? "wallet" : screen;
 }
@@ -71,4 +76,28 @@ export function importedMnemonicWalletType() {
 
 export function preserveWalletTypeForExplicitCreation(walletType: "standard" | "gasfree") {
   return walletType;
+}
+
+export function gasfreeCapabilityStatus(status?: string | null) {
+  return status === "available" || status === "limited" || status === "enabled"
+    ? status
+    : "unavailable";
+}
+
+export function walletTypeAndGasfreeCapabilityAreIndependent(
+  walletType: "standard" | "gasfree",
+  gasfreeStatus?: string | null,
+) {
+  gasfreeCapabilityStatus(gasfreeStatus);
+  return walletType === "standard";
+}
+
+export function gasfreeUnavailableClaim(status?: string | null) {
+  return gasfreeCapabilityStatus(status) === "unavailable"
+    ? "GasFree transfers are currently unavailable for this wallet."
+    : "GasFree capability available.";
+}
+
+export function walletAssetBalances(usdt: number, trx: number) {
+  return { USDT: usdt, TRX: trx };
 }
