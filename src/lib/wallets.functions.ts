@@ -29,13 +29,15 @@ const renameInput = z.object({
 
 const transferInput = z.object({
   walletId: z.string().uuid(),
+  asset: z.enum(["USDT", "TRX"]).default("USDT"),
   toAddress: z
     .string()
     .trim()
-    .regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "Enter a valid TRON (TRC20) address"),
+    .regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "Enter a valid TRON address"),
   amount: z.number().positive("Amount must be greater than zero").max(1_000_000),
   memo: z.string().trim().max(140).optional(),
   transactionPassword: z.string().min(6).max(128),
+  idempotencyKey: z.string().trim().min(8).max(120),
 });
 
 const transactionPasswordInput = z.object({
@@ -149,8 +151,17 @@ export const sendTransfer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => transferInput.parse(data))
   .handler(async ({ data, context }) => {
-    const { executeTransfer } = await import("@/lib/wallets.server");
-    return executeTransfer(context.supabase, context.userId, data);
+    const { createAndBroadcastPersonalSend } = await import("@/lib/signer.server");
+    return createAndBroadcastPersonalSend({
+      userId: context.userId,
+      walletId: data.walletId,
+      asset: data.asset,
+      toAddress: data.toAddress,
+      amount: data.amount,
+      transactionPassword: data.transactionPassword,
+      idempotencyKey: data.idempotencyKey,
+      memo: data.memo,
+    });
   });
 
 export const quoteTransfer = createServerFn({ method: "GET" })

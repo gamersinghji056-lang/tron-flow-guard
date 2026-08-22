@@ -73,6 +73,15 @@ import {
 } from "./vendor-policy.ts";
 import { PERMISSIONS, grants } from "./rbac.ts";
 import { safeErrorMessage } from "./system-health-policy.ts";
+import {
+  assertSendAmount,
+  assertSigningSwitches,
+  assertSufficientBalance,
+  assertValidTronAddress,
+  companyWalletCanSign,
+  signerRequestSignature,
+  verifySignerServiceRequest,
+} from "./signer-policy.ts";
 
 describe("API key crypto", () => {
   it("parses and verifies generated keys", () => {
@@ -290,7 +299,7 @@ describe("wallet ownership and selected-wallet state", () => {
   it("uses on-chain balance for non-custodial wallets and blocks fake sends", () => {
     assert.equal(walletDisplayBalance(firstWallet), 42);
     assert.equal(walletDisplayBalance(secondWallet), 8);
-    assert.equal(onChainSendEnabled(firstWallet), false);
+    assert.equal(onChainSendEnabled(firstWallet), true);
     assert.equal(onChainSendEnabled(secondWallet), true);
   });
 
@@ -304,6 +313,124 @@ describe("wallet ownership and selected-wallet state", () => {
     assert.equal(
       parseTokenBalanceHex("0000000000000000000000000000000000000000000000000000000005f5e100", 6),
       100,
+    );
+  });
+});
+
+describe("server-side signer safety", () => {
+  it("validates TRON Base58Check addresses", () => {
+    assert.doesNotThrow(() => assertValidTronAddress("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"));
+    assert.throws(() => assertValidTronAddress("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU8"), /valid/);
+    assert.equal(isTronAddress("TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU8"), true);
+  });
+
+  it("handles USDT and TRX amount precision", () => {
+    assert.doesNotThrow(() => assertSendAmount("USDT", 1.123456));
+    assert.doesNotThrow(() => assertSendAmount("TRX", 0.000001));
+    assert.throws(() => assertSendAmount("USDT", 1.1234567), /decimal/);
+    assert.throws(() => assertSendAmount("TRX", 0), /greater than zero/);
+  });
+
+  it("enforces send kill switch and mainnet guard", () => {
+    assert.throws(
+      () =>
+        assertSigningSwitches({
+          dbEnabled: false,
+          envEnabled: "true",
+          network: "trc20-nile",
+        }),
+      /ON_CHAIN_SEND_DISABLED/,
+    );
+    assert.throws(
+      () =>
+        assertSigningSwitches({
+          dbEnabled: true,
+          envEnabled: "true",
+          network: "trc20-mainnet",
+          mainnetEnabled: "false",
+        }),
+      /MAINNET_SIGNING_DISABLED/,
+    );
+    assert.doesNotThrow(() =>
+      assertSigningSwitches({
+        dbEnabled: true,
+        envEnabled: "true",
+        network: "trc20-nile",
+      }),
+    );
+  });
+
+  it("rejects insufficient balances and network resources", () => {
+    assert.throws(
+      () =>
+        assertSufficientBalance({
+          asset: "USDT",
+          amount: 50,
+          usdtBalance: 10,
+          trxBalance: 100,
+          estimatedTrxRequired: 30,
+        }),
+      /INSUFFICIENT_USDT/,
+    );
+    assert.throws(
+      () =>
+        assertSufficientBalance({
+          asset: "USDT",
+          amount: 10,
+          usdtBalance: 10,
+          trxBalance: 1,
+          estimatedTrxRequired: 30,
+        }),
+      /INSUFFICIENT_NETWORK_RESOURCES/,
+    );
+    assert.throws(
+      () =>
+        assertSufficientBalance({
+          asset: "TRX",
+          amount: 10,
+          usdtBalance: 0,
+          trxBalance: 10,
+          estimatedTrxRequired: 0.1,
+        }),
+      /INSUFFICIENT_TRX/,
+    );
+  });
+
+  it("protects watch-only company wallets from signing", () => {
+    assert.equal(companyWalletCanSign("WATCH_ONLY"), false);
+    assert.equal(companyWalletCanSign("SIGNING_ENABLED"), true);
+    assert.equal(companyWalletCanSign(null), false);
+  });
+
+  it("authenticates signer service requests and rejects replay", () => {
+    const body = JSON.stringify({ requestId: "req_1" });
+    const timestamp = "1786819200000";
+    const nonce = "nonce-1";
+    const secret = "test-signer-secret";
+    const signature = signerRequestSignature({ body, timestamp, nonce, secret });
+    assert.equal(
+      verifySignerServiceRequest({
+        body,
+        timestamp,
+        nonce,
+        secret,
+        signature,
+        nowMs: 1786819200000,
+      }),
+      true,
+    );
+    assert.throws(
+      () =>
+        verifySignerServiceRequest({
+          body,
+          timestamp,
+          nonce,
+          secret,
+          signature,
+          nowMs: 1786819200000,
+          seenNonce: true,
+        }),
+      /REPLAY/,
     );
   });
 });

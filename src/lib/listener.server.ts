@@ -428,6 +428,10 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
       errors,
     }),
   );
+  await measure("outgoingSendReconciliation", async () => {
+    const { reconcileOutgoingSendRequests } = await import("@/lib/signer.server");
+    await reconcileOutgoingSendRequests(network);
+  });
 
   // ── F. expiry, checkpoint, health ──────────────────────────────────────────
   try {

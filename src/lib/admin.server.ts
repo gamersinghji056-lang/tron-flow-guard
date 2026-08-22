@@ -109,6 +109,11 @@ export async function writeSettings(input: {
   wtronBuyRateInr?: number | undefined;
   directSellFeePercent?: number | undefined;
   withdrawalFeeUsdt?: number | undefined;
+  onChainSendEnabled?: boolean | undefined;
+  tronSigningMainnetEnabled?: boolean | undefined;
+  feeSweepEnabled?: boolean | undefined;
+  feeSweepMode?: "manual" | "automatic" | undefined;
+  feeSweepMinimumUsdt?: number | undefined;
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -139,6 +144,21 @@ export async function writeSettings(input: {
   }
   if (input.withdrawalFeeUsdt !== undefined) {
     rows.push({ key: "withdrawal_fee_usdt", value: input.withdrawalFeeUsdt });
+  }
+  if (input.onChainSendEnabled !== undefined) {
+    rows.push({ key: "on_chain_send_enabled", value: input.onChainSendEnabled });
+  }
+  if (input.tronSigningMainnetEnabled !== undefined) {
+    rows.push({ key: "tron_signing_mainnet_enabled", value: input.tronSigningMainnetEnabled });
+  }
+  if (input.feeSweepEnabled !== undefined) {
+    rows.push({ key: "fee_sweep_enabled", value: input.feeSweepEnabled });
+  }
+  if (input.feeSweepMode !== undefined) {
+    rows.push({ key: "fee_sweep_mode", value: input.feeSweepMode });
+  }
+  if (input.feeSweepMinimumUsdt !== undefined) {
+    rows.push({ key: "fee_sweep_minimum_usdt", value: input.feeSweepMinimumUsdt });
   }
 
   for (const row of rows) {

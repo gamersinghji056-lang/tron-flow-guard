@@ -575,6 +575,7 @@ export type Database = {
           settled_at: string | null;
           source: string;
           status: string;
+          sweep_id: string | null;
           txid: string | null;
           user_id: string | null;
           vendor_id: string | null;
@@ -591,6 +592,7 @@ export type Database = {
           settled_at?: string | null;
           source: string;
           status?: string;
+          sweep_id?: string | null;
           txid?: string | null;
           user_id?: string | null;
           vendor_id?: string | null;
@@ -607,6 +609,7 @@ export type Database = {
           settled_at?: string | null;
           source?: string;
           status?: string;
+          sweep_id?: string | null;
           txid?: string | null;
           user_id?: string | null;
           vendor_id?: string | null;
@@ -620,10 +623,79 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "fee_liabilities_sweep_id_fkey";
+            columns: ["sweep_id"];
+            isOneToOne: false;
+            referencedRelation: "fee_sweeps";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "fee_liabilities_vendor_id_fkey";
             columns: ["vendor_id"];
             isOneToOne: false;
             referencedRelation: "trading_vendors";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      fee_sweeps: {
+        Row: {
+          amount: number;
+          broadcast_at: string | null;
+          confirmed_at: string | null;
+          created_at: string;
+          currency: string;
+          destination_wallet_id: string | null;
+          id: string;
+          idempotency_key: string;
+          network: Database["public"]["Enums"]["chain_network"];
+          requested_by: string | null;
+          safe_failure_message: string | null;
+          source: string;
+          status: string;
+          txid: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          amount: number;
+          broadcast_at?: string | null;
+          confirmed_at?: string | null;
+          created_at?: string;
+          currency?: string;
+          destination_wallet_id?: string | null;
+          id?: string;
+          idempotency_key: string;
+          network: Database["public"]["Enums"]["chain_network"];
+          requested_by?: string | null;
+          safe_failure_message?: string | null;
+          source?: string;
+          status?: string;
+          txid?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          amount?: number;
+          broadcast_at?: string | null;
+          confirmed_at?: string | null;
+          created_at?: string;
+          currency?: string;
+          destination_wallet_id?: string | null;
+          id?: string;
+          idempotency_key?: string;
+          network?: Database["public"]["Enums"]["chain_network"];
+          requested_by?: string | null;
+          safe_failure_message?: string | null;
+          source?: string;
+          status?: string;
+          txid?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fee_sweeps_destination_wallet_id_fkey";
+            columns: ["destination_wallet_id"];
+            isOneToOne: false;
+            referencedRelation: "wallets";
             referencedColumns: ["id"];
           },
         ];
@@ -1680,6 +1752,80 @@ export type Database = {
         };
         Relationships: [];
       };
+      signer_audit_logs: {
+        Row: {
+          actor_id: string | null;
+          actor_type: string;
+          amount: number | null;
+          asset: string | null;
+          created_at: string;
+          destination: string | null;
+          id: string;
+          network: Database["public"]["Enums"]["chain_network"] | null;
+          request_id: string | null;
+          result: string;
+          safe_message: string | null;
+          txid: string | null;
+          wallet_id: string | null;
+        };
+        Insert: {
+          actor_id?: string | null;
+          actor_type?: string;
+          amount?: number | null;
+          asset?: string | null;
+          created_at?: string;
+          destination?: string | null;
+          id?: string;
+          network?: Database["public"]["Enums"]["chain_network"] | null;
+          request_id?: string | null;
+          result: string;
+          safe_message?: string | null;
+          txid?: string | null;
+          wallet_id?: string | null;
+        };
+        Update: {
+          actor_id?: string | null;
+          actor_type?: string;
+          amount?: number | null;
+          asset?: string | null;
+          created_at?: string;
+          destination?: string | null;
+          id?: string;
+          network?: Database["public"]["Enums"]["chain_network"] | null;
+          request_id?: string | null;
+          result?: string;
+          safe_message?: string | null;
+          txid?: string | null;
+          wallet_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "signer_audit_logs_request_id_fkey";
+            columns: ["request_id"];
+            isOneToOne: false;
+            referencedRelation: "wallet_send_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      signer_request_nonces: {
+        Row: {
+          created_at: string;
+          nonce: string;
+          request_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          nonce: string;
+          request_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          nonce?: string;
+          request_id?: string | null;
+        };
+        Relationships: [];
+      };
       system_error_logs: {
         Row: {
           address: string | null;
@@ -2672,6 +2818,111 @@ export type Database = {
           },
         ];
       };
+      wallet_send_requests: {
+        Row: {
+          amount: number;
+          asset: string;
+          authorized_at: string | null;
+          broadcast_at: string | null;
+          broadcast_result: Json | null;
+          confirmed_at: string | null;
+          created_at: string;
+          estimated_network_fee_trx: number;
+          failed_at: string | null;
+          failure_code: string | null;
+          from_address: string;
+          id: string;
+          idempotency_key: string;
+          metadata: Json;
+          network: Database["public"]["Enums"]["chain_network"];
+          platform_fee: number;
+          safe_failure_message: string | null;
+          signed_at: string | null;
+          signer_key_version: string | null;
+          status: string;
+          to_address: string;
+          total_debit: number;
+          txid: string | null;
+          updated_at: string;
+          user_id: string;
+          wallet_id: string;
+          wallet_transaction_id: string | null;
+        };
+        Insert: {
+          amount: number;
+          asset: string;
+          authorized_at?: string | null;
+          broadcast_at?: string | null;
+          broadcast_result?: Json | null;
+          confirmed_at?: string | null;
+          created_at?: string;
+          estimated_network_fee_trx?: number;
+          failed_at?: string | null;
+          failure_code?: string | null;
+          from_address: string;
+          id?: string;
+          idempotency_key: string;
+          metadata?: Json;
+          network: Database["public"]["Enums"]["chain_network"];
+          platform_fee?: number;
+          safe_failure_message?: string | null;
+          signed_at?: string | null;
+          signer_key_version?: string | null;
+          status?: string;
+          to_address: string;
+          total_debit?: number;
+          txid?: string | null;
+          updated_at?: string;
+          user_id: string;
+          wallet_id: string;
+          wallet_transaction_id?: string | null;
+        };
+        Update: {
+          amount?: number;
+          asset?: string;
+          authorized_at?: string | null;
+          broadcast_at?: string | null;
+          broadcast_result?: Json | null;
+          confirmed_at?: string | null;
+          created_at?: string;
+          estimated_network_fee_trx?: number;
+          failed_at?: string | null;
+          failure_code?: string | null;
+          from_address?: string;
+          id?: string;
+          idempotency_key?: string;
+          metadata?: Json;
+          network?: Database["public"]["Enums"]["chain_network"];
+          platform_fee?: number;
+          safe_failure_message?: string | null;
+          signed_at?: string | null;
+          signer_key_version?: string | null;
+          status?: string;
+          to_address?: string;
+          total_debit?: number;
+          txid?: string | null;
+          updated_at?: string;
+          user_id?: string;
+          wallet_id?: string;
+          wallet_transaction_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "wallet_send_requests_wallet_id_fkey";
+            columns: ["wallet_id"];
+            isOneToOne: false;
+            referencedRelation: "user_wallets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "wallet_send_requests_wallet_transaction_id_fkey";
+            columns: ["wallet_transaction_id"];
+            isOneToOne: false;
+            referencedRelation: "wallet_transactions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       wallet_transactions: {
         Row: {
           amount: number;
@@ -2771,6 +3022,7 @@ export type Database = {
           address: string;
           assigned_user_id: string | null;
           created_at: string;
+          custody_capability: string;
           expiry_minutes: number;
           id: string;
           is_active: boolean;
@@ -2787,6 +3039,8 @@ export type Database = {
           onchain_usdt_balance: number | null;
           priority: number;
           purpose: string;
+          signer_key_version: string | null;
+          signing_enabled_at: string | null;
           updated_at: string;
           wallet_kind: Database["public"]["Enums"]["wallet_kind"];
         };
@@ -2794,6 +3048,7 @@ export type Database = {
           address: string;
           assigned_user_id?: string | null;
           created_at?: string;
+          custody_capability?: string;
           expiry_minutes?: number;
           id?: string;
           is_active?: boolean;
@@ -2810,6 +3065,8 @@ export type Database = {
           onchain_usdt_balance?: number | null;
           priority?: number;
           purpose?: string;
+          signer_key_version?: string | null;
+          signing_enabled_at?: string | null;
           updated_at?: string;
           wallet_kind?: Database["public"]["Enums"]["wallet_kind"];
         };
@@ -2817,6 +3074,7 @@ export type Database = {
           address?: string;
           assigned_user_id?: string | null;
           created_at?: string;
+          custody_capability?: string;
           expiry_minutes?: number;
           id?: string;
           is_active?: boolean;
@@ -2833,6 +3091,8 @@ export type Database = {
           onchain_usdt_balance?: number | null;
           priority?: number;
           purpose?: string;
+          signer_key_version?: string | null;
+          signing_enabled_at?: string | null;
           updated_at?: string;
           wallet_kind?: Database["public"]["Enums"]["wallet_kind"];
         };
@@ -3202,6 +3462,36 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      create_manual_fee_sweep: {
+        Args: {
+          _amount: number;
+          _destination_wallet_id: string;
+          _idempotency_key: string;
+        };
+        Returns: {
+          amount: number;
+          broadcast_at: string | null;
+          confirmed_at: string | null;
+          created_at: string;
+          currency: string;
+          destination_wallet_id: string | null;
+          id: string;
+          idempotency_key: string;
+          network: Database["public"]["Enums"]["chain_network"];
+          requested_by: string | null;
+          safe_failure_message: string | null;
+          source: string;
+          status: string;
+          txid: string | null;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "fee_sweeps";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       create_vendor_order: {
         Args: { _listing_id: string; _rail: string; _usdt: number };
         Returns: {
@@ -3558,6 +3848,7 @@ export type Database = {
           settled_at: string | null;
           source: string;
           status: string;
+          sweep_id: string | null;
           txid: string | null;
           user_id: string | null;
           vendor_id: string | null;

@@ -15,12 +15,7 @@ import {
 import QRCode from "qrcode";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  quoteTransfer,
-  refreshWalletBalance,
-  revealRecoveryPhrase,
-  sendTransfer,
-} from "@/lib/wallets.functions";
+import { refreshWalletBalance, revealRecoveryPhrase, sendTransfer } from "@/lib/wallets.functions";
 import { formatUsdt, isTronAddress, networkConfig, shortenHash } from "@/lib/chain";
 import type { ChainNetwork } from "@/lib/chain";
 import { onChainSendEnabled, walletDisplayBalance } from "@/lib/wallet-state";
@@ -47,6 +42,7 @@ interface WalletDetail {
   network: ChainNetwork;
   balance: number;
   onchain_balance?: number | null;
+  onchain_trx_balance?: number | null;
   onchain_checked_at?: string | null;
   is_default: boolean;
   wallet_type?: "standard" | "gasfree";
@@ -62,6 +58,7 @@ interface LedgerRow {
   status: string;
   amount: number;
   fee: number;
+  currency?: string | null;
   counterparty_address: string | null;
   memo: string | null;
   txid: string | null;
@@ -74,7 +71,6 @@ function WalletDetailPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
   const send = useServerFn(sendTransfer);
-  const quote = useServerFn(quoteTransfer);
   const reveal = useServerFn(revealRecoveryPhrase);
   const refreshBalance = useServerFn(refreshWalletBalance);
 
@@ -82,7 +78,7 @@ function WalletDetailPage() {
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [qr, setQr] = useState<string | null>(null);
-  const [fee, setFee] = useState(1.5);
+  const [asset, setAsset] = useState<"USDT" | "TRX">("USDT");
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
@@ -100,14 +96,14 @@ function WalletDetailPage() {
       supabase
         .from("user_wallets" as never)
         .select(
-          "id, name, address, network, balance, onchain_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
+          "id, name, address, network, balance, onchain_balance, onchain_trx_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
         )
         .eq("id", walletId as never)
         .maybeSingle(),
       supabase
         .from("wallet_transactions")
         .select(
-          "id, direction, kind, status, amount, fee, counterparty_address, memo, txid, failure_reason, created_at",
+          "id, direction, kind, status, amount, fee, currency, counterparty_address, memo, txid, failure_reason, created_at",
         )
         .eq("wallet_id", walletId)
         .order("created_at", { ascending: false })
@@ -120,6 +116,9 @@ function WalletDetailPage() {
         ...(walletRow as unknown as WalletDetail),
         balance: Number((walletRow as unknown as WalletDetail).balance ?? 0),
         onchain_balance: Number((walletRow as unknown as WalletDetail).onchain_balance ?? 0),
+        onchain_trx_balance: Number(
+          (walletRow as unknown as WalletDetail).onchain_trx_balance ?? 0,
+        ),
       };
       setWallet(detail);
       QRCode.toDataURL(detail.address, { width: 320, margin: 1 })
@@ -138,7 +137,6 @@ function WalletDetailPage() {
 
   useEffect(() => {
     void load();
-    void quote({}).then((result) => setFee(result.fee));
     const channel = supabase
       .channel(`wallet-detail-${walletId}-${crypto.randomUUID()}`)
       .on(
@@ -155,13 +153,15 @@ function WalletDetailPage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [walletId, load, quote]);
+  }, [walletId, load]);
 
   const config = networkConfig(wallet?.network);
   const parsedAmount = Number(amount);
-  const total = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount + fee : 0;
+  const estimatedNetworkTrx = asset === "USDT" ? 30 : 0.1;
+  const total = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0;
   const sendEnabled = onChainSendEnabled(wallet);
-  const displayBalance = walletDisplayBalance(wallet);
+  const displayBalance =
+    asset === "USDT" ? walletDisplayBalance(wallet) : Number(wallet?.onchain_trx_balance ?? 0);
   const visibleLedger = ledger.slice(0, pageSize);
   const hasNextActivityPage = ledger.length > pageSize;
   const canSend =
@@ -181,21 +181,29 @@ function WalletDetailPage() {
       const result = await send({
         data: {
           walletId: wallet.id,
+          asset,
           toAddress: toAddress.trim(),
           amount: parsedAmount,
           transactionPassword,
+          idempotencyKey: crypto.randomUUID(),
           ...(memo.trim() ? { memo: memo.trim() } : {}),
         },
       });
-      if (result.broadcastError) {
-        toast.error("On-chain broadcast failed", { description: result.broadcastError });
-      } else if (result.internal) {
-        toast.success("Transfer completed");
+      const sendResult = result as unknown as {
+        txid?: string | null;
+        status?: string | null;
+        safe_failure_message?: string | null;
+      };
+      const txid = sendResult.txid;
+      const status = sendResult.status;
+      const failure = sendResult.safe_failure_message;
+      if (failure) {
+        toast.error("On-chain send failed", { description: failure });
       } else {
-        toast.success("Transfer queued", {
-          description: result.txid
-            ? `Broadcast as ${shortenHash(result.txid, 8)}`
-            : "External payout is awaiting on-chain broadcast",
+        toast.success("Transfer broadcast", {
+          description: txid
+            ? `${status ?? "BROADCAST"} - ${shortenHash(txid, 8)}`
+            : (status ?? "Request accepted"),
         });
       }
       setToAddress("");
@@ -277,6 +285,9 @@ function WalletDetailPage() {
           </p>
           <p className="mono text-2xl font-semibold text-primary">
             {formatUsdt(displayBalance)} USDT
+          </p>
+          <p className="mono text-xs text-muted-foreground">
+            {formatUsdt(wallet.onchain_trx_balance ?? 0)} TRX
           </p>
           {wallet.custody === "non_custodial" ? (
             <button
@@ -378,14 +389,30 @@ function WalletDetailPage() {
             {toAddress && !isTronAddress(toAddress) ? (
               <p className="text-xs text-destructive">That is not a valid TRON address.</p>
             ) : null}
-            <Field label="Amount (USDT)">
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={asset === "USDT" ? "default" : "secondary"}
+                onClick={() => setAsset("USDT")}
+              >
+                USDT
+              </Button>
+              <Button
+                type="button"
+                variant={asset === "TRX" ? "default" : "secondary"}
+                onClick={() => setAsset("TRX")}
+              >
+                TRX
+              </Button>
+            </div>
+            <Field label={`Amount (${asset})`}>
               <Input
                 type="number"
                 min="0.000001"
                 step="0.000001"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
-                placeholder="100.00"
+                placeholder={asset === "USDT" ? "100.00" : "10.00"}
                 className="mono"
                 required
               />
@@ -401,10 +428,17 @@ function WalletDetailPage() {
             <dl className="space-y-1 rounded-lg border border-border/70 p-3 text-sm">
               <Row
                 label="Amount"
-                value={`${formatUsdt(parsedAmount > 0 ? parsedAmount : 0)} USDT`}
+                value={`${formatUsdt(parsedAmount > 0 ? parsedAmount : 0)} ${asset}`}
               />
-              <Row label="Platform fee" value={`${formatUsdt(fee)} USDT`} />
-              <Row label="Total debit" value={`${formatUsdt(total)} USDT`} strong />
+              <Row
+                label="Platform fee"
+                value={`${formatUsdt(asset === "USDT" ? 0 : 0)} ${asset}`}
+              />
+              <Row
+                label="Estimated network requirement"
+                value={`${formatUsdt(estimatedNetworkTrx)} TRX`}
+              />
+              <Row label="Total debit" value={`${formatUsdt(total)} ${asset}`} strong />
             </dl>
             <Field label="Transaction password">
               <Input
@@ -418,24 +452,23 @@ function WalletDetailPage() {
             {!sendEnabled ? (
               <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
                 On-chain sending is not enabled yet. This wallet uses an encrypted recovery phrase,
-                but there is no safe browser-to-chain signing and broadcast flow wired for it.
+                but the server-side signer kill switch or environment flag is disabled.
               </p>
             ) : null}
             {parsedAmount > 0 && total > displayBalance ? (
               <p className="text-xs text-destructive">
-                Insufficient balance. You need {formatUsdt(total)} USDT including fee.
+                Insufficient balance. You need {formatUsdt(total)} {asset}.
               </p>
             ) : null}
             <Button type="submit" className="w-full" disabled={!canSend}>
               {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-              Send USDT
+              Send {asset}
             </Button>
-            {!sendEnabled ? null : (
-              <p className="text-xs text-muted-foreground">
-                External on-chain broadcasts remain disabled until the administrator enables safe
-                signing/broadcast infrastructure. No fake TXID is created.
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              The server refreshes chain balances, verifies your transaction password, signs
+              server-side, then waits for blockchain confirmation. Mainnet signing is disabled
+              unless explicitly enabled by server-only configuration.
+            </p>
           </form>
         </TabsContent>
 
@@ -510,7 +543,7 @@ function WalletDetailPage() {
                       }
                     >
                       {row.direction === "in" ? "+" : "-"}
-                      {formatUsdt(row.amount)} USDT
+                      {formatUsdt(row.amount)} {row.currency ?? "USDT"}
                     </p>
                     <p className="text-[10px] capitalize text-muted-foreground">
                       {row.status}

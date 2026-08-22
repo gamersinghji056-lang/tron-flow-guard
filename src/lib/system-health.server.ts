@@ -8,9 +8,10 @@ export type ServiceName =
   | "ORDER WORKER"
   | "SUPABASE"
   | "API"
-  | "WEBHOOKS";
+  | "WEBHOOKS"
+  | "SIGNER";
 
-export type HealthStatus = "HEALTHY" | "DEGRADED" | "FAILED" | "UNKNOWN";
+export type HealthStatus = "HEALTHY" | "DEGRADED" | "FAILED" | "UNKNOWN" | "DISABLED";
 
 export { safeErrorMessage };
 
@@ -22,7 +23,8 @@ export async function writeServiceHeartbeat(input: {
   metadata?: Record<string, unknown>;
 }) {
   const now = new Date().toISOString();
-  const failed = input.status === "DEGRADED" || input.status === "FAILED";
+  const failed =
+    input.status === "DEGRADED" || input.status === "FAILED" || input.status === "DISABLED";
   const message = input.message ? safeErrorMessage(input.message) : null;
   await supabaseAdmin.from("service_heartbeats" as never).upsert(
     {

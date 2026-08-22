@@ -80,6 +80,7 @@ function SystemHealthPage() {
     "SUPABASE",
     "API",
     "WEBHOOKS",
+    "SIGNER",
   ];
 
   async function markResolved(id: string) {

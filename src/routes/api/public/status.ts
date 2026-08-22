@@ -26,6 +26,11 @@ export const Route = createFileRoute("/api/public/status")({
             status: "UNKNOWN",
             message: "No webhook retry tick has reported since status check",
           }),
+          writeServiceHeartbeat({
+            service: "SIGNER",
+            status: "DISABLED",
+            message: "Signer heartbeat initialized; on-chain send is disabled until configured",
+          }),
         ]);
         return Response.json({ ok: true });
       },

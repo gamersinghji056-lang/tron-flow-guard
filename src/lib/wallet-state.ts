@@ -61,5 +61,5 @@ export function gasSponsorshipUsable(status?: string | null) {
 }
 
 export function onChainSendEnabled(wallet: WalletBalanceLike | null | undefined) {
-  return Boolean(wallet && wallet.custody !== "non_custodial");
+  return Boolean(wallet);
 }

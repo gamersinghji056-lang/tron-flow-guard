@@ -25,6 +25,17 @@ const settingsInput = z.object({
   wtronBuyRateInr: z.number().min(0).optional(),
   directSellFeePercent: z.number().min(0).max(20).optional(),
   withdrawalFeeUsdt: z.number().min(0).max(1000).optional(),
+  onChainSendEnabled: z.boolean().optional(),
+  tronSigningMainnetEnabled: z.boolean().optional(),
+  feeSweepEnabled: z.boolean().optional(),
+  feeSweepMode: z.enum(["manual", "automatic"]).optional(),
+  feeSweepMinimumUsdt: z.number().min(0).max(1_000_000).optional(),
+});
+
+const feeSweepInput = z.object({
+  destinationWalletId: z.string().uuid(),
+  amount: z.number().positive().max(1_000_000),
+  idempotencyKey: z.string().trim().min(8).max(120),
 });
 
 const companyWalletInput = z.object({
@@ -80,6 +91,26 @@ export const updatePlatformSettings = createServerFn({ method: "POST" })
     const { PERMISSIONS } = await import("@/lib/rbac");
     await requirePermission(context.supabase, context.userId, PERMISSIONS.SETTINGS_MANAGE);
     return writeSettings(data);
+  });
+
+export const createManualFeeSweep = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => feeSweepInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.FEES_SWEEP);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: sweep, error } = await supabaseAdmin.rpc(
+      "create_manual_fee_sweep" as never,
+      {
+        _destination_wallet_id: data.destinationWalletId,
+        _amount: data.amount,
+        _idempotency_key: data.idempotencyKey,
+      } as never,
+    );
+    if (error) throw new Error(error.message);
+    return sweep;
   });
 
 export const getAdminDashboard = createServerFn({ method: "GET" })
