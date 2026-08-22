@@ -93,6 +93,36 @@ async function readGasfreeStatus() {
   return value === "available" || value === "limited" ? value : "unavailable";
 }
 
+async function detectImportedNetwork(
+  address: string,
+  requested: ChainNetwork,
+): Promise<ChainNetwork> {
+  const { getIncomingUsdtTransfers, getNativeTrxBalance, getOutgoingUsdtTransfers } =
+    await import("@/lib/tron.server");
+  const { readTrc20Balance } = await import("@/lib/tron-transfer.server");
+  const { chooseImportedWalletNetwork } = await import("@/lib/wallet-network");
+  const networks: ChainNetwork[] = ["trc20-mainnet", "trc20-nile"];
+
+  const probes = await Promise.all(
+    networks.map(async (network) => {
+      const [trxBalance, usdtBalance, incoming, outgoing] = await Promise.all([
+        getNativeTrxBalance(network, address),
+        readTrc20Balance(network, address),
+        getIncomingUsdtTransfers(network, address, { limit: 1 }).catch(() => []),
+        getOutgoingUsdtTransfers(network, address, { limit: 1 }).catch(() => []),
+      ]);
+      return {
+        network,
+        trxBalance: Number(trxBalance ?? 0),
+        usdtBalance: Number(usdtBalance ?? 0),
+        txCount: incoming.length + outgoing.length,
+      };
+    }),
+  );
+
+  return chooseImportedWalletNetwork(requested, probes);
+}
+
 export async function provisionPersonalWallet(params: {
   userId: string;
   name: string;
@@ -203,6 +233,7 @@ export async function importPersonalWallet(params: {
   const derived = deriveTronWalletFromMnemonic(params.mnemonic);
   const encrypted = encryptMnemonic(derived.mnemonic, params.transactionPassword);
   const gasStatus = params.walletType === "gasfree" ? await readGasfreeStatus() : "unavailable";
+  const detectedNetwork = await detectImportedNetwork(derived.address, params.network);
 
   const { data: duplicate, error: duplicateError } = await supabaseAdmin
     .from("user_wallets" as never)
@@ -210,19 +241,34 @@ export async function importPersonalWallet(params: {
       "id, name, address, network, balance, onchain_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
     )
     .eq("user_id", params.userId as never)
-    .eq("network", params.network as never)
     .eq("address", derived.address as never)
     .eq("is_archived", false as never)
     .maybeSingle();
   if (duplicateError) throw new Error(duplicateError.message);
   if (duplicate) {
+    const duplicateRow = duplicate as { id: string; network?: ChainNetwork };
+    if (duplicateRow.network !== detectedNetwork) {
+      await supabaseAdmin
+        .from("user_wallets" as never)
+        .update({
+          network: detectedNetwork,
+          onchain_checked_at: null,
+          onchain_trx_checked_at: null,
+          last_synced_at: null,
+        } as never)
+        .eq("id", duplicateRow.id as never);
+    }
     if (params.makeDefault) {
       await supabaseAdmin
         .from("user_wallets" as never)
         .update({ is_default: true, selected_at: new Date().toISOString() } as never)
-        .eq("id", (duplicate as { id: string }).id as never);
+        .eq("id", duplicateRow.id as never);
     }
-    return { wallet: duplicate, existing: true };
+    return {
+      wallet: { ...(duplicate as Record<string, unknown>), network: detectedNetwork },
+      existing: true,
+      detectedNetwork,
+    };
   }
 
   const { data: existing, error: countError } = await supabaseAdmin
@@ -238,7 +284,7 @@ export async function importPersonalWallet(params: {
     .insert({
       user_id: params.userId,
       name: params.name,
-      network: params.network,
+      network: detectedNetwork,
       address: derived.address,
       public_key: derived.publicKeyHex,
       custody: "non_custodial",
@@ -286,7 +332,8 @@ export async function importPersonalWallet(params: {
     entity_id: row.id,
     metadata: {
       address: row.address,
-      network: params.network,
+      network: detectedNetwork,
+      requested_network: params.network,
       wallet_type: params.walletType,
       derivation_path: derived.derivationPath,
     },
@@ -477,9 +524,27 @@ export async function refreshPersonalWalletOnChainBalance(userId: string, wallet
   ];
 
   if (transactions.length) {
-    const { error: historyError } = await supabaseAdmin
-      .from("wallet_transactions" as never)
-      .upsert(transactions as never, { onConflict: "txid,wallet_id", ignoreDuplicates: true });
+    const txids = Array.from(new Set(transactions.map((transaction) => transaction.txid)));
+    const { data: existingRows, error: existingError } = await supabaseAdmin
+      .from("wallet_transactions")
+      .select("txid")
+      .eq("wallet_id", wallet.id)
+      .in("txid", txids);
+    if (existingError) throw new Error(`Could not read wallet history: ${existingError.message}`);
+
+    const existingTxids = new Set((existingRows ?? []).map((row) => row.txid));
+    const seenTxids = new Set<string>();
+    const missingTransactions = transactions.filter((transaction) => {
+      if (existingTxids.has(transaction.txid) || seenTxids.has(transaction.txid)) return false;
+      seenTxids.add(transaction.txid);
+      return true;
+    });
+
+    const { error: historyError } = missingTransactions.length
+      ? await supabaseAdmin
+          .from("wallet_transactions" as never)
+          .insert(missingTransactions as never)
+      : { error: null };
     if (historyError) throw new Error(`Could not sync wallet history: ${historyError.message}`);
   }
 

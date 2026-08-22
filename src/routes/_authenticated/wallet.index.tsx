@@ -390,7 +390,7 @@ function WalletsPage() {
                   </div>
                   <Badge>{wallet.wallet_type === "gasfree" ? "GASFREE" : "STANDARD"}</Badge>
                   <div className="text-sm">
-                    <p>{config.shortLabel}</p>
+                    <p>{config.label}</p>
                     <p className="text-xs text-muted-foreground">{wallet.custody ?? "personal"}</p>
                   </div>
                   <div className="text-sm">

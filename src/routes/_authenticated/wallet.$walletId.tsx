@@ -281,7 +281,7 @@ function WalletDetailPage() {
         </div>
         <div className="panel px-4 py-2">
           <p className="text-[10px] tracking-wide text-muted-foreground uppercase">
-            {wallet.wallet_type === "gasfree" ? "GasFree" : "Standard"} {config.shortLabel}
+            {wallet.wallet_type === "gasfree" ? "GasFree" : "Standard"} - {config.label}
           </p>
           <p className="mono text-2xl font-semibold text-primary">
             {formatUsdt(displayBalance)} USDT

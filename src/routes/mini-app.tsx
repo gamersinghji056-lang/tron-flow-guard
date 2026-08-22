@@ -64,7 +64,7 @@ import {
   fetchTradeHistory,
   fetchUserAnalytics,
 } from "@/lib/user-product.functions";
-import { formatUsdt, shortenHash } from "@/lib/chain";
+import { formatUsdt, networkConfig, shortenHash, type ChainNetwork } from "@/lib/chain";
 import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
 import { onChainSendEnabled, selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
 
@@ -259,7 +259,7 @@ interface WalletRow {
   id: string;
   name?: string | null;
   address?: string | null;
-  network?: string | null;
+  network?: ChainNetwork | null;
   balance?: number | string | null;
   onchain_balance?: number | string | null;
   onchain_trx_balance?: number | string | null;
@@ -1948,11 +1948,9 @@ function WalletDetailScreen({
           title="Explorer"
           body="Open TRON explorer"
           onClick={() => {
-            window.open(
-              `https://nile.tronscan.org/#/address/${wallet.address}`,
-              "_blank",
-              "noopener,noreferrer",
-            );
+            const network = networkConfig(wallet.network);
+            const address = safeAddress(wallet.address);
+            window.open(network.explorerAddress(address), "_blank", "noopener,noreferrer");
           }}
         />
       </Section>
@@ -3119,10 +3117,11 @@ function WalletCard({
   );
 }
 function NetworkBadge({ wallet }: { wallet: WalletRow }) {
+  const network = networkConfig(wallet.network);
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs">
       <TronIcon className="h-4 w-4" />
-      TRON {(wallet.wallet_type ?? "standard").toUpperCase()}
+      {network.label} {(wallet.wallet_type ?? "standard").toUpperCase()}
     </span>
   );
 }
@@ -3144,7 +3143,7 @@ function WalletSummary({
       <MetricGrid
         items={[
           ["Wallet Type", (wallet.wallet_type ?? "standard").toUpperCase()],
-          ["Network", "TRON"],
+          ["Network", networkConfig(wallet.network).label],
           ["Backup", wallet.backup_status ?? "not_backed_up"],
           ["Gas", wallet.gas_sponsorship_status ?? "unavailable"],
         ]}

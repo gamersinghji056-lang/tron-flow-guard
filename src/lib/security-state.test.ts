@@ -46,6 +46,7 @@ import {
   userOwnsWallet,
   walletDisplayBalance,
 } from "./wallet-state.ts";
+import { chooseImportedWalletNetwork } from "./wallet-network.ts";
 import {
   hashTransactionPassword,
   shouldLockTransactionPassword,
@@ -431,6 +432,28 @@ describe("server-side signer safety", () => {
           seenNonce: true,
         }),
       /REPLAY/,
+    );
+  });
+});
+
+describe("imported wallet network detection", () => {
+  it("keeps the requested network when no supported chain has balance or activity", () => {
+    assert.equal(
+      chooseImportedWalletNetwork("trc20-nile", [
+        { network: "trc20-mainnet", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+        { network: "trc20-nile", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+      ]),
+      "trc20-nile",
+    );
+  });
+
+  it("selects Mainnet when the imported address has Mainnet funds or activity", () => {
+    assert.equal(
+      chooseImportedWalletNetwork("trc20-nile", [
+        { network: "trc20-mainnet", trxBalance: 7.954209, usdtBalance: 15, txCount: 4 },
+        { network: "trc20-nile", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+      ]),
+      "trc20-mainnet",
     );
   });
 });
