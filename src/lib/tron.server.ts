@@ -234,6 +234,28 @@ export async function getNativeTrxBalance(
   }
 }
 
+/** TRC20 USDT balance from the public account token list. */
+export async function getTrc20UsdtBalance(
+  network: ChainNetwork,
+  address: string,
+): Promise<number | null> {
+  const config = networkConfig(network);
+  try {
+    const data = await chainFetch<{ data?: Array<{ trc20?: Array<Record<string, string>> }> }>(
+      `${config.apiBase}/v1/accounts/${address}`,
+    );
+    const tokens = data.data?.[0]?.trc20 ?? [];
+    const token = tokens.find((row) =>
+      Object.prototype.hasOwnProperty.call(row, config.usdtContract),
+    );
+    const raw = token?.[config.usdtContract];
+    if (!raw) return 0;
+    return Number(BigInt(raw)) / 10 ** config.tokenDecimals;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeTrxTransfer(row: TrxApiRow): TrxTransfer | null {
   const contract = row.raw_data?.contract?.find((item) => item.type === "TransferContract");
   const value = contract?.parameter?.value;

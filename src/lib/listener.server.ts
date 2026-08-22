@@ -28,10 +28,13 @@ import { listHotAddresses, listMonitoredAddresses, type MonitoredAddress } from 
 import {
   getIncomingUsdtTransfers,
   getLatestBlock,
+  getNativeTrxBalance,
   getTransactionInfo,
+  getTrc20UsdtBalance,
   withRetry,
   type Trc20Transfer,
 } from "./tron.server";
+import { recordSystemError } from "./system-health.server";
 import { enqueueWebhookEvent } from "./webhooks.server";
 
 export interface ListenerTickResult {
@@ -183,6 +186,51 @@ async function persistHealth(status: string, detail: string, extra: Record<strin
   );
 }
 
+async function refreshCompanyWalletScanState(network: ChainNetwork, targets: MonitoredAddress[]) {
+  const companyTargets = targets.filter((target) => target.kind === "company");
+  if (!companyTargets.length) return;
+
+  const checkedAt = new Date().toISOString();
+  const CONCURRENCY = 4;
+  const queue = [...companyTargets];
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      for (;;) {
+        const target = queue.shift();
+        if (!target) return;
+        try {
+          const [usdtBalance, trxBalance] = await Promise.all([
+            getTrc20UsdtBalance(network, target.address),
+            getNativeTrxBalance(network, target.address),
+          ]);
+          const patch: Record<string, unknown> = {
+            last_listener_scan_at: checkedAt,
+            onchain_checked_at: checkedAt,
+          };
+          if (usdtBalance !== null) patch["onchain_usdt_balance"] = usdtBalance;
+          if (trxBalance !== null) patch["onchain_trx_balance"] = trxBalance;
+          await supabaseAdmin
+            .from("wallets")
+            .update(patch as never)
+            .eq("id", target.id)
+            .eq("network", network);
+        } catch (error) {
+          await recordSystemError({
+            service: "BLOCKCHAIN WORKER",
+            severity: "warning",
+            code: "COMPANY_WALLET_BALANCE_REFRESH_FAILED",
+            message: error,
+            stage: "ADDRESS_SCAN",
+            walletId: target.id,
+            address: target.address,
+            retryable: true,
+          });
+        }
+      }
+    }),
+  );
+}
+
 /** One full listener pass. Never throws: failures are recorded and reported. */
 export async function runListenerTick(trigger: string): Promise<ListenerTickResult> {
   const startedAt = Date.now();
@@ -308,6 +356,9 @@ export async function runListenerTick(trigger: string): Promise<ListenerTickResu
     if (hot.length) monitored = hot;
   }
   result.addressesMonitored = allMonitored.length;
+  await measure("companyWalletBalanceRefresh", () =>
+    refreshCompanyWalletScanState(network, allMonitored),
+  );
 
   // Addresses are polled concurrently: TronGrid latency dominates a pass, so
   // sequential polling was the main source of the slow "Waiting" window.

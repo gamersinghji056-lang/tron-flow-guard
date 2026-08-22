@@ -29,6 +29,7 @@ import {
   createWallet,
   importWallet,
   refreshWalletBalance,
+  revealRecoveryPhrase,
   setDefaultWallet,
   setWalletTransactionPassword,
 } from "@/lib/wallets.functions";
@@ -45,6 +46,8 @@ export const Route = createFileRoute("/_authenticated/vendor/")({
 
 type VendorTab =
   "home" | "wallet" | "trade" | "orders" | "transactions" | "history" | "accounts" | "settings";
+type VendorOrderFilter =
+  "all" | "active" | "payment_submitted" | "completed" | "disputed" | "expired" | "cancelled";
 
 interface VendorRow {
   id: string;
@@ -146,6 +149,7 @@ function VendorPortalPage() {
   const createVendorWallet = useServerFn(createWallet);
   const importVendorWallet = useServerFn(importWallet);
   const refreshVendorWallet = useServerFn(refreshWalletBalance);
+  const revealVendorWallet = useServerFn(revealRecoveryPhrase);
   const setVendorWalletDefault = useServerFn(setDefaultWallet);
   const setVendorWalletPassword = useServerFn(setWalletTransactionPassword);
   const [tab, setTab] = useState<VendorTab>("home");
@@ -187,6 +191,9 @@ function VendorPortalPage() {
   });
   const [selectedWalletId, setSelectedWalletId] = useState("");
   const [walletQr, setWalletQr] = useState("");
+  const [createdWalletPhrase, setCreatedWalletPhrase] = useState("");
+  const [revealedWalletPhrase, setRevealedWalletPhrase] = useState("");
+  const [orderFilter, setOrderFilter] = useState<VendorOrderFilter>("all");
 
   const load = useCallback(async () => {
     setPending(true);
@@ -213,6 +220,14 @@ function VendorPortalPage() {
   }, [load]);
 
   const orders = portal?.orders ?? [];
+  const filteredOrders = orders.filter((order) => {
+    const status = String(order.status ?? "");
+    if (orderFilter === "all") return true;
+    if (orderFilter === "active") {
+      return ["reserved", "payment_pending", "payment_submitted", "confirming"].includes(status);
+    }
+    return status === orderFilter;
+  });
   const submitted = orders.filter((order) => order.status === "payment_submitted");
   const completed = orders.filter((order) => order.status === "completed");
   const disputes = orders.filter((order) => order.status === "disputed");
@@ -330,6 +345,7 @@ function VendorPortalPage() {
           },
         });
         const phrase = (result as { recoveryPhrase?: string }).recoveryPhrase;
+        setCreatedWalletPhrase(phrase ?? "");
         toast.success(
           phrase ? "Wallet created. Back up the recovery phrase now." : "Wallet created",
         );
@@ -341,7 +357,10 @@ function VendorPortalPage() {
     }
   }
 
-  async function walletAction(wallet: WalletRow, action: "refresh" | "default" | "copy" | "qr") {
+  async function walletAction(
+    wallet: WalletRow,
+    action: "refresh" | "default" | "copy" | "qr" | "reveal",
+  ) {
     try {
       if (action === "refresh") await refreshVendorWallet({ data: { walletId: wallet.id } });
       if (action === "default") await setVendorWalletDefault({ data: { walletId: wallet.id } });
@@ -352,6 +371,15 @@ function VendorPortalPage() {
       if (action === "qr" && wallet.address) {
         setSelectedWalletId(wallet.id);
         setWalletQr(await QRCode.toDataURL(wallet.address, { width: 280, margin: 1 }));
+      }
+      if (action === "reveal") {
+        const password = window.prompt("Transaction password");
+        if (!password) return;
+        const result = await revealVendorWallet({
+          data: { walletId: wallet.id, transactionPassword: password },
+        });
+        setSelectedWalletId(wallet.id);
+        setRevealedWalletPhrase(result.recoveryPhrase);
       }
       if (action !== "copy" && action !== "qr") await load();
     } catch (error) {
@@ -539,6 +567,16 @@ function VendorPortalPage() {
                     : "Create Wallet"}
               </Button>
             </form>
+            {createdWalletPhrase ? (
+              <div className="rounded-lg border border-amber-300/40 bg-amber-300/10 p-3">
+                <p className="text-sm font-semibold text-amber-100">
+                  Back up this recovery phrase now
+                </p>
+                <p className="mono mt-2 select-all rounded bg-black/50 p-3 text-sm">
+                  {createdWalletPhrase}
+                </p>
+              </div>
+            ) : null}
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {(portal.wallets ?? []).map((wallet) => (
                 <div key={wallet.id} className="rounded-lg border border-white/10 bg-white/6 p-4">
@@ -564,6 +602,14 @@ function VendorPortalPage() {
                       className="mt-3 h-36 w-36 rounded-md bg-white p-2"
                     />
                   ) : null}
+                  {selectedWalletId === wallet.id && revealedWalletPhrase ? (
+                    <div className="mt-3 rounded-lg border border-amber-300/40 bg-amber-300/10 p-3">
+                      <p className="text-xs font-semibold text-amber-100">Recovery phrase</p>
+                      <p className="mono mt-2 select-all break-words rounded bg-black/50 p-2 text-xs">
+                        {revealedWalletPhrase}
+                      </p>
+                    </div>
+                  ) : null}
                   <p className="mt-3 text-xs text-amber-200">
                     SEND UNAVAILABLE - SIGNER REQUIRED. Receive, refresh and history are available.
                   </p>
@@ -587,6 +633,11 @@ function VendorPortalPage() {
                       label="Default"
                       icon={Plus}
                       onClick={() => void walletAction(wallet, "default")}
+                    />
+                    <IconAction
+                      label="Backup"
+                      icon={Eye}
+                      onClick={() => void walletAction(wallet, "reveal")}
                     />
                     <Button asChild size="sm" variant="secondary">
                       <Link to="/wallet/$walletId" params={{ walletId: wallet.id }}>
@@ -834,8 +885,32 @@ function VendorPortalPage() {
         {tab === "orders" ? (
           <Panel title="Vendor Orders">
             <ListingRows rows={portal.listings} accounts={portal.accounts} />
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["all", "All"],
+                  ["active", "Active"],
+                  ["payment_submitted", "Payment Submitted"],
+                  ["completed", "Completed"],
+                  ["disputed", "Disputed"],
+                  ["expired", "Expired"],
+                  ["cancelled", "Cancelled"],
+                ] satisfies Array<[VendorOrderFilter, string]>
+              ).map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={orderFilter === value ? "default" : "secondary"}
+                  className={orderFilter === value ? "bg-blue-600" : ""}
+                  onClick={() => setOrderFilter(value)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
             <OrderRows
-              rows={orders}
+              rows={filteredOrders}
               onConfirm={confirmPayment}
               onDispute={disputePayment}
               reload={load}
