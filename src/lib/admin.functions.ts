@@ -19,12 +19,25 @@ const settingsInput = z.object({
     .regex(/^(T[1-9A-HJ-NP-Za-km-z]{33})?$/, "Enter a valid TRON address or leave empty")
     .optional(),
   onchainBroadcast: z.boolean().optional(),
+  feeCollectionWalletId: z.string().uuid().nullable().optional(),
+  vendorBuyerFeePercent: z.number().min(0).max(20).optional(),
+  vendorSellerFeePercent: z.number().min(0).max(20).optional(),
+  wtronBuyRateInr: z.number().min(0).optional(),
+  directSellFeePercent: z.number().min(0).max(20).optional(),
+  withdrawalFeeUsdt: z.number().min(0).max(1000).optional(),
 });
 
 const companyWalletInput = z.object({
+  id: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(60),
   address: z.string().trim(),
   network: z.enum(["trc20-mainnet", "trc20-nile"]),
+  purpose: z
+    .enum(["USER_DEPOSIT", "DIRECT_SELL", "FEE_COLLECTION", "HOT", "OTHER"])
+    .default("USER_DEPOSIT"),
+  priority: z.number().int().min(0).max(10000).default(100),
+  minDeposit: z.number().positive().nullable().optional(),
+  maxDeposit: z.number().positive().nullable().optional(),
 });
 
 const companyWalletStatusInput = z.object({
@@ -40,8 +53,10 @@ const companyWalletDefaultInput = z.object({
 export const listTraders = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { requireAdmin, fetchTraders } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { fetchTraders } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.USERS_READ);
     return fetchTraders();
   });
 
@@ -49,8 +64,10 @@ export const assignCompanyWallet = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => assignInput.parse(data))
   .handler(async ({ data, context }) => {
-    const { requireAdmin, assignWallet } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { assignWallet } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
     return assignWallet(data.walletId, data.traderId, context.userId);
   });
 
@@ -58,16 +75,20 @@ export const updatePlatformSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => settingsInput.parse(data))
   .handler(async ({ data, context }) => {
-    const { requireAdmin, writeSettings } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { writeSettings } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.SETTINGS_MANAGE);
     return writeSettings(data);
   });
 
 export const getAdminDashboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { requireAdmin, fetchAdminDashboard } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { fetchAdminDashboard } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.DASHBOARD_READ);
     return fetchAdminDashboard();
   });
 
@@ -75,17 +96,32 @@ export const addCompanyWallet = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => companyWalletInput.parse(data))
   .handler(async ({ data, context }) => {
-    const { requireAdmin, createCompanyWallet } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { createCompanyWallet } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
     return createCompanyWallet({ ...data, actorId: context.userId });
+  });
+
+export const updateCompanyWallet = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => companyWalletInput.required({ id: true }).parse(data))
+  .handler(async ({ data, context }) => {
+    const { saveCompanyWallet } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
+    return saveCompanyWallet({ ...data, actorId: context.userId });
   });
 
 export const setCompanyWalletActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => companyWalletStatusInput.parse(data))
   .handler(async ({ data, context }) => {
-    const { requireAdmin, updateCompanyWalletStatus } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { updateCompanyWalletStatus } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
     return updateCompanyWalletStatus({ ...data, actorId: context.userId });
   });
 
@@ -93,7 +129,9 @@ export const makeCompanyWalletDefault = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => companyWalletDefaultInput.parse(data))
   .handler(async ({ data, context }) => {
-    const { requireAdmin, setDefaultCompanyWallet } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { setDefaultCompanyWallet } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
     return setDefaultCompanyWallet({ ...data, actorId: context.userId });
   });

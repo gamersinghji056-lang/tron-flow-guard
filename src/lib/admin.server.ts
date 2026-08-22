@@ -103,6 +103,12 @@ export async function writeSettings(input: {
   transferFee?: number | undefined;
   feeWalletAddress?: string | undefined;
   onchainBroadcast?: boolean | undefined;
+  feeCollectionWalletId?: string | null | undefined;
+  vendorBuyerFeePercent?: number | undefined;
+  vendorSellerFeePercent?: number | undefined;
+  wtronBuyRateInr?: number | undefined;
+  directSellFeePercent?: number | undefined;
+  withdrawalFeeUsdt?: number | undefined;
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -115,6 +121,24 @@ export async function writeSettings(input: {
   }
   if (input.onchainBroadcast !== undefined) {
     rows.push({ key: "onchain_broadcast_enabled", value: input.onchainBroadcast });
+  }
+  if (input.feeCollectionWalletId !== undefined) {
+    rows.push({ key: "fee_collection_wallet_id", value: input.feeCollectionWalletId });
+  }
+  if (input.vendorBuyerFeePercent !== undefined) {
+    rows.push({ key: "vendor_buyer_fee_percent", value: input.vendorBuyerFeePercent });
+  }
+  if (input.vendorSellerFeePercent !== undefined) {
+    rows.push({ key: "vendor_seller_fee_percent", value: input.vendorSellerFeePercent });
+  }
+  if (input.wtronBuyRateInr !== undefined) {
+    rows.push({ key: "wtron_buy_rate_inr", value: input.wtronBuyRateInr });
+  }
+  if (input.directSellFeePercent !== undefined) {
+    rows.push({ key: "direct_sell_fee_percent", value: input.directSellFeePercent });
+  }
+  if (input.withdrawalFeeUsdt !== undefined) {
+    rows.push({ key: "withdrawal_fee_usdt", value: input.withdrawalFeeUsdt });
   }
 
   for (const row of rows) {
@@ -260,6 +284,10 @@ export async function createCompanyWallet(input: {
   name: string;
   address: string;
   network: ChainNetwork;
+  purpose?: string;
+  priority?: number;
+  minDeposit?: number | null | undefined;
+  maxDeposit?: number | null | undefined;
   actorId: string;
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -271,8 +299,12 @@ export async function createCompanyWallet(input: {
       name: input.name,
       address: input.address,
       network: input.network,
+      purpose: input.purpose ?? "USER_DEPOSIT",
+      priority: input.priority ?? 100,
+      min_deposit: input.minDeposit ?? undefined,
+      max_deposit: input.maxDeposit ?? undefined,
       is_active: true,
-    })
+    } as never)
     .select("id")
     .single();
   if (error) throw new Error(error.message);
@@ -284,6 +316,45 @@ export async function createCompanyWallet(input: {
     entity_type: "wallet",
     entity_id: data.id,
     metadata: { address: input.address, network: input.network },
+  });
+  return { ok: true, id: data.id };
+}
+
+export async function saveCompanyWallet(input: {
+  id: string;
+  name: string;
+  address: string;
+  network: ChainNetwork;
+  purpose?: string;
+  priority?: number;
+  minDeposit?: number | null | undefined;
+  maxDeposit?: number | null | undefined;
+  actorId: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  if (!isTronAddress(input.address)) throw new Error("Enter a valid TRON address");
+  const { data, error } = await supabaseAdmin
+    .from("wallets")
+    .update({
+      name: input.name,
+      address: input.address,
+      network: input.network,
+      purpose: input.purpose ?? "USER_DEPOSIT",
+      priority: input.priority ?? 100,
+      min_deposit: input.minDeposit ?? null,
+      max_deposit: input.maxDeposit ?? null,
+    } as never)
+    .eq("id", input.id)
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: input.actorId,
+    actor_type: "admin",
+    action: "wallet.updated",
+    entity_type: "wallet",
+    entity_id: data.id,
+    metadata: { purpose: input.purpose, priority: input.priority },
   });
   return { ok: true, id: data.id };
 }

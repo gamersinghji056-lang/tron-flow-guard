@@ -6,6 +6,7 @@ import {
   sendTelegramMessage,
   writeTelegramHealth,
 } from "@/lib/telegram.server";
+import { recordSystemError, writeServiceHeartbeat } from "@/lib/system-health.server";
 
 const DEFAULT_POLL_MS = 2_000;
 const DEFAULT_QUEUE_BATCH_SIZE = 20;
@@ -155,6 +156,13 @@ async function runForever() {
     await writeTelegramHealth("degraded", "TELEGRAM_BOT_TOKEN is not configured", {
       uptimeSeconds: 0,
     });
+    await writeServiceHeartbeat({
+      service: "TELEGRAM WORKER",
+      status: "DEGRADED",
+      message: "TELEGRAM_BOT_TOKEN is not configured",
+      errorCode: "TELEGRAM_TOKEN_MISSING",
+      metadata: { uptimeSeconds: 0 },
+    });
     while (!stopping) await sleep(60_000);
     return;
   }
@@ -162,6 +170,12 @@ async function runForever() {
   await writeTelegramHealth("ok", "Telegram worker started", {
     pollMs,
     queueBatchSize,
+  });
+  await writeServiceHeartbeat({
+    service: "TELEGRAM WORKER",
+    status: "HEALTHY",
+    message: "Telegram worker started",
+    metadata: { pollMs, queueBatchSize },
   });
 
   while (!stopping) {
@@ -179,6 +193,17 @@ async function runForever() {
         updates: updates.length,
         notificationsProcessed: queue.processed,
       });
+      await writeServiceHeartbeat({
+        service: "TELEGRAM WORKER",
+        status: "HEALTHY",
+        message: "Telegram worker tick completed",
+        metadata: {
+          uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
+          offset,
+          updates: updates.length,
+          notificationsProcessed: queue.processed,
+        },
+      });
     } catch (error) {
       consecutiveFailures += 1;
       const detail = error instanceof Error ? error.message : "Telegram worker tick failed";
@@ -187,6 +212,21 @@ async function runForever() {
         uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
         offset,
         consecutiveFailures,
+      });
+      await writeServiceHeartbeat({
+        service: "TELEGRAM WORKER",
+        status: "DEGRADED",
+        message: detail,
+        errorCode: "TELEGRAM_WORKER_TICK_ERROR",
+        metadata: { offset, consecutiveFailures },
+      });
+      await recordSystemError({
+        service: "TELEGRAM WORKER",
+        severity: "error",
+        code: "TELEGRAM_WORKER_TICK_ERROR",
+        message: detail,
+        retryable: true,
+        metadata: { offset, consecutiveFailures },
       });
     }
 

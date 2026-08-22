@@ -12,8 +12,9 @@ export const resolveP2pDispute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => disputeActionInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.DISPUTES_MANAGE);
     const { error } = await context.supabase.rpc(
       "admin_resolve_dispute" as never,
       {

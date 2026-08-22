@@ -69,6 +69,7 @@ import { Route as AuthenticatedOrdersOrderIdRouteImport } from './routes/_authen
 import { Route as AuthenticatedVendorIndexRouteImport } from './routes/_authenticated/vendor.index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet.index'
 import { Route as AuthenticatedWalletWalletIdRouteImport } from './routes/_authenticated/wallet.$walletId'
+import { Route as ApiPublicStatusRouteImport } from './routes/api/public/status'
 import { Route as ApiV1BalanceRouteImport } from './routes/api/v1/balance'
 import { Route as ApiV1DepositsRouteImport } from './routes/api/v1/deposits'
 import { Route as ApiV1DirectSellRouteImport } from './routes/api/v1/direct-sell'
@@ -409,6 +410,11 @@ const AuthenticatedWalletWalletIdRoute =
     path: '/wallet/$walletId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ApiPublicStatusRoute = ApiPublicStatusRouteImport.update({
+  id: '/api/public/status',
+  path: '/api/public/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1BalanceRoute = ApiV1BalanceRouteImport.update({
   id: '/api/v1/balance',
   path: '/api/v1/balance',
@@ -512,6 +518,7 @@ export interface FileRoutesByFullPath {
   '/admin/withdrawals': typeof AuthenticatedAdminWithdrawalsRoute
   '/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
   '/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
+  '/api/public/status': typeof ApiPublicStatusRoute
   '/api/v1/balance': typeof ApiV1BalanceRoute
   '/api/v1/deposits': typeof ApiV1DepositsRouteWithChildren
   '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
@@ -581,6 +588,7 @@ export interface FileRoutesByTo {
   '/admin/withdrawals': typeof AuthenticatedAdminWithdrawalsRoute
   '/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
   '/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
+  '/api/public/status': typeof ApiPublicStatusRoute
   '/api/v1/balance': typeof ApiV1BalanceRoute
   '/api/v1/deposits': typeof ApiV1DepositsRouteWithChildren
   '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
@@ -653,6 +661,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/withdrawals': typeof AuthenticatedAdminWithdrawalsRoute
   '/_authenticated/orders/$orderId': typeof AuthenticatedOrdersOrderIdRoute
   '/_authenticated/wallet/$walletId': typeof AuthenticatedWalletWalletIdRoute
+  '/api/public/status': typeof ApiPublicStatusRoute
   '/api/v1/balance': typeof ApiV1BalanceRoute
   '/api/v1/deposits': typeof ApiV1DepositsRouteWithChildren
   '/api/v1/direct-sell': typeof ApiV1DirectSellRouteWithChildren
@@ -725,6 +734,7 @@ export interface FileRouteTypes {
     | '/admin/withdrawals'
     | '/orders/$orderId'
     | '/wallet/$walletId'
+    | '/api/public/status'
     | '/api/v1/balance'
     | '/api/v1/deposits'
     | '/api/v1/direct-sell'
@@ -794,6 +804,7 @@ export interface FileRouteTypes {
     | '/admin/withdrawals'
     | '/orders/$orderId'
     | '/wallet/$walletId'
+    | '/api/public/status'
     | '/api/v1/balance'
     | '/api/v1/deposits'
     | '/api/v1/direct-sell'
@@ -865,6 +876,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/withdrawals'
     | '/_authenticated/orders/$orderId'
     | '/_authenticated/wallet/$walletId'
+    | '/api/public/status'
     | '/api/v1/balance'
     | '/api/v1/deposits'
     | '/api/v1/direct-sell'
@@ -893,6 +905,7 @@ export interface RootRouteChildren {
   TraderRegisterRoute: typeof TraderRegisterRoute
   VendorLoginRoute: typeof VendorLoginRoute
   VendorRegisterRoute: typeof VendorRegisterRoute
+  ApiPublicStatusRoute: typeof ApiPublicStatusRoute
   ApiV1BalanceRoute: typeof ApiV1BalanceRoute
   ApiV1DepositsRoute: typeof ApiV1DepositsRouteWithChildren
   ApiV1DirectSellRoute: typeof ApiV1DirectSellRouteWithChildren
@@ -1323,6 +1336,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWalletWalletIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/public/status': {
+      id: '/api/public/status'
+      path: '/api/public/status'
+      fullPath: '/api/public/status'
+      preLoaderRoute: typeof ApiPublicStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/balance': {
       id: '/api/v1/balance'
       path: '/api/v1/balance'
@@ -1568,6 +1588,7 @@ const rootRouteChildren: RootRouteChildren = {
   TraderRegisterRoute: TraderRegisterRoute,
   VendorLoginRoute: VendorLoginRoute,
   VendorRegisterRoute: VendorRegisterRoute,
+  ApiPublicStatusRoute: ApiPublicStatusRoute,
   ApiV1BalanceRoute: ApiV1BalanceRoute,
   ApiV1DepositsRoute: ApiV1DepositsRouteWithChildren,
   ApiV1DirectSellRoute: ApiV1DirectSellRouteWithChildren,

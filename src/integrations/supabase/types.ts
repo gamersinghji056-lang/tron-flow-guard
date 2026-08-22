@@ -562,6 +562,72 @@ export type Database = {
           },
         ];
       };
+      fee_liabilities: {
+        Row: {
+          amount: number;
+          created_at: string;
+          currency: string;
+          destination_wallet_id: string | null;
+          fee_type: string;
+          id: string;
+          idempotency_key: string;
+          order_id: string | null;
+          settled_at: string | null;
+          source: string;
+          status: string;
+          txid: string | null;
+          user_id: string | null;
+          vendor_id: string | null;
+        };
+        Insert: {
+          amount: number;
+          created_at?: string;
+          currency?: string;
+          destination_wallet_id?: string | null;
+          fee_type: string;
+          id?: string;
+          idempotency_key: string;
+          order_id?: string | null;
+          settled_at?: string | null;
+          source: string;
+          status?: string;
+          txid?: string | null;
+          user_id?: string | null;
+          vendor_id?: string | null;
+        };
+        Update: {
+          amount?: number;
+          created_at?: string;
+          currency?: string;
+          destination_wallet_id?: string | null;
+          fee_type?: string;
+          id?: string;
+          idempotency_key?: string;
+          order_id?: string | null;
+          settled_at?: string | null;
+          source?: string;
+          status?: string;
+          txid?: string | null;
+          user_id?: string | null;
+          vendor_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fee_liabilities_destination_wallet_id_fkey";
+            columns: ["destination_wallet_id"];
+            isOneToOne: false;
+            referencedRelation: "wallets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fee_liabilities_vendor_id_fkey";
+            columns: ["vendor_id"];
+            isOneToOne: false;
+            referencedRelation: "trading_vendors";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       ledger_entries: {
         Row: {
           amount: number;
@@ -1576,7 +1642,9 @@ export type Database = {
         Row: {
           error_count_24h: number;
           last_error_at: string | null;
+          last_error_code: string | null;
           last_error_message: string | null;
+          last_failure_at: string | null;
           last_heartbeat_at: string | null;
           last_success_at: string | null;
           metadata: Json;
@@ -1587,7 +1655,9 @@ export type Database = {
         Insert: {
           error_count_24h?: number;
           last_error_at?: string | null;
+          last_error_code?: string | null;
           last_error_message?: string | null;
+          last_failure_at?: string | null;
           last_heartbeat_at?: string | null;
           last_success_at?: string | null;
           metadata?: Json;
@@ -1598,7 +1668,9 @@ export type Database = {
         Update: {
           error_count_24h?: number;
           last_error_at?: string | null;
+          last_error_code?: string | null;
           last_error_message?: string | null;
+          last_failure_at?: string | null;
           last_heartbeat_at?: string | null;
           last_success_at?: string | null;
           metadata?: Json;
@@ -1610,45 +1682,68 @@ export type Database = {
       };
       system_error_logs: {
         Row: {
+          address: string | null;
           created_at: string;
           error_code: string | null;
           id: string;
+          metadata: Json;
           related_order_id: string | null;
           related_txid: string | null;
           related_user_id: string | null;
           resolved_at: string | null;
           resolved_by: string | null;
+          retryable: boolean;
           safe_message: string;
           service: string;
           severity: string;
+          stage: string | null;
+          wallet_id: string | null;
         };
         Insert: {
+          address?: string | null;
           created_at?: string;
           error_code?: string | null;
           id?: string;
+          metadata?: Json;
           related_order_id?: string | null;
           related_txid?: string | null;
           related_user_id?: string | null;
           resolved_at?: string | null;
           resolved_by?: string | null;
+          retryable?: boolean;
           safe_message: string;
           service: string;
           severity?: string;
+          stage?: string | null;
+          wallet_id?: string | null;
         };
         Update: {
+          address?: string | null;
           created_at?: string;
           error_code?: string | null;
           id?: string;
+          metadata?: Json;
           related_order_id?: string | null;
           related_txid?: string | null;
           related_user_id?: string | null;
           resolved_at?: string | null;
           resolved_by?: string | null;
+          retryable?: boolean;
           safe_message?: string;
           service?: string;
           severity?: string;
+          stage?: string | null;
+          wallet_id?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "system_error_logs_wallet_id_fkey";
+            columns: ["wallet_id"];
+            isOneToOne: false;
+            referencedRelation: "wallets";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       system_settings: {
         Row: {
@@ -2321,12 +2416,14 @@ export type Database = {
         Row: {
           asset: string;
           available_usdt: number;
+          closed_at: string | null;
           created_at: string;
           daily_limit_usdt: number;
           fiat: string;
           id: string;
           max_order_inr: number;
           min_order_inr: number;
+          paused_at: string | null;
           payment_account_id: string | null;
           payment_rails: string[];
           rate_inr: number;
@@ -2340,12 +2437,14 @@ export type Database = {
         Insert: {
           asset?: string;
           available_usdt?: number;
+          closed_at?: string | null;
           created_at?: string;
           daily_limit_usdt?: number;
           fiat?: string;
           id?: string;
           max_order_inr?: number;
           min_order_inr?: number;
+          paused_at?: string | null;
           payment_account_id?: string | null;
           payment_rails?: string[];
           rate_inr: number;
@@ -2359,12 +2458,14 @@ export type Database = {
         Update: {
           asset?: string;
           available_usdt?: number;
+          closed_at?: string | null;
           created_at?: string;
           daily_limit_usdt?: number;
           fiat?: string;
           id?: string;
           max_order_inr?: number;
           min_order_inr?: number;
+          paused_at?: string | null;
           payment_account_id?: string | null;
           payment_rails?: string[];
           rate_inr?: number;
@@ -2498,6 +2599,7 @@ export type Database = {
         Row: {
           account_number: string | null;
           account_ref: string;
+          archived_at: string | null;
           bank_name: string | null;
           created_at: string;
           daily_limit_inr: number;
@@ -2519,6 +2621,7 @@ export type Database = {
         Insert: {
           account_number?: string | null;
           account_ref: string;
+          archived_at?: string | null;
           bank_name?: string | null;
           created_at?: string;
           daily_limit_inr?: number;
@@ -2540,6 +2643,7 @@ export type Database = {
         Update: {
           account_number?: string | null;
           account_ref?: string;
+          archived_at?: string | null;
           bank_name?: string | null;
           created_at?: string;
           daily_limit_inr?: number;
@@ -2672,11 +2776,17 @@ export type Database = {
           is_active: boolean;
           is_default: boolean;
           label: string | null;
+          last_listener_scan_at: string | null;
           max_deposit: number;
           min_deposit: number;
           name: string;
           network: Database["public"]["Enums"]["chain_network"];
           notes: string | null;
+          onchain_checked_at: string | null;
+          onchain_trx_balance: number | null;
+          onchain_usdt_balance: number | null;
+          priority: number;
+          purpose: string;
           updated_at: string;
           wallet_kind: Database["public"]["Enums"]["wallet_kind"];
         };
@@ -2689,11 +2799,17 @@ export type Database = {
           is_active?: boolean;
           is_default?: boolean;
           label?: string | null;
+          last_listener_scan_at?: string | null;
           max_deposit?: number;
           min_deposit?: number;
           name: string;
           network?: Database["public"]["Enums"]["chain_network"];
           notes?: string | null;
+          onchain_checked_at?: string | null;
+          onchain_trx_balance?: number | null;
+          onchain_usdt_balance?: number | null;
+          priority?: number;
+          purpose?: string;
           updated_at?: string;
           wallet_kind?: Database["public"]["Enums"]["wallet_kind"];
         };
@@ -2706,11 +2822,17 @@ export type Database = {
           is_active?: boolean;
           is_default?: boolean;
           label?: string | null;
+          last_listener_scan_at?: string | null;
           max_deposit?: number;
           min_deposit?: number;
           name?: string;
           network?: Database["public"]["Enums"]["chain_network"];
           notes?: string | null;
+          onchain_checked_at?: string | null;
+          onchain_trx_balance?: number | null;
+          onchain_usdt_balance?: number | null;
+          priority?: number;
+          purpose?: string;
           updated_at?: string;
           wallet_kind?: Database["public"]["Enums"]["wallet_kind"];
         };
@@ -2946,12 +3068,14 @@ export type Database = {
         Returns: {
           asset: string;
           available_usdt: number;
+          closed_at: string | null;
           created_at: string;
           daily_limit_usdt: number;
           fiat: string;
           id: string;
           max_order_inr: number;
           min_order_inr: number;
+          paused_at: string | null;
           payment_account_id: string | null;
           payment_rails: string[];
           rate_inr: number;
@@ -3166,6 +3290,7 @@ export type Database = {
           credited: boolean;
         }[];
       };
+      current_fee_collection_wallet_id: { Args: never; Returns: string };
       dispute_direct_sell_payment_item: {
         Args: { _item_id: string; _reason: string };
         Returns: boolean;
@@ -3406,6 +3531,40 @@ export type Database = {
         SetofOptions: {
           from: "*";
           to: "trading_vendors";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      record_fee_liability: {
+        Args: {
+          _amount: number;
+          _currency: string;
+          _fee_type: string;
+          _idempotency_key: string;
+          _order_id: string;
+          _source: string;
+          _user_id: string;
+          _vendor_id: string;
+        };
+        Returns: {
+          amount: number;
+          created_at: string;
+          currency: string;
+          destination_wallet_id: string | null;
+          fee_type: string;
+          id: string;
+          idempotency_key: string;
+          order_id: string | null;
+          settled_at: string | null;
+          source: string;
+          status: string;
+          txid: string | null;
+          user_id: string | null;
+          vendor_id: string | null;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "fee_liabilities";
           isOneToOne: true;
           isSetofReturn: false;
         };

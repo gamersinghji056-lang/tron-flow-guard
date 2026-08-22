@@ -63,6 +63,16 @@ import {
   telegramAuthPasswordPrompt,
   telegramAuthSuccessMessage,
 } from "./telegram-bot-flow.ts";
+import {
+  canResumeListing,
+  ensureReservedLiquidityPreserved,
+  nextAccountStatus,
+  reservationBlockedByAccount,
+  validatePaymentIdentity,
+  validateVendorAccountLimits,
+} from "./vendor-policy.ts";
+import { PERMISSIONS, grants } from "./rbac.ts";
+import { safeErrorMessage } from "./system-health-policy.ts";
 
 describe("API key crypto", () => {
   it("parses and verifies generated keys", () => {
@@ -315,6 +325,98 @@ describe("transaction password primitives", () => {
   it("locks after repeated failed attempts", () => {
     assert.equal(shouldLockTransactionPassword(4), false);
     assert.equal(shouldLockTransactionPassword(5), true);
+  });
+});
+
+describe("vendor account and listing controls", () => {
+  it("validates account limits and payment identifiers", () => {
+    assert.doesNotThrow(() =>
+      validateVendorAccountLimits({ minInr: 100, maxInr: 1000, dailyLimitInr: 5000 }),
+    );
+    assert.throws(
+      () => validateVendorAccountLimits({ minInr: 1000, maxInr: 100, dailyLimitInr: 5000 }),
+      /Maximum INR/,
+    );
+    assert.doesNotThrow(() =>
+      validatePaymentIdentity({ rail: "upi", accountRef: "vendor.pay@upi" }),
+    );
+    assert.throws(() => validatePaymentIdentity({ rail: "upi", accountRef: "not-upi" }), /UPI/);
+    assert.doesNotThrow(() =>
+      validatePaymentIdentity({ rail: "imps", accountRef: "1234567890", ifsc: "HDFC0001234" }),
+    );
+  });
+
+  it("blocks new reservations on frozen or disabled accounts", () => {
+    assert.equal(nextAccountStatus({ enabled: true, frozen: false }), "active");
+    assert.equal(nextAccountStatus({ enabled: true, frozen: true }), "frozen");
+    assert.equal(
+      reservationBlockedByAccount({
+        status: "frozen",
+        enabled: true,
+        frozen: true,
+        archived: false,
+      }),
+      true,
+    );
+    assert.equal(
+      reservationBlockedByAccount({
+        status: "active",
+        enabled: true,
+        frozen: false,
+        archived: false,
+      }),
+      false,
+    );
+  });
+
+  it("preserves reserved liquidity and resumes only active liquid listings", () => {
+    assert.doesNotThrow(() =>
+      ensureReservedLiquidityPreserved({ requestedTotal: 1000, reserved: 300 }),
+    );
+    assert.throws(
+      () => ensureReservedLiquidityPreserved({ requestedTotal: 299, reserved: 300 }),
+      /Reserved liquidity/,
+    );
+    assert.equal(
+      canResumeListing({
+        availableUsdt: 700,
+        accountStatus: "active",
+        accountEnabled: true,
+        accountFrozen: false,
+        accountArchived: false,
+      }),
+      true,
+    );
+    assert.equal(
+      canResumeListing({
+        availableUsdt: 0,
+        accountStatus: "active",
+        accountEnabled: true,
+        accountFrozen: false,
+        accountArchived: false,
+      }),
+      false,
+    );
+  });
+});
+
+describe("RBAC and system error safety", () => {
+  it("grants super admin implicitly and denies employees without explicit permission", () => {
+    assert.equal(grants("super_admin", [], PERMISSIONS.EMPLOYEES_MANAGE), true);
+    assert.equal(grants("employee", [], PERMISSIONS.EMPLOYEES_MANAGE), false);
+    assert.equal(
+      grants("employee", [PERMISSIONS.EMPLOYEES_MANAGE], PERMISSIONS.EMPLOYEES_MANAGE),
+      true,
+    );
+  });
+
+  it("redacts secrets before writing system errors", () => {
+    const message = safeErrorMessage(
+      "TRONGRID_API_KEY=secret-value private_key=abc123 mnemonic=seed words token=abc.def.ghi",
+    );
+    assert.equal(message.includes("secret-value"), false);
+    assert.equal(message.includes("seed"), false);
+    assert.match(message, /\[redacted\]/);
   });
 });
 

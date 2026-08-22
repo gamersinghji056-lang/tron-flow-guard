@@ -160,9 +160,10 @@ export const createTelegramDeposit = createServerFn({ method: "POST" })
 export const fetchAdminTelegramOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await requireAdmin(context.supabase, context.userId);
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.SYSTEM_HEALTH_READ);
     const [health, accounts, queue, audit] = await Promise.all([
       supabaseAdmin
         .from("telegram_bot_health")
@@ -211,8 +212,9 @@ export const setTelegramAccountStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => adminStatusInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.SYSTEM_HEALTH_MANAGE);
     const { error } = await context.supabase.rpc(
       "admin_set_telegram_account_status" as never,
       {

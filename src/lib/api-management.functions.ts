@@ -17,9 +17,10 @@ export const createAdminApiKey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => createKeyInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await requireAdmin(context.supabase, context.userId);
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.API_MANAGE);
     const created = await createApiKeyRecord({
       name: data.name,
       scopes: data.scopes,
@@ -43,9 +44,10 @@ export const revokeAdminApiKey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => revokeKeyInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await requireAdmin(context.supabase, context.userId);
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.API_MANAGE);
     const { error } = await supabaseAdmin
       .from("api_keys")
       .update({ status: "revoked", revoked_at: new Date().toISOString() } as never)

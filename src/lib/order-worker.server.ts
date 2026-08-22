@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { recordSystemError, writeServiceHeartbeat } from "@/lib/system-health.server";
 
 export async function runOrderWorkerTick() {
   const started = performance.now();
@@ -6,6 +7,14 @@ export async function runOrderWorkerTick() {
   const durationMs = Math.round(performance.now() - started);
   if (error) {
     await persistOrderWorkerHealth("DEGRADED", durationMs, error.message);
+    await recordSystemError({
+      service: "ORDER WORKER",
+      severity: "error",
+      code: "ORDER_TIMER_ERROR",
+      message: error.message,
+      retryable: true,
+      metadata: { durationMs },
+    });
     throw new Error(error.message);
   }
   await persistOrderWorkerHealth("OK", durationMs, null);
@@ -34,4 +43,13 @@ async function persistOrderWorkerHealth(
     } as never,
     { onConflict: "service" },
   );
+  await writeServiceHeartbeat({
+    service: "ORDER WORKER",
+    status: error ? "DEGRADED" : "HEALTHY",
+    message: error ?? `Last timer tick completed in ${durationMs}ms`,
+    errorCode: error ? "ORDER_TIMER_ERROR" : null,
+    metadata: {
+      tick_duration_ms: durationMs,
+    },
+  });
 }

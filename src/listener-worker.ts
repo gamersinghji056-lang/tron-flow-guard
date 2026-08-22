@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "./integrations/supabase/client.server";
 import { runListenerTick } from "./lib/listener.server";
+import { recordSystemError, writeServiceHeartbeat } from "./lib/system-health.server";
 import { processWebhookRetries } from "./lib/webhooks.server";
 
 const DEFAULT_POLL_MS = 15_000;
@@ -46,6 +47,19 @@ async function writeWorkerHealth(
     } as never,
     { onConflict: "service" },
   );
+  await writeServiceHeartbeat({
+    service: "BLOCKCHAIN WORKER",
+    status: status === "ok" ? "HEALTHY" : status === "offline" ? "FAILED" : "DEGRADED",
+    message: detail,
+    errorCode: status === "ok" ? null : "BLOCKCHAIN_WORKER_DEGRADED",
+    metadata: {
+      uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
+      pollMs,
+      reconcileEveryMs,
+      consecutiveFailures,
+      ...metadata,
+    },
+  });
 }
 
 function installSignalHandlers() {
@@ -92,6 +106,19 @@ async function runForever() {
           errors: result.errors.slice(0, 5),
         },
       );
+      if (!result.ok) {
+        for (const errorMessage of result.errors.slice(0, 10)) {
+          await recordSystemError({
+            service: "BLOCKCHAIN WORKER",
+            severity: "error",
+            code: "LISTENER_TICK_ERROR",
+            stage: "TRONGRID",
+            message: errorMessage,
+            retryable: true,
+            metadata: { mode, network: result.network, latestBlock: result.latestBlock },
+          });
+        }
+      }
       try {
         const webhooks = await processWebhookRetries(numberEnv("WEBHOOK_RETRY_BATCH_SIZE", 20));
         if (webhooks.processed > 0) {
@@ -106,6 +133,12 @@ async function runForever() {
             } as never,
             { onConflict: "service" },
           );
+          await writeServiceHeartbeat({
+            service: "WEBHOOKS",
+            status: "HEALTHY",
+            message: `Processed ${webhooks.processed} webhook delivery attempt(s)`,
+            metadata: { processed: webhooks.processed },
+          });
         }
       } catch (webhookError) {
         const message =
@@ -121,12 +154,35 @@ async function runForever() {
           } as never,
           { onConflict: "service" },
         );
+        await writeServiceHeartbeat({
+          service: "WEBHOOKS",
+          status: "DEGRADED",
+          message,
+          errorCode: "WEBHOOK_RETRY_ERROR",
+        });
+        await recordSystemError({
+          service: "WEBHOOKS",
+          severity: "error",
+          code: "WEBHOOK_RETRY_ERROR",
+          stage: "WEBHOOK",
+          message,
+          retryable: true,
+        });
       }
     } catch (error) {
       consecutiveFailures += 1;
       const message = error instanceof Error ? error.message : "Worker tick failed";
       console.error("[listener-worker]", error);
       await writeWorkerHealth("degraded", message, { mode });
+      await recordSystemError({
+        service: "BLOCKCHAIN WORKER",
+        severity: "critical",
+        code: "LISTENER_WORKER_FATAL_TICK",
+        stage: "TRONGRID",
+        message,
+        retryable: true,
+        metadata: { mode },
+      });
     }
 
     const elapsed = Date.now() - tickStartedAt;

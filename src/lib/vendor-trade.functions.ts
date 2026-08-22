@@ -94,9 +94,10 @@ export const confirmVendorPayment = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => orderIdInput.parse(input))
   .handler(async ({ data, context }) => {
     const { requireApprovedVendor } = await import("@/lib/vendor.server");
-    const { requireAdmin } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
     try {
-      await requireAdmin(context.supabase, context.userId);
+      await requirePermission(context.supabase, context.userId, PERMISSIONS.VENDORS_MANAGE);
     } catch {
       await requireApprovedVendor(context.supabase, context.userId);
     }
@@ -113,9 +114,10 @@ export const disputeVendorOrder = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => disputeInput.parse(input))
   .handler(async ({ data, context }) => {
     const { requireApprovedVendor } = await import("@/lib/vendor.server");
-    const { requireAdmin } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
     try {
-      await requireAdmin(context.supabase, context.userId);
+      await requirePermission(context.supabase, context.userId, PERMISSIONS.VENDORS_MANAGE);
     } catch {
       const { data: vendor } = await context.supabase
         .from("trading_vendors" as never)
@@ -136,8 +138,9 @@ export const adminUpsertTradingVendor = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => vendorInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.VENDORS_MANAGE);
     const { data: vendor, error } = await context.supabase.rpc(
       "admin_upsert_trading_vendor" as never,
       {
@@ -156,8 +159,9 @@ export const adminUpsertVendorListing = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => listingInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.VENDORS_MANAGE);
     const { data: listing, error } = await context.supabase.rpc(
       "admin_upsert_vendor_listing" as never,
       {

@@ -9,6 +9,7 @@ import {
   addCompanyWallet,
   makeCompanyWalletDefault,
   setCompanyWalletActive,
+  updateCompanyWallet,
 } from "@/lib/admin.functions";
 import { isTronAddress, NETWORKS, networkConfig, type ChainNetwork } from "@/lib/chain";
 import { Button } from "@/components/ui/button";
@@ -44,28 +45,88 @@ interface WalletRow {
   name: string;
   address: string;
   network: ChainNetwork;
+  purpose?: string | null;
+  priority?: number | null;
+  min_deposit?: number | string | null;
+  max_deposit?: number | string | null;
+  onchain_usdt_balance?: number | string | null;
+  onchain_trx_balance?: number | string | null;
+  onchain_checked_at?: string | null;
+  last_listener_scan_at?: string | null;
   is_active: boolean;
   is_default: boolean;
   created_at: string;
 }
 
+interface WalletDetailRow {
+  id: string;
+  wallet_id?: string | null;
+  txid?: string | null;
+  status?: string | null;
+  amount?: number | string | null;
+  expected_amount?: number | string | null;
+  received_amount?: number | string | null;
+  user_id?: string | null;
+  created_at?: string | null;
+}
+
 function AdminWallets() {
   const { isAdmin, loading } = useAuth();
   const addCompanyWalletFn = useServerFn(addCompanyWallet);
+  const updateCompanyWalletFn = useServerFn(updateCompanyWallet);
   const setCompanyWalletActiveFn = useServerFn(setCompanyWalletActive);
   const makeCompanyWalletDefaultFn = useServerFn(makeCompanyWalletDefault);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [network, setNetwork] = useState<ChainNetwork>("trc20-nile");
+  const [walletId, setWalletId] = useState("");
+  const [purpose, setPurpose] = useState("USER_DEPOSIT");
+  const [priority, setPriority] = useState("100");
+  const [minDeposit, setMinDeposit] = useState("");
+  const [maxDeposit, setMaxDeposit] = useState("");
+  const [detailWallet, setDetailWallet] = useState<WalletRow | null>(null);
+  const [depositRows, setDepositRows] = useState<WalletDetailRow[]>([]);
+  const [eventRows, setEventRows] = useState<WalletDetailRow[]>([]);
+  const [directSellRows, setDirectSellRows] = useState<WalletDetailRow[]>([]);
   const [pending, setPending] = useState(false);
 
   async function load() {
     const { data } = await supabase
       .from("wallets")
-      .select("id, name, address, network, is_active, is_default, created_at")
+      .select(
+        "id, name, address, network, purpose, priority, min_deposit, max_deposit, onchain_usdt_balance, onchain_trx_balance, onchain_checked_at, last_listener_scan_at, is_active, is_default, created_at",
+      )
+      .order("priority", { ascending: true })
       .order("created_at", { ascending: true });
-    setWallets((data ?? []) as WalletRow[]);
+    setWallets((data ?? []) as unknown as WalletRow[]);
+  }
+
+  async function loadDetail(wallet: WalletRow) {
+    setDetailWallet(wallet);
+    const [deposits, events, directSell] = await Promise.all([
+      supabase
+        .from("deposit_requests")
+        .select("id, wallet_id, status, expected_amount, received_amount, user_id, created_at")
+        .eq("wallet_id", wallet.id)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("blockchain_events")
+        .select("id, wallet_address, txid, amount, created_at")
+        .eq("wallet_address", wallet.address)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("direct_sell_orders" as never)
+        .select("id, wallet_id, order_ref, status, usdt_amount, expected_inr, user_id, created_at")
+        .eq("wallet_id", wallet.id as never)
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
+    setDepositRows((deposits.data ?? []) as WalletDetailRow[]);
+    setEventRows((events.data ?? []) as unknown as WalletDetailRow[]);
+    setDirectSellRows((directSell.data ?? []) as unknown as WalletDetailRow[]);
   }
 
   useEffect(() => {
@@ -86,16 +147,50 @@ function AdminWallets() {
 
     setPending(true);
     try {
-      await addCompanyWalletFn({ data: { name: name.trim(), address: address.trim(), network } });
-      setName("");
-      setAddress("");
-      toast.success("Wallet added. The listener will include it on the next pass.");
+      const payload = {
+        name: name.trim(),
+        address: address.trim(),
+        network,
+        purpose: purpose as "USER_DEPOSIT" | "DIRECT_SELL" | "FEE_COLLECTION" | "HOT" | "OTHER",
+        priority: Number(priority),
+        minDeposit: minDeposit ? Number(minDeposit) : null,
+        maxDeposit: maxDeposit ? Number(maxDeposit) : null,
+      };
+      if (walletId) {
+        await updateCompanyWalletFn({ data: { id: walletId, ...payload } });
+        toast.success("Wallet updated");
+      } else {
+        await addCompanyWalletFn({ data: payload });
+        toast.success("Wallet added. The listener will include it on the next pass.");
+      }
+      resetForm();
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not add company wallet");
     } finally {
       setPending(false);
     }
+  }
+
+  function editWallet(wallet: WalletRow) {
+    setWalletId(wallet.id);
+    setName(wallet.name);
+    setAddress(wallet.address);
+    setNetwork(wallet.network);
+    setPurpose(wallet.purpose ?? "USER_DEPOSIT");
+    setPriority(String(wallet.priority ?? 100));
+    setMinDeposit(wallet.min_deposit == null ? "" : String(wallet.min_deposit));
+    setMaxDeposit(wallet.max_deposit == null ? "" : String(wallet.max_deposit));
+  }
+
+  function resetForm() {
+    setWalletId("");
+    setName("");
+    setAddress("");
+    setPurpose("USER_DEPOSIT");
+    setPriority("100");
+    setMinDeposit("");
+    setMaxDeposit("");
   }
 
   async function toggleActive(wallet: WalletRow, next: boolean) {
@@ -138,9 +233,9 @@ function AdminWallets() {
       <div className="panel p-5">
         <SectionHeader
           title="Add a company wallet"
-          description="Every active wallet on the selected network is polled for incoming USDT transfers."
+          description="Public TRON receiving addresses monitored by the existing blockchain listener."
         />
-        <form className="mt-4 grid gap-3 sm:grid-cols-[1fr_1.6fr_auto_auto]" onSubmit={addWallet}>
+        <form className="mt-4 grid gap-3 lg:grid-cols-4" onSubmit={addWallet}>
           <div className="space-y-1.5">
             <Label htmlFor="wallet-name">Label</Label>
             <Input
@@ -177,6 +272,33 @@ function AdminWallets() {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1.5">
+            <Label>Purpose</Label>
+            <Select value={purpose} onValueChange={setPurpose}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["USER_DEPOSIT", "DIRECT_SELL", "FEE_COLLECTION", "HOT", "OTHER"].map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item.replaceAll("_", " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Priority</Label>
+            <Input value={priority} onChange={(event) => setPriority(event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Min deposit</Label>
+            <Input value={minDeposit} onChange={(event) => setMinDeposit(event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Max deposit</Label>
+            <Input value={maxDeposit} onChange={(event) => setMaxDeposit(event.target.value)} />
+          </div>
           <div className="flex items-end">
             <Button type="submit" disabled={pending}>
               {pending ? (
@@ -184,9 +306,16 @@ function AdminWallets() {
               ) : (
                 <Plus className="mr-1.5 h-4 w-4" />
               )}
-              Add
+              {walletId ? "Update" : "Add"}
             </Button>
           </div>
+          {walletId ? (
+            <div className="flex items-end">
+              <Button type="button" variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+            </div>
+          ) : null}
         </form>
       </div>
 
@@ -197,6 +326,9 @@ function AdminWallets() {
               <th className="px-4 py-2.5 text-left font-medium">Label</th>
               <th className="px-4 py-2.5 text-left font-medium">Address</th>
               <th className="px-4 py-2.5 text-left font-medium">Network</th>
+              <th className="px-4 py-2.5 text-left font-medium">Purpose</th>
+              <th className="px-4 py-2.5 text-left font-medium">Balance</th>
+              <th className="px-4 py-2.5 text-left font-medium">Listener</th>
               <th className="px-4 py-2.5 text-left font-medium">Active</th>
               <th className="px-4 py-2.5 text-left font-medium">Default</th>
               <th className="px-4 py-2.5 text-right font-medium">Actions</th>
@@ -205,7 +337,7 @@ function AdminWallets() {
           <tbody className="divide-y">
             {wallets.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                   No wallets configured yet.
                 </td>
               </tr>
@@ -226,6 +358,17 @@ function AdminWallets() {
                       </a>
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{chain.shortLabel}</td>
+                    <td className="px-4 py-2.5 text-xs">{wallet.purpose ?? "USER_DEPOSIT"}</td>
+                    <td className="mono px-4 py-2.5 text-xs">
+                      {Number(wallet.onchain_usdt_balance ?? 0).toLocaleString()} USDT
+                      <br />
+                      {Number(wallet.onchain_trx_balance ?? 0).toLocaleString()} TRX
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      {wallet.last_listener_scan_at
+                        ? new Date(wallet.last_listener_scan_at).toLocaleString()
+                        : "-"}
+                    </td>
                     <td className="px-4 py-2.5">
                       <Switch
                         checked={wallet.is_active}
@@ -248,6 +391,12 @@ function AdminWallets() {
                       </button>
                     </td>
                     <td className="px-4 py-2.5 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => editWallet(wallet)}>
+                        Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => void loadDetail(wallet)}>
+                        Detail
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -264,6 +413,43 @@ function AdminWallets() {
             )}
           </tbody>
         </table>
+      </div>
+      {detailWallet ? (
+        <div className="panel p-5">
+          <SectionHeader
+            title={`${detailWallet.name} wallet detail`}
+            description="Recent deposit requests, chain transactions and direct-sell orders for this public address."
+          />
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <DetailList title="Deposit Requests" rows={depositRows} />
+            <DetailList title="Blockchain Events" rows={eventRows} />
+            <DetailList title="Direct Sell Orders" rows={directSellRows} />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DetailList({ title, rows }: { title: string; rows: WalletDetailRow[] }) {
+  return (
+    <div className="rounded-lg border p-3">
+      <h3 className="font-medium">{title}</h3>
+      <div className="mt-3 max-h-96 space-y-2 overflow-auto">
+        {rows.length ? (
+          rows.map((row) => (
+            <div key={row.id} className="rounded-md bg-secondary/40 p-2 text-xs">
+              <p className="mono">{row.txid ?? row.id}</p>
+              <p>Status: {row.status ?? "-"}</p>
+              <p>
+                Amount: {String(row.amount ?? row.received_amount ?? row.expected_amount ?? "-")}
+              </p>
+              <p>{row.created_at ? new Date(row.created_at).toLocaleString() : "-"}</p>
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground">No records.</p>
+        )}
       </div>
     </div>
   );

@@ -19,9 +19,10 @@ export const createWebhookEndpoint = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => createWebhookInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await requireAdmin(context.supabase, context.userId);
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WEBHOOKS_MANAGE);
     const secret = `whsec_${randomBytes(32).toString("base64url")}`;
     const { data: row, error } = await supabaseAdmin
       .from("webhook_endpoints")
@@ -43,8 +44,9 @@ export const testWebhookEndpoint = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => webhookIdInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WEBHOOKS_MANAGE);
     await enqueueWebhookEvent(
       "deposit.detected",
       { id: data.id, test: true, message: "Webhook test event" },

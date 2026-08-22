@@ -29,8 +29,9 @@ export const assignDirectSellPayment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => orderIdInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.DIRECT_SELL_MANAGE);
     const { data: reservation, error } = await context.supabase.rpc(
       "assign_direct_sell_payment" as never,
       { _order_id: data.orderId } as never,
@@ -43,8 +44,9 @@ export const markDirectSellPaymentSent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => paymentSentInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.DIRECT_SELL_MANAGE);
     const { error } = await context.supabase.rpc(
       "mark_direct_sell_payment_sent" as never,
       {
@@ -64,8 +66,9 @@ export const completeDirectSellOrder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => orderIdInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.DIRECT_SELL_MANAGE);
     const { error } = await context.supabase.rpc(
       "complete_direct_sell_order" as never,
       {
@@ -81,8 +84,9 @@ export const createDirectSellPaymentItem = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => paymentItemInput.parse(input))
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.DIRECT_SELL_MANAGE);
     const { data: item, error } = await context.supabase.rpc(
       "create_direct_sell_payment_item" as never,
       {

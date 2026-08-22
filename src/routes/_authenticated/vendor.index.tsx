@@ -1,16 +1,37 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, LogOut } from "lucide-react";
+import {
+  Copy,
+  Eye,
+  Loader2,
+  LogOut,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Snowflake,
+  Trash2,
+} from "lucide-react";
+import QRCode from "qrcode";
 import { toast } from "sonner";
 import {
   fetchVendorApplication,
   fetchVendorPortal,
   saveVendorAccount,
   saveVendorListing,
+  updateVendorAccountState,
+  updateVendorListingState,
   vendorConfirmPayment,
   vendorDisputePayment,
 } from "@/lib/vendor.functions";
+import {
+  createWallet,
+  importWallet,
+  refreshWalletBalance,
+  setDefaultWallet,
+  setWalletTransactionPassword,
+} from "@/lib/wallets.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,6 +117,7 @@ interface WalletRow {
   onchain_trx_balance?: number | string | null;
   is_default?: boolean | null;
   wallet_type?: string | null;
+  gas_sponsorship_status?: string | null;
 }
 
 interface PortalData {
@@ -117,13 +139,21 @@ function VendorPortalPage() {
   const getPortal = useServerFn(fetchVendorPortal);
   const saveAccount = useServerFn(saveVendorAccount);
   const saveListing = useServerFn(saveVendorListing);
+  const accountState = useServerFn(updateVendorAccountState);
+  const listingState = useServerFn(updateVendorListingState);
   const confirmPayment = useServerFn(vendorConfirmPayment);
   const disputePayment = useServerFn(vendorDisputePayment);
+  const createVendorWallet = useServerFn(createWallet);
+  const importVendorWallet = useServerFn(importWallet);
+  const refreshVendorWallet = useServerFn(refreshWalletBalance);
+  const setVendorWalletDefault = useServerFn(setDefaultWallet);
+  const setVendorWalletPassword = useServerFn(setWalletTransactionPassword);
   const [tab, setTab] = useState<VendorTab>("home");
   const [application, setApplication] = useState<VendorRow | null>(null);
   const [portal, setPortal] = useState<PortalData | null>(null);
   const [pending, setPending] = useState(true);
   const [accountForm, setAccountForm] = useState({
+    id: "",
     rail: "upi" as "upi" | "imps" | "neft" | "rtgs",
     label: "",
     holderName: "",
@@ -134,8 +164,12 @@ function VendorPortalPage() {
     minInr: "100",
     maxInr: "100000",
     dailyLimitInr: "500000",
+    priority: "100",
+    enabled: true,
+    frozen: false,
   });
   const [listingForm, setListingForm] = useState({
+    id: "",
     amountUsdt: "",
     rateInr: "",
     paymentAccountId: "",
@@ -144,6 +178,15 @@ function VendorPortalPage() {
     rail: "upi" as "upi" | "imps" | "neft" | "rtgs",
     terms: "",
   });
+  const [walletForm, setWalletForm] = useState({
+    name: "Vendor Wallet",
+    walletType: "standard" as "standard" | "gasfree",
+    transactionPassword: "",
+    mnemonic: "",
+    mode: "create" as "create" | "import" | "password",
+  });
+  const [selectedWalletId, setSelectedWalletId] = useState("");
+  const [walletQr, setWalletQr] = useState("");
 
   const load = useCallback(async () => {
     setPending(true);
@@ -194,6 +237,7 @@ function VendorPortalPage() {
     try {
       await saveAccount({
         data: {
+          ...(accountForm.id ? { id: accountForm.id } : {}),
           rail: accountForm.rail,
           label: accountForm.label || undefined,
           holderName: accountForm.holderName,
@@ -204,13 +248,23 @@ function VendorPortalPage() {
           minInr: Number(accountForm.minInr),
           maxInr: Number(accountForm.maxInr),
           dailyLimitInr: Number(accountForm.dailyLimitInr),
-          priority: 100,
+          priority: Number(accountForm.priority),
           isDefault: !(portal?.accounts.length ?? 0),
-          enabled: true,
-          frozen: false,
+          enabled: accountForm.enabled,
+          frozen: accountForm.frozen,
         },
       });
       toast.success("Vendor account saved");
+      setAccountForm((current) => ({
+        ...current,
+        id: "",
+        label: "",
+        holderName: "",
+        accountRef: "",
+        bankName: "",
+        accountNumber: "",
+        ifsc: "",
+      }));
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save account");
@@ -222,6 +276,7 @@ function VendorPortalPage() {
     try {
       await saveListing({
         data: {
+          ...(listingForm.id ? { id: listingForm.id } : {}),
           amountUsdt: Number(listingForm.amountUsdt),
           rateInr: Number(listingForm.rateInr),
           paymentAccountId: listingForm.paymentAccountId,
@@ -233,10 +288,74 @@ function VendorPortalPage() {
         },
       });
       toast.success("Listing saved");
-      setListingForm((current) => ({ ...current, amountUsdt: "", rateInr: "", terms: "" }));
+      setListingForm((current) => ({
+        ...current,
+        id: "",
+        amountUsdt: "",
+        rateInr: "",
+        terms: "",
+      }));
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save listing");
+    }
+  }
+
+  async function submitWallet(event: FormEvent) {
+    event.preventDefault();
+    try {
+      if (walletForm.mode === "password") {
+        await setVendorWalletPassword({ data: { password: walletForm.transactionPassword } });
+        toast.success("Transaction password saved");
+      } else if (walletForm.mode === "import") {
+        await importVendorWallet({
+          data: {
+            name: walletForm.name,
+            network: "trc20-mainnet",
+            walletType: walletForm.walletType,
+            makeDefault: !(portal?.wallets.length ?? 0),
+            transactionPassword: walletForm.transactionPassword,
+            mnemonic: walletForm.mnemonic,
+          },
+        });
+        toast.success("Wallet imported");
+      } else {
+        const result = await createVendorWallet({
+          data: {
+            name: walletForm.name,
+            network: "trc20-mainnet",
+            walletType: walletForm.walletType,
+            makeDefault: !(portal?.wallets.length ?? 0),
+            transactionPassword: walletForm.transactionPassword,
+          },
+        });
+        const phrase = (result as { recoveryPhrase?: string }).recoveryPhrase;
+        toast.success(
+          phrase ? "Wallet created. Back up the recovery phrase now." : "Wallet created",
+        );
+      }
+      setWalletForm((current) => ({ ...current, transactionPassword: "", mnemonic: "" }));
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Wallet action failed");
+    }
+  }
+
+  async function walletAction(wallet: WalletRow, action: "refresh" | "default" | "copy" | "qr") {
+    try {
+      if (action === "refresh") await refreshVendorWallet({ data: { walletId: wallet.id } });
+      if (action === "default") await setVendorWalletDefault({ data: { walletId: wallet.id } });
+      if (action === "copy" && wallet.address) {
+        await navigator.clipboard.writeText(wallet.address);
+        toast.success("Address copied");
+      }
+      if (action === "qr" && wallet.address) {
+        setSelectedWalletId(wallet.id);
+        setWalletQr(await QRCode.toDataURL(wallet.address, { width: 280, margin: 1 }));
+      }
+      if (action !== "copy" && action !== "qr") await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Wallet action failed");
     }
   }
 
@@ -357,27 +476,127 @@ function VendorPortalPage() {
 
         {tab === "wallet" ? (
           <Panel title="Vendor Wallet">
-            <p className="text-sm text-slate-400">
-              Vendor wallets reuse the same personal TRON wallet backend and security model.
-            </p>
+            <form className="grid gap-3 md:grid-cols-4" onSubmit={submitWallet}>
+              <select
+                className="h-10 rounded-md bg-black/50 px-3"
+                value={walletForm.mode}
+                onChange={(event) =>
+                  setWalletForm({
+                    ...walletForm,
+                    mode: event.target.value as typeof walletForm.mode,
+                  })
+                }
+              >
+                <option value="create">Create</option>
+                <option value="import">Import</option>
+                <option value="password">Password</option>
+              </select>
+              {walletForm.mode !== "password" ? (
+                <>
+                  <Input
+                    placeholder="Wallet name"
+                    value={walletForm.name}
+                    onChange={(event) => setWalletForm({ ...walletForm, name: event.target.value })}
+                  />
+                  <select
+                    className="h-10 rounded-md bg-black/50 px-3"
+                    value={walletForm.walletType}
+                    onChange={(event) =>
+                      setWalletForm({
+                        ...walletForm,
+                        walletType: event.target.value as typeof walletForm.walletType,
+                      })
+                    }
+                  >
+                    <option value="standard">Standard TRON</option>
+                    <option value="gasfree">GasFree</option>
+                  </select>
+                </>
+              ) : null}
+              <Input
+                type="password"
+                placeholder="Transaction password"
+                value={walletForm.transactionPassword}
+                onChange={(event) =>
+                  setWalletForm({ ...walletForm, transactionPassword: event.target.value })
+                }
+              />
+              {walletForm.mode === "import" ? (
+                <textarea
+                  className="min-h-20 rounded-md bg-black/50 p-3 md:col-span-4"
+                  placeholder="Recovery phrase"
+                  value={walletForm.mnemonic}
+                  onChange={(event) =>
+                    setWalletForm({ ...walletForm, mnemonic: event.target.value })
+                  }
+                />
+              ) : null}
+              <Button className="bg-blue-600 md:col-span-4">
+                {walletForm.mode === "password"
+                  ? "Save Transaction Password"
+                  : walletForm.mode === "import"
+                    ? "Import Wallet"
+                    : "Create Wallet"}
+              </Button>
+            </form>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {(portal.wallets ?? []).map((wallet) => (
                 <div key={wallet.id} className="rounded-lg border border-white/10 bg-white/6 p-4">
-                  <p className="font-semibold">{wallet.name ?? "Wallet"}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold">{wallet.name ?? "Wallet"}</p>
+                    <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] uppercase">
+                      {wallet.is_default ? "default" : (wallet.wallet_type ?? "standard")}
+                    </span>
+                  </div>
                   <p className="mono mt-1 break-all text-xs text-slate-400">{wallet.address}</p>
                   <MetricGrid
                     items={[
                       ["USDT", formatUsdt(walletDisplayBalance(wallet))],
                       ["TRX", `${formatUsdt(wallet.onchain_trx_balance)} TRX`],
                       ["Type", wallet.wallet_type ?? "standard"],
+                      ["GasFree", wallet.gas_sponsorship_status ?? "unavailable"],
                     ]}
                   />
+                  {selectedWalletId === wallet.id && walletQr ? (
+                    <img
+                      src={walletQr}
+                      alt="Vendor wallet receive QR"
+                      className="mt-3 h-36 w-36 rounded-md bg-white p-2"
+                    />
+                  ) : null}
+                  <p className="mt-3 text-xs text-amber-200">
+                    SEND UNAVAILABLE - SIGNER REQUIRED. Receive, refresh and history are available.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <IconAction
+                      label="Refresh"
+                      icon={RefreshCw}
+                      onClick={() => void walletAction(wallet, "refresh")}
+                    />
+                    <IconAction
+                      label="Receive QR"
+                      icon={Eye}
+                      onClick={() => void walletAction(wallet, "qr")}
+                    />
+                    <IconAction
+                      label="Copy"
+                      icon={Copy}
+                      onClick={() => void walletAction(wallet, "copy")}
+                    />
+                    <IconAction
+                      label="Default"
+                      icon={Plus}
+                      onClick={() => void walletAction(wallet, "default")}
+                    />
+                    <Button asChild size="sm" variant="secondary">
+                      <Link to="/wallet/$walletId" params={{ walletId: wallet.id }}>
+                        History
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
-            <Button asChild className="mt-4 bg-blue-600">
-              <Link to="/wallet">Open Wallet Tools</Link>
-            </Button>
           </Panel>
         ) : null}
 
@@ -454,9 +673,66 @@ function VendorPortalPage() {
                   setAccountForm({ ...accountForm, dailyLimitInr: event.target.value })
                 }
               />
-              <Button className="bg-blue-600 md:col-span-3">Add Account</Button>
+              <Input
+                placeholder="Priority"
+                value={accountForm.priority}
+                onChange={(event) =>
+                  setAccountForm({ ...accountForm, priority: event.target.value })
+                }
+              />
+              <label className="flex h-10 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={accountForm.enabled}
+                  onChange={(event) =>
+                    setAccountForm({ ...accountForm, enabled: event.target.checked })
+                  }
+                />
+                Enabled
+              </label>
+              <label className="flex h-10 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={accountForm.frozen}
+                  onChange={(event) =>
+                    setAccountForm({ ...accountForm, frozen: event.target.checked })
+                  }
+                />
+                Frozen
+              </label>
+              <Button className="bg-blue-600 md:col-span-3">
+                {accountForm.id ? "Update Account" : "Add Account"}
+              </Button>
             </form>
-            <AccountRows rows={portal.accounts} />
+            <AccountRows
+              rows={portal.accounts}
+              onEdit={(row) =>
+                setAccountForm({
+                  id: row.id,
+                  rail: row.rail,
+                  label: row.label ?? "",
+                  holderName: row.holder_name ?? "",
+                  accountRef: row.account_ref ?? "",
+                  bankName: row.bank_name ?? "",
+                  accountNumber: row.account_number ?? "",
+                  ifsc: row.ifsc ?? "",
+                  minInr: String(row.min_inr ?? 100),
+                  maxInr: String(row.max_inr ?? 100000),
+                  dailyLimitInr: String(row.daily_limit_inr ?? 500000),
+                  priority: String(row.priority ?? 100),
+                  enabled: Boolean(row.enabled ?? true),
+                  frozen: Boolean(row.frozen ?? false),
+                })
+              }
+              onAction={async (accountId, action) => {
+                try {
+                  await accountState({ data: { accountId, action } });
+                  await load();
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Account action failed");
+                }
+              }}
+            />
           </Panel>
         ) : null}
 
@@ -528,13 +804,36 @@ function VendorPortalPage() {
               />
               <Button className="bg-blue-600 md:col-span-3">Create Listing</Button>
             </form>
-            <ListingRows rows={portal.listings} />
+            <ListingRows
+              rows={portal.listings}
+              accounts={portal.accounts}
+              onEdit={(row) =>
+                setListingForm({
+                  id: row.id,
+                  amountUsdt: String(row.total_usdt ?? ""),
+                  rateInr: String(row.rate_inr ?? ""),
+                  paymentAccountId: row.payment_account_id ?? "",
+                  minOrderInr: String(row.min_order_inr ?? ""),
+                  maxOrderInr: String(row.max_order_inr ?? ""),
+                  rail: ((row.payment_rails ?? ["upi"])[0] as typeof listingForm.rail) ?? "upi",
+                  terms: row.terms ?? "",
+                })
+              }
+              onAction={async (listingId, action) => {
+                try {
+                  await listingState({ data: { listingId, action } });
+                  await load();
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Listing action failed");
+                }
+              }}
+            />
           </Panel>
         ) : null}
 
         {tab === "orders" ? (
           <Panel title="Vendor Orders">
-            <ListingRows rows={portal.listings} />
+            <ListingRows rows={portal.listings} accounts={portal.accounts} />
             <OrderRows
               rows={orders}
               onConfirm={confirmPayment}
@@ -610,7 +909,18 @@ function MetricGrid({ items }: { items: Array<[string, string]> }) {
   );
 }
 
-function AccountRows({ rows }: { rows: AccountRow[] }) {
+function AccountRows({
+  rows,
+  onEdit,
+  onAction,
+}: {
+  rows: AccountRow[];
+  onEdit?: (row: AccountRow) => void;
+  onAction?: (
+    accountId: string,
+    action: "enable" | "disable" | "freeze" | "unfreeze" | "archive" | "default",
+  ) => Promise<void>;
+}) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {rows.map((row) => (
@@ -626,33 +936,114 @@ function AccountRows({ rows }: { rows: AccountRow[] }) {
               ["Status", row.status ?? "active"],
             ]}
           />
+          {onEdit || onAction ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {onEdit ? <IconAction label="Edit" icon={Eye} onClick={() => onEdit(row)} /> : null}
+              {onAction ? (
+                <>
+                  <IconAction
+                    label={row.enabled ? "Disable" : "Enable"}
+                    icon={row.enabled ? Pause : Play}
+                    onClick={() => void onAction(row.id, row.enabled ? "disable" : "enable")}
+                  />
+                  <IconAction
+                    label={row.frozen ? "Unfreeze" : "Freeze"}
+                    icon={Snowflake}
+                    onClick={() => void onAction(row.id, row.frozen ? "unfreeze" : "freeze")}
+                  />
+                  <IconAction
+                    label="Default"
+                    icon={Plus}
+                    onClick={() => void onAction(row.id, "default")}
+                  />
+                  <IconAction
+                    label="Archive"
+                    icon={Trash2}
+                    onClick={() => void onAction(row.id, "archive")}
+                  />
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
   );
 }
 
-function ListingRows({ rows }: { rows: ListingRow[] }) {
+function ListingRows({
+  rows,
+  accounts = [],
+  onEdit,
+  onAction,
+}: {
+  rows: ListingRow[];
+  accounts?: AccountRow[];
+  onEdit?: (row: ListingRow) => void;
+  onAction?: (listingId: string, action: "pause" | "resume" | "close") => Promise<void>;
+}) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      {rows.map((row) => (
-        <div key={row.id} className="rounded-lg border border-white/10 bg-black/30 p-4">
-          <p className="font-semibold">{shortenHash(row.id)}</p>
-          <MetricGrid
-            items={[
-              ["Total", `${formatUsdt(row.total_usdt)} USDT`],
-              ["Available", `${formatUsdt(row.available_usdt)} USDT`],
-              ["Reserved", `${formatUsdt(row.reserved_usdt)} USDT`],
-              ["Rate", inr(row.rate_inr)],
-              ["Min", inr(row.min_order_inr)],
-              ["Max", inr(row.max_order_inr)],
-              ["Rails", (row.payment_rails ?? []).join(", ").toUpperCase()],
-              ["Status", row.status ?? "active"],
-            ]}
-          />
-        </div>
-      ))}
+      {rows.map((row) => {
+        const account = accounts.find((item) => item.id === row.payment_account_id);
+        return (
+          <div key={row.id} className="rounded-lg border border-white/10 bg-black/30 p-4">
+            <p className="font-semibold">{shortenHash(row.id)}</p>
+            <MetricGrid
+              items={[
+                ["Total", `${formatUsdt(row.total_usdt)} USDT`],
+                ["Available", `${formatUsdt(row.available_usdt)} USDT`],
+                ["Reserved", `${formatUsdt(row.reserved_usdt)} USDT`],
+                ["Rate", inr(row.rate_inr)],
+                ["Min", inr(row.min_order_inr)],
+                ["Max", inr(row.max_order_inr)],
+                ["Account", account?.label || account?.account_ref || "-"],
+                ["Rails", (row.payment_rails ?? []).join(", ").toUpperCase()],
+                ["Status", row.status ?? "active"],
+              ]}
+            />
+            {onEdit || onAction ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {onEdit ? <IconAction label="Edit" icon={Eye} onClick={() => onEdit(row)} /> : null}
+                {onAction ? (
+                  <>
+                    <IconAction
+                      label={row.status === "active" ? "Pause" : "Resume"}
+                      icon={row.status === "active" ? Pause : Play}
+                      onClick={() =>
+                        void onAction(row.id, row.status === "active" ? "pause" : "resume")
+                      }
+                    />
+                    <IconAction
+                      label="Close"
+                      icon={Trash2}
+                      onClick={() => void onAction(row.id, "close")}
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+function IconAction({
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  onClick: () => void;
+}) {
+  return (
+    <Button type="button" size="sm" variant="secondary" onClick={onClick} title={label}>
+      <Icon className="mr-1.5 h-3.5 w-3.5" />
+      {label}
+    </Button>
   );
 }
 

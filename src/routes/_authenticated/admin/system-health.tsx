@@ -29,6 +29,10 @@ interface ErrorRow {
   related_order_id?: string | null;
   related_user_id?: string | null;
   related_txid?: string | null;
+  stage?: string | null;
+  address?: string | null;
+  retryable?: boolean | null;
+  metadata?: Record<string, unknown> | null;
   resolved_at?: string | null;
   created_at: string;
 }
@@ -38,6 +42,7 @@ function SystemHealthPage() {
   const [errors, setErrors] = useState<ErrorRow[]>([]);
   const [service, setService] = useState("all");
   const [severity, setSeverity] = useState("all");
+  const [resolved, setResolved] = useState("all");
 
   const load = useCallback(async () => {
     const [heartbeatRes, errorRes] = await Promise.all([
@@ -64,7 +69,8 @@ function SystemHealthPage() {
   const filtered = errors.filter(
     (row) =>
       (service === "all" || row.service === service) &&
-      (severity === "all" || row.severity === severity),
+      (severity === "all" || row.severity === severity) &&
+      (resolved === "all" || (resolved === "open" ? !row.resolved_at : Boolean(row.resolved_at))),
   );
   const services = [
     "WEB",
@@ -153,6 +159,15 @@ function SystemHealthPage() {
             <option value="error">Error</option>
             <option value="critical">Critical</option>
           </select>
+          <select
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+            value={resolved}
+            onChange={(event) => setResolved(event.target.value)}
+          >
+            <option value="all">All states</option>
+            <option value="open">Open</option>
+            <option value="resolved">Resolved</option>
+          </select>
         </div>
         <table className="w-full text-sm">
           <thead className="bg-secondary/50 text-xs uppercase text-muted-foreground">
@@ -161,8 +176,10 @@ function SystemHealthPage() {
               <th className="px-4 py-2 text-left">Service</th>
               <th className="px-4 py-2 text-left">Severity</th>
               <th className="px-4 py-2 text-left">Code</th>
+              <th className="px-4 py-2 text-left">Stage</th>
               <th className="px-4 py-2 text-left">Safe Message</th>
               <th className="px-4 py-2 text-left">Reference</th>
+              <th className="px-4 py-2 text-left">Retry</th>
               <th className="px-4 py-2 text-left">Resolved</th>
             </tr>
           </thead>
@@ -173,10 +190,16 @@ function SystemHealthPage() {
                 <td className="px-4 py-2">{row.service}</td>
                 <td className="px-4 py-2">{row.severity}</td>
                 <td className="mono px-4 py-2 text-xs">{row.error_code ?? "-"}</td>
+                <td className="px-4 py-2">{row.stage ?? "-"}</td>
                 <td className="px-4 py-2">{row.safe_message}</td>
                 <td className="mono px-4 py-2 text-xs">
-                  {row.related_txid ?? row.related_order_id ?? row.related_user_id ?? "-"}
+                  {row.related_txid ??
+                    row.related_order_id ??
+                    row.related_user_id ??
+                    row.address ??
+                    "-"}
                 </td>
+                <td className="px-4 py-2">{row.retryable ? "YES" : "NO"}</td>
                 <td className="px-4 py-2">
                   {row.resolved_at ? (
                     formatTime(row.resolved_at)

@@ -1,6 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import {
+  canResumeListing,
+  ensureReservedLiquidityPreserved,
+  nextAccountStatus,
+  validatePaymentIdentity,
+  validateVendorAccountLimits,
+} from "@/lib/vendor-policy";
 
 const vendorRegisterInput = z.object({
   businessName: z.string().trim().min(2).max(120),
@@ -47,6 +54,16 @@ const vendorOrderActionInput = z.object({
 
 const vendorDisputeInput = vendorOrderActionInput.extend({
   reason: z.string().trim().min(3).max(500),
+});
+
+const vendorAccountActionInput = z.object({
+  accountId: z.string().uuid(),
+  action: z.enum(["enable", "disable", "freeze", "unfreeze", "archive", "default"]),
+});
+
+const vendorListingActionInput = z.object({
+  listingId: z.string().uuid(),
+  action: z.enum(["pause", "resume", "close"]),
 });
 
 const adminVendorActionInput = z.object({
@@ -164,6 +181,12 @@ export const saveVendorAccount = createServerFn({ method: "POST" })
     const { requireApprovedVendor } = await import("@/lib/vendor.server");
     const vendor = await requireApprovedVendor(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    validateVendorAccountLimits(data);
+    validatePaymentIdentity({
+      rail: data.rail,
+      accountRef: data.accountRef,
+      ifsc: data.ifsc,
+    });
     const row = {
       vendor_id: vendor.id,
       rail: data.rail,
@@ -180,7 +203,8 @@ export const saveVendorAccount = createServerFn({ method: "POST" })
       is_default: data.isDefault,
       enabled: data.enabled,
       frozen: data.frozen,
-      status: data.frozen ? "frozen" : data.enabled ? "active" : "disabled",
+      status: nextAccountStatus({ enabled: data.enabled, frozen: data.frozen }),
+      updated_at: new Date().toISOString(),
     };
     const query = data.id
       ? supabaseAdmin
@@ -190,6 +214,69 @@ export const saveVendorAccount = createServerFn({ method: "POST" })
           .eq("vendor_id", vendor.id as never)
       : supabaseAdmin.from("vendor_payment_accounts" as never).insert(row as never);
     const { data: saved, error } = await query.select("*").single();
+    if (error) throw new Error(error.message);
+    return saved;
+  });
+
+export const updateVendorAccountState = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => vendorAccountActionInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { requireApprovedVendor } = await import("@/lib/vendor.server");
+    const vendor = await requireApprovedVendor(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const current = await supabaseAdmin
+      .from("vendor_payment_accounts" as never)
+      .select("id, enabled, frozen, status, is_default, archived_at")
+      .eq("id", data.accountId as never)
+      .eq("vendor_id", vendor.id as never)
+      .single();
+    if (current.error) throw new Error(current.error.message);
+    const row = current.data as unknown as {
+      enabled: boolean;
+      frozen: boolean;
+      archived_at?: string | null;
+    };
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (data.action === "enable") {
+      patch["enabled"] = true;
+      patch["frozen"] = false;
+      patch["status"] = "active";
+      patch["archived_at"] = null;
+    } else if (data.action === "disable") {
+      patch["enabled"] = false;
+      patch["status"] = "disabled";
+    } else if (data.action === "freeze") {
+      patch["frozen"] = true;
+      patch["status"] = "frozen";
+    } else if (data.action === "unfreeze") {
+      patch["frozen"] = false;
+      patch["enabled"] = true;
+      patch["status"] = "active";
+    } else if (data.action === "archive") {
+      patch["enabled"] = false;
+      patch["frozen"] = false;
+      patch["status"] = "disabled";
+      patch["archived_at"] = new Date().toISOString();
+      patch["is_default"] = false;
+    } else if (data.action === "default") {
+      await supabaseAdmin
+        .from("vendor_payment_accounts" as never)
+        .update({ is_default: false } as never)
+        .eq("vendor_id", vendor.id as never);
+      patch["is_default"] = true;
+      patch["enabled"] = true;
+      patch["frozen"] = false;
+      patch["status"] = "active";
+      patch["archived_at"] = null;
+    }
+    const { data: saved, error } = await supabaseAdmin
+      .from("vendor_payment_accounts" as never)
+      .update(patch as never)
+      .eq("id", data.accountId as never)
+      .eq("vendor_id", vendor.id as never)
+      .select("*")
+      .single();
     if (error) throw new Error(error.message);
     return saved;
   });
@@ -240,9 +327,7 @@ export const saveVendorListing = createServerFn({ method: "POST" })
     const reserved = Number(
       (existing?.data as unknown as { reserved_usdt?: number | string } | null)?.reserved_usdt ?? 0,
     );
-    if (data.amountUsdt < reserved) {
-      throw new Error("Active reservations must remain frozen");
-    }
+    ensureReservedLiquidityPreserved({ requestedTotal: data.amountUsdt, reserved });
     const row = {
       vendor_id: vendor.id,
       payment_account_id: data.paymentAccountId,
@@ -255,6 +340,7 @@ export const saveVendorListing = createServerFn({ method: "POST" })
       payment_rails: data.paymentRails,
       terms: data.terms || null,
       status: data.status,
+      updated_at: new Date().toISOString(),
     };
     const query = data.id
       ? supabaseAdmin
@@ -265,6 +351,71 @@ export const saveVendorListing = createServerFn({ method: "POST" })
       : supabaseAdmin.from("vendor_listings" as never).insert(row as never);
     const { data: saved, error } = await query.select("*").single();
     if (error) throw new Error(error.message);
+    return saved;
+  });
+
+export const updateVendorListingState = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => vendorListingActionInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { requireApprovedVendor } = await import("@/lib/vendor.server");
+    const vendor = await requireApprovedVendor(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: listing, error } = await supabaseAdmin
+      .from("vendor_listings" as never)
+      .select("id, available_usdt, payment_account_id, status")
+      .eq("id", data.listingId as never)
+      .eq("vendor_id", vendor.id as never)
+      .single();
+    if (error) throw new Error(error.message);
+    const row = listing as unknown as {
+      available_usdt?: number | string | null;
+      payment_account_id?: string | null;
+    };
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (data.action === "pause") {
+      patch["status"] = "paused";
+      patch["paused_at"] = new Date().toISOString();
+    } else if (data.action === "close") {
+      patch["status"] = "closed";
+      patch["closed_at"] = new Date().toISOString();
+    } else {
+      if (!row.payment_account_id) throw new Error("Listing payment account is missing");
+      const account = await supabaseAdmin
+        .from("vendor_payment_accounts" as never)
+        .select("status, enabled, frozen, archived_at")
+        .eq("id", row.payment_account_id as never)
+        .eq("vendor_id", vendor.id as never)
+        .single();
+      if (account.error) throw new Error(account.error.message);
+      const acct = account.data as unknown as {
+        status: string;
+        enabled: boolean;
+        frozen: boolean;
+        archived_at?: string | null;
+      };
+      if (
+        !canResumeListing({
+          availableUsdt: Number(row.available_usdt ?? 0),
+          accountStatus: acct.status,
+          accountEnabled: acct.enabled,
+          accountFrozen: acct.frozen,
+          accountArchived: Boolean(acct.archived_at),
+        })
+      ) {
+        throw new Error("Listing cannot resume without active liquidity and an active account");
+      }
+      patch["status"] = "active";
+      patch["paused_at"] = null;
+    }
+    const { data: saved, error: updateError } = await supabaseAdmin
+      .from("vendor_listings" as never)
+      .update(patch as never)
+      .eq("id", data.listingId as never)
+      .eq("vendor_id", vendor.id as never)
+      .select("*")
+      .single();
+    if (updateError) throw new Error(updateError.message);
     return saved;
   });
 
@@ -308,8 +459,9 @@ export const adminVendorAction = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.VENDORS_REVIEW);
     const rpcName =
       data.action === "approve"
         ? "approve_trading_vendor"
@@ -330,8 +482,9 @@ export const adminVendorAction = createServerFn({ method: "POST" })
 export const listAdminVendors = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { requireAdmin } = await import("@/lib/admin.server");
-    await requireAdmin(context.supabase, context.userId);
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.VENDORS_READ);
     const { data, error } = await context.supabase
       .from("trading_vendors" as never)
       .select(
