@@ -22,11 +22,26 @@ import {
 
 export type MiniIcon = ComponentType<SVGProps<SVGSVGElement>>;
 
+export const WTRON_OFFICIAL_LOGO_PATH = "/branding/wtron-logo.svg";
+
 export function WtronMark({ className }: { className?: string }) {
   return (
     <div
-      className={`grid place-items-center rounded-2xl bg-blue-600 text-white shadow-[0_14px_35px_-18px_rgba(37,99,235,0.9)] ${className ?? "h-11 w-11"}`}
+      className={`relative grid place-items-center overflow-hidden rounded-xl bg-emerald-500 text-[#03130e] shadow-[0_12px_30px_-20px_rgba(16,185,129,0.8)] ${className ?? "h-11 w-11"}`}
     >
+      <img
+        src={WTRON_OFFICIAL_LOGO_PATH}
+        alt=""
+        className="absolute inset-0 hidden h-full w-full object-contain p-1.5"
+        onLoad={(event) => {
+          event.currentTarget.classList.remove("hidden");
+          event.currentTarget.nextElementSibling?.classList.add("hidden");
+        }}
+        onError={(event) => {
+          event.currentTarget.classList.add("hidden");
+          event.currentTarget.nextElementSibling?.classList.remove("hidden");
+        }}
+      />
       <span className="text-sm font-black tracking-normal">WT</span>
     </div>
   );
@@ -63,7 +78,7 @@ export function TronIcon({ className }: { className?: string }) {
 export function GasFreeIcon({ className }: { className?: string }) {
   return (
     <div
-      className={`grid place-items-center rounded-full bg-blue-600 text-white shadow-[0_0_0_3px_rgba(59,130,246,0.16)] ${className ?? "h-8 w-8"}`}
+      className={`grid place-items-center rounded-full bg-emerald-500 text-[#03130e] shadow-[0_0_0_3px_rgba(16,185,129,0.16)] ${className ?? "h-8 w-8"}`}
     >
       <Zap className="h-4 w-4" />
     </div>

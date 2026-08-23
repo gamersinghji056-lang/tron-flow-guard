@@ -1483,7 +1483,7 @@ function TelegramMiniApp() {
         <div className="grid min-h-[70vh] place-items-center text-center">
           <div>
             <WtronMark className="mx-auto h-14 w-14" />
-            <Loader2 className="mx-auto mt-5 h-6 w-6 animate-spin text-blue-400" />
+            <Loader2 className="mx-auto mt-5 h-6 w-6 animate-spin text-emerald-300" />
             <p className="mt-4 text-sm text-slate-400">Connecting securely to WTRON</p>
           </div>
         </div>
@@ -1500,7 +1500,7 @@ function TelegramMiniApp() {
           body="Telegram launch data is required for secure account linking."
           action={
             <a
-              className="mt-5 inline-flex rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
+              className="mt-5 inline-flex rounded-xl bg-emerald-500 text-white hover:bg-emerald-400 px-4 py-2 text-sm font-semibold"
               href="https://t.me/wtron_bot"
             >
               Open Bot
@@ -1934,7 +1934,7 @@ function MiniFrame({
         theme === "light" ? "bg-[#F7F9FC] text-slate-950" : "bg-[#05070B] text-white"
       }`}
     >
-      <div className="mx-auto min-h-screen max-w-md px-4 pt-[max(env(safe-area-inset-top),0.75rem)]">
+      <div className="mx-auto min-h-screen max-w-md px-3 pt-[max(env(safe-area-inset-top),0.75rem)] sm:px-4">
         {children}
       </div>
     </div>
@@ -1964,7 +1964,7 @@ function MiniHeader({
 }) {
   const isRoot = ["home", "p2p", "trade", "wallet", "more"].includes(screen);
   return (
-    <header className="sticky top-0 z-30 -mx-4 mb-3 flex h-12 items-center justify-between gap-3 bg-[#05070B]/92 px-4 backdrop-blur">
+    <header className="sticky top-0 z-30 -mx-3 mb-3 flex h-12 items-center justify-between gap-3 border-b border-white/8 bg-[#05070B]/92 px-3 backdrop-blur sm:-mx-4 sm:px-4">
       {isRoot ? (
         <button className="flex min-w-0 items-center gap-2 text-left" onClick={onProfile}>
           <WtronMark className="h-9 w-9 rounded-xl" />
@@ -1980,7 +1980,7 @@ function MiniHeader({
           {showInAppBack ? (
             <button
               aria-label={t("back")}
-              className="grid h-9 w-9 place-items-center rounded-full bg-white/6 text-slate-200"
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/6 text-slate-200"
               onClick={onBack}
             >
               <ChevronLeft className="h-5 w-5" />
@@ -1996,7 +1996,7 @@ function MiniHeader({
         {screen === "profile" || screen === "more" ? (
           <select
             aria-label={t("language")}
-            className="h-9 rounded-full border border-white/10 bg-white/6 px-2 text-xs text-slate-200 outline-none"
+            className="h-9 rounded-xl border border-white/10 bg-white/6 px-2 text-xs text-slate-200 outline-none"
             value={locale}
             onChange={(event) => setLocale(normalizeMiniLocale(event.target.value))}
           >
@@ -2030,10 +2030,10 @@ function AuthScreen(props: {
     <div className="space-y-6 pt-10">
       <WtronMark className="h-14 w-14" />
       <div>
-        <p className="text-xs font-semibold tracking-[0.2em] text-blue-300 uppercase">
+        <p className="text-xs font-semibold tracking-[0.2em] text-emerald-300 uppercase">
           Telegram secure access
         </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-normal">
+        <h1 className="mt-2 text-2xl font-semibold tracking-normal">
           {props.authMode === "login" ? "Login to WTRON" : "Create trader account"}
         </h1>
         <p className="mt-2 text-sm text-slate-400">
@@ -2043,13 +2043,13 @@ function AuthScreen(props: {
       </div>
       <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/6 p-1">
         <button
-          className={`rounded-xl px-3 py-2 text-sm ${props.authMode === "login" ? "bg-blue-600 text-white" : "text-slate-400"}`}
+          className={`rounded-xl px-3 py-2 text-sm ${props.authMode === "login" ? "bg-emerald-500 text-[#03130e] hover:bg-emerald-400" : "text-slate-400"}`}
           onClick={() => props.setAuthMode("login")}
         >
           Login
         </button>
         <button
-          className={`rounded-xl px-3 py-2 text-sm ${props.authMode === "register" ? "bg-blue-600 text-white" : "text-slate-400"}`}
+          className={`rounded-xl px-3 py-2 text-sm ${props.authMode === "register" ? "bg-emerald-500 text-[#03130e] hover:bg-emerald-400" : "text-slate-400"}`}
           onClick={() => props.setAuthMode("register")}
         >
           Register
@@ -2076,7 +2076,10 @@ function AuthScreen(props: {
             type="password"
           />
         ) : null}
-        <Button className="w-full bg-blue-600 hover:bg-blue-500" disabled={props.busy}>
+        <Button
+          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          disabled={props.busy}
+        >
           {props.busy ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
@@ -2123,7 +2126,7 @@ function HomeScreen({
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs text-slate-500">Platform balance</p>
-              <p className="mt-1 text-3xl font-semibold tabular-nums">{money(total)} USDT</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">{money(total)} USDT</p>
             </div>
             <StatusPill label="Live" tone="success" />
           </div>
@@ -2146,7 +2149,7 @@ function HomeScreen({
               <div className="min-w-0">
                 <p className="font-semibold">{wallet.name ?? "Main Wallet"}</p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {networkLabelForMini(wallet.network, t)} ·{" "}
+                  {networkLabelForMini(wallet.network, t)} /{" "}
                   {(wallet.wallet_type ?? "standard").toUpperCase()}
                 </p>
               </div>
@@ -2216,12 +2219,15 @@ function WalletScreen({
   if (!wallets.length) {
     return (
       <Screen title={t("walletSelector")} subtitle={t("selfCustodyWallet")}>
-        <div className="rounded-3xl border border-blue-500/25 bg-blue-600/12 p-6 text-center">
-          <Wallet className="mx-auto h-10 w-10 text-blue-300" />
+        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-center">
+          <Wallet className="mx-auto h-10 w-10 text-emerald-300" />
           <h2 className="mt-4 text-xl font-semibold tracking-normal">{t("createWallet")}</h2>
           <p className="mt-2 text-sm text-slate-400">{t("selfCustodyWallet")}</p>
           <div className="mt-5 grid gap-2">
-            <Button className="bg-blue-600" onClick={() => onNavigate("wallet-create")}>
+            <Button
+              className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+              onClick={() => onNavigate("wallet-create")}
+            >
               {t("createWallet")}
             </Button>
             <Button variant="secondary" onClick={() => onNavigate("wallet-import")}>
@@ -2234,7 +2240,7 @@ function WalletScreen({
   }
   return (
     <Screen title={t("walletSelector")} subtitle={t("selfCustodyWallet")}>
-      <div className="rounded-3xl border border-white/10 bg-white p-5 text-slate-950">
+      <Surface className="p-3">
         <p className="text-xs font-semibold uppercase text-slate-500">{t("portfolioBalance")}</p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <TokenMetric icon={<UsdtIcon />} label="USDT" value={money(total)} sub="TRC20 on TRON" />
@@ -2245,9 +2251,12 @@ function WalletScreen({
             sub="TRON native"
           />
         </div>
-      </div>
+      </Surface>
       <div className="grid grid-cols-2 gap-2">
-        <Button className="bg-blue-600" onClick={() => onNavigate("wallet-create")}>
+        <Button
+          className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          onClick={() => onNavigate("wallet-create")}
+        >
           <Plus className="mr-2 h-4 w-4" />
           {t("createWallet")}
         </Button>
@@ -2343,7 +2352,10 @@ function WalletCreateScreen(props: {
             />
           </div>
         </FormCard>
-        <Button className="w-full bg-blue-600" disabled={props.busy}>
+        <Button
+          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          disabled={props.busy}
+        >
           {props.busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {props.t("createWallet")}
         </Button>
@@ -2377,7 +2389,7 @@ function WalletImportScreen(props: {
           />
         </FormCard>
         <FormCard title={props.t("walletType")}>
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
             <div className="flex items-center gap-3">
               <TronIcon className="h-8 w-8" />
               <div>
@@ -2406,7 +2418,7 @@ function WalletImportScreen(props: {
         </FormCard>
         <FormCard title={props.t("recoveryPhrase")}>
           <textarea
-            className="min-h-28 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white outline-none focus:border-blue-500"
+            className="min-h-28 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-emerald-500"
             value={props.phrase}
             onChange={(event) => props.setPhrase(event.target.value)}
             placeholder={props.t("enterRecoveryPhrase")}
@@ -2420,7 +2432,10 @@ function WalletImportScreen(props: {
             placeholder={props.t("password")}
           />
         </FormCard>
-        <Button className="w-full bg-blue-600" disabled={props.busy}>
+        <Button
+          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          disabled={props.busy}
+        >
           {props.t("importWallet")}
         </Button>
       </form>
@@ -2484,8 +2499,8 @@ function WalletDetailScreen({
             className="flex min-w-0 items-center gap-3 text-left"
             onClick={() => setSelectorOpen(true)}
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-500/14">
-              <Wallet className="h-5 w-5 text-blue-300" />
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500/12">
+              <Wallet className="h-5 w-5 text-emerald-300" />
             </span>
             <span className="min-w-0">
               <span className="flex items-center gap-1 text-lg font-semibold leading-tight">
@@ -2493,7 +2508,7 @@ function WalletDetailScreen({
                 <ChevronDown className="h-4 w-4 text-slate-500" />
               </span>
               <span className="mt-1 block text-xs text-slate-500">
-                {networkLabelForMini(wallet.network, t)} • {typeLabel}
+                {networkLabelForMini(wallet.network, t)} / {typeLabel}
               </span>
             </span>
           </button>
@@ -2518,7 +2533,7 @@ function WalletDetailScreen({
             onClick={() => copyText(address, t("addressCopied"))}
           >
             <span className="truncate">{shortenHash(address, 9)}</span>
-            <Copy className="h-4 w-4 text-blue-300" />
+            <Copy className="h-4 w-4 text-emerald-300" />
           </button>
           <button
             className="flex shrink-0 items-center gap-2 text-sm text-slate-300"
@@ -2540,7 +2555,7 @@ function WalletDetailScreen({
               <SkeletonLine className="h-10 w-44" />
             ) : (
               <>
-                <p className="text-4xl font-semibold tracking-normal tabular-nums">
+                <p className="text-2xl font-semibold tracking-normal tabular-nums">
                   {money(balance)} USDT
                 </p>
                 <p className="text-base text-slate-400 tabular-nums">
@@ -2593,7 +2608,7 @@ function WalletDetailScreen({
           ) : (
             <div className="mt-3 flex items-center justify-between rounded-2xl bg-white/4 px-3 py-2">
               <span className="text-xs text-slate-500">{t("resourceUnavailable")}</span>
-              <button className="text-xs text-blue-300" onClick={() => onRefresh()}>
+              <button className="text-xs text-emerald-300" onClick={() => onRefresh()}>
                 {t("refresh")}
               </button>
             </div>
@@ -2734,7 +2749,11 @@ function WalletHistoryScreen({
       />
       <WalletTransactionRows rows={filtered} t={t} onSelect={onSelectTransaction} />
       {hasMore ? (
-        <Button className="w-full bg-blue-600" disabled={busy} onClick={onLoadMore}>
+        <Button
+          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          disabled={busy}
+          onClick={onLoadMore}
+        >
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {t("loadMore")}
         </Button>
@@ -2769,13 +2788,13 @@ function WalletAssetDetailScreen({
   const Icon = asset === "USDT" ? UsdtIcon : TronIcon;
   return (
     <Screen title={asset} subtitle={asset === "USDT" ? `${t("tetherUsd")} / TRC20` : "TRON"}>
-      <Surface className="p-5 text-center">
+      <Surface className="p-4 text-center">
         <Icon className="mx-auto h-14 w-14" />
         <p className="mt-3 text-xl font-semibold">{asset}</p>
         <p className="text-sm text-slate-500">
-          {asset === "USDT" ? `${t("tetherUsd")} • TRC20` : "TRON"}
+          {asset === "USDT" ? `${t("tetherUsd")} / TRC20` : "TRON"}
         </p>
-        <p className="mt-5 text-4xl font-semibold tabular-nums">
+        <p className="mt-5 text-2xl font-semibold tabular-nums">
           {money(balance, asset)} {asset}
         </p>
         <p className="mt-1 text-xs text-slate-500">{networkLabelForMini(wallet?.network, t)}</p>
@@ -2817,13 +2836,13 @@ function WalletTransactionDetailScreen({
       title={`${direction} ${transaction.currency ?? "USDT"}`}
       subtitle={networkLabelForMini(wallet.network, t)}
     >
-      <Surface className="p-5 text-center">
+      <Surface className="p-4 text-center">
         {String(transaction.currency ?? "").toUpperCase() === "TRX" ? (
           <TronIcon className="mx-auto h-12 w-12" />
         ) : (
           <UsdtIcon className="mx-auto h-12 w-12" />
         )}
-        <p className="mono mt-4 text-3xl font-semibold">
+        <p className="mono mt-4 text-2xl font-semibold">
           {transaction.direction === "in" ? "+" : "-"}
           {money(transaction.amount, transaction.currency ?? "USDT")}{" "}
           {transaction.currency ?? "USDT"}
@@ -2871,7 +2890,7 @@ function WalletTransactionDetailScreen({
         </div>
         {transaction.txid ? (
           <Button
-            className="mt-3 w-full bg-blue-600"
+            className="mt-3 w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
             onClick={() =>
               window.open(
                 network.explorerTx(transaction.txid ?? ""),
@@ -2959,7 +2978,7 @@ function WalletMoreScreen({
       </Section>
       <Section title={t("walletInformation")}>
         <button
-          className="mono w-full rounded-2xl bg-[#0D121C] p-3 text-left text-xs"
+          className="mono w-full rounded-xl border border-white/10 bg-white/5 p-3 text-left text-xs"
           dir={technicalTextDirection()}
           onClick={() => copyText(address, t("addressCopied"))}
         >
@@ -3021,7 +3040,7 @@ function WalletGasFreeScreen({
             : t("gasfreeUnavailableConfirmedMessage");
   return (
     <Screen title={t("gasfreeTransactions")} subtitle={wallet.name ?? t("wallet")}>
-      <Surface className="p-5">
+      <Surface className="p-4">
         <div className="flex items-center gap-3">
           <GasFreeIcon className="h-10 w-10" />
           <div>
@@ -3069,7 +3088,7 @@ function WalletGasFreeScreen({
         </button>
         <button
           type="button"
-          className="mt-2 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          className="mt-2 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
           onClick={onCheck}
           disabled={busy}
         >
@@ -3113,7 +3132,7 @@ function ReceiveScreen({
         ]}
       />
       <Surface className="p-4 text-center">
-        <div className="mx-auto grid h-64 w-64 max-w-full place-items-center rounded-[1.75rem] bg-white p-3">
+        <div className="mx-auto grid h-56 w-56 max-w-full place-items-center rounded-xl bg-white p-2.5">
           {qr ? (
             <img src={qr} alt="Receive QR" className="h-full w-full" />
           ) : (
@@ -3128,7 +3147,10 @@ function ReceiveScreen({
         </p>
       </Surface>
       <div className="grid grid-cols-2 gap-2">
-        <Button className="bg-blue-600" onClick={() => copyText(address, t("addressCopied"))}>
+        <Button
+          className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          onClick={() => copyText(address, t("addressCopied"))}
+        >
           <Copy className="mr-2 h-4 w-4" />
           {t("copyAddress")}
         </Button>
@@ -3177,7 +3199,10 @@ function BackupScreen({
             onChange={(event) => setPassword(event.target.value)}
             placeholder={t("transactionPassword")}
           />
-          <Button className="w-full bg-blue-600" disabled={busy}>
+          <Button
+            className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            disabled={busy}
+          >
             {t("recoveryPhrase")}
           </Button>
         </form>
@@ -3187,7 +3212,7 @@ function BackupScreen({
             {words.map((word, index) => (
               <div
                 key={`${word}-${index}`}
-                className="rounded-xl bg-[#0D121C] p-2 text-sm"
+                className="rounded-xl border border-white/10 bg-white/5 p-2 text-sm"
                 dir={technicalTextDirection()}
               >
                 <span className="mr-2 text-slate-500">{index + 1}</span>
@@ -3196,7 +3221,7 @@ function BackupScreen({
             ))}
           </div>
           <Button
-            className="w-full bg-blue-600"
+            className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
             onClick={() => copyText(revealedPhrase, t("copied"))}
           >
             {t("copyAddress")}
@@ -3241,19 +3266,25 @@ function PlatformDepositScreen({
       title="Deposit to WTRON"
       subtitle="Funds platform/P2P balance through the existing company-controlled listener"
     >
-      <form className="space-y-3 rounded-[1.5rem] bg-[#0D121C] p-4" onSubmit={onSubmit}>
+      <form
+        className="space-y-3 rounded-2xl border border-white/10 bg-white/6 p-3"
+        onSubmit={onSubmit}
+      >
         <Input
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
           placeholder="USDT amount"
         />
-        <Button className="w-full bg-blue-600" disabled={busy}>
+        <Button
+          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          disabled={busy}
+        >
           Create Deposit
         </Button>
       </form>
       {companyAddress ? (
-        <div className="rounded-[1.5rem] bg-white p-4 text-slate-950">
-          <div className="mx-auto h-60 w-60 max-w-full">
+        <div className="rounded-2xl border border-white/10 bg-white p-3 text-slate-950">
+          <div className="mx-auto h-52 w-52 max-w-full">
             {qr ? <img src={qr} alt="Platform deposit QR" /> : null}
           </div>
           <p className="mt-4 text-xs font-semibold uppercase text-slate-500">
@@ -3262,7 +3293,7 @@ function PlatformDepositScreen({
           <p className="mono mt-1 break-all text-sm">{companyAddress}</p>
           <p className="mt-2 text-sm">Network: TRON (TRC20)</p>
           <Button
-            className="mt-3 w-full bg-blue-600 text-white"
+            className="mt-3 w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
             onClick={() => copyText(companyAddress)}
           >
             Copy Company Address
@@ -3344,7 +3375,7 @@ function SendScreen({
               />
               <button
                 type="button"
-                className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-blue-300"
+                className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
                 onClick={() => setAmount(String(available || ""))}
               >
                 {t("max")}
@@ -3425,7 +3456,10 @@ function P2pScreen(props: {
         </div>
       ) : null}
       {props.tab === "sell" ? (
-        <form className="space-y-3 rounded-[1.5rem] bg-white/6 p-4" onSubmit={props.onCreateAd}>
+        <form
+          className="space-y-3 rounded-2xl border border-white/10 bg-white/6 p-3"
+          onSubmit={props.onCreateAd}
+        >
           {(["amount", "rate", "min", "max"] as const).map((field) => {
             const label =
               field === "amount"
@@ -3462,13 +3496,13 @@ function P2pScreen(props: {
             />
           )}
           <textarea
-            className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white outline-none focus:border-blue-500"
+            className="min-h-20 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-emerald-500"
             value={props.sellAd.terms}
             onChange={(event) => props.setSellAd({ ...props.sellAd, terms: event.target.value })}
             placeholder="Terms"
           />
           <Button
-            className="w-full bg-blue-600"
+            className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
             disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
           >
             Create Sell Ad
@@ -3558,7 +3592,7 @@ function TradeScreen(props: {
             </Button>
           ) : null}
           <Button
-            className="w-full bg-blue-600"
+            className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
             disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
           >
             Create Sell Order
@@ -3749,7 +3783,7 @@ function OrdersScreen({
             <button
               key={order.id}
               type="button"
-              className="w-full rounded-2xl border border-white/10 bg-white/6 p-4 text-left"
+              className="w-full rounded-xl border border-white/10 bg-white/6 p-3 text-left"
               onClick={() => onDirectSell(order)}
             >
               <div className="flex items-center justify-between gap-3">
@@ -3840,15 +3874,15 @@ function ProfileScreen({
 }) {
   return (
     <Screen title="Profile" subtitle="WTRON trader profile">
-      <Surface className="p-5 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-blue-500/14">
-          <UserRound className="h-8 w-8 text-blue-300" />
+      <Surface className="p-4 text-center">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-500/12">
+          <UserRound className="h-8 w-8 text-emerald-300" />
         </div>
         <h2 className="mt-3 text-xl font-semibold tracking-normal">
           {profile?.full_name || "WTRON Trader"}
         </h2>
         <p className="text-sm text-slate-400">{profile?.email || "Telegram linked account"}</p>
-        <p className="mt-2 text-xs text-blue-200">Telegram linked</p>
+        <p className="mt-2 text-xs text-emerald-200">Telegram linked</p>
         <p className="mono mt-2 text-[11px] text-slate-500" dir={technicalTextDirection()}>
           {profile?.id ? shortenHash(profile.id, 8) : "Account pending"}
         </p>
@@ -3897,7 +3931,7 @@ function NotificationsScreen({
       </Button>
       {rows.length ? (
         rows.map((row) => (
-          <div key={row.id} className="rounded-2xl border border-white/10 bg-white/6 p-4">
+          <div key={row.id} className="rounded-xl border border-white/10 bg-white/6 p-3">
             <div className="flex justify-between gap-3">
               <div>
                 <p className="font-semibold">{row.title}</p>
@@ -3988,7 +4022,10 @@ function SecurityScreen({
                   Cancel
                 </Button>
               ) : null}
-              <Button className="bg-blue-600" disabled={busy}>
+              <Button
+                className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+                disabled={busy}
+              >
                 {enabled ? "Update Password" : "Set Password"}
               </Button>
             </div>
@@ -4021,12 +4058,12 @@ function SecurityScreen({
 function ReferralScreen({ summary }: { summary: ReferralSummary | null }) {
   return (
     <Screen title="Refer & Earn" subtitle="Referral rewards from existing backend">
-      <div className="rounded-3xl border border-white/10 bg-white/6 p-5">
+      <div className="rounded-2xl border border-white/10 bg-white/6 p-3">
         <p className="text-xs uppercase text-slate-400">Referral Code</p>
-        <p className="mono mt-2 text-3xl font-semibold">{summary?.referralCode ?? "Loading"}</p>
+        <p className="mono mt-2 text-2xl font-semibold">{summary?.referralCode ?? "Loading"}</p>
         <p className="mono mt-2 break-all text-sm text-slate-400">{summary?.referralLink ?? ""}</p>
         <Button
-          className="mt-4 bg-blue-600"
+          className="mt-4 bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
           onClick={() =>
             summary?.referralLink && copyText(summary.referralLink, "Referral link copied")
           }
@@ -4073,7 +4110,7 @@ function BankAccountsScreen(props: {
   return (
     <Screen title="Payment Methods" subtitle="UPI and bank accounts for INR settlement">
       <form
-        className="space-y-2 rounded-3xl border border-white/10 bg-white/6 p-4"
+        className="space-y-2 rounded-2xl border border-white/10 bg-white/6 p-3"
         onSubmit={props.onSaveUpi}
       >
         <h2 className="font-semibold">Add UPI</h2>
@@ -4092,12 +4129,15 @@ function BankAccountsScreen(props: {
           onChange={(event) => props.setUpi({ ...props.upi, label: event.target.value })}
           placeholder="Label"
         />
-        <Button className="w-full bg-blue-600" disabled={props.busy}>
+        <Button
+          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          disabled={props.busy}
+        >
           Add UPI
         </Button>
       </form>
       <form
-        className="space-y-2 rounded-3xl border border-white/10 bg-white/6 p-4"
+        className="space-y-2 rounded-2xl border border-white/10 bg-white/6 p-3"
         onSubmit={props.onSaveBank}
       >
         <h2 className="font-semibold">Add Bank Account</h2>
@@ -4126,14 +4166,17 @@ function BankAccountsScreen(props: {
           onChange={(event) => props.setBank({ ...props.bank, label: event.target.value })}
           placeholder="Label"
         />
-        <Button className="w-full bg-blue-600" disabled={props.busy}>
+        <Button
+          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          disabled={props.busy}
+        >
           Add Bank
         </Button>
       </form>
       <Section title="Saved Methods">
         {props.methods.length ? (
           props.methods.map((method) => (
-            <div key={method.id} className="rounded-2xl border border-white/10 bg-white/6 p-4">
+            <div key={method.id} className="rounded-xl border border-white/10 bg-white/6 p-3">
               <PaymentMethodSummary method={method} />
               <p className="mt-2 text-xs text-slate-500">
                 {method.kind.toUpperCase()} {method.is_default ? "- Default" : ""}
@@ -4206,9 +4249,9 @@ function IconButton({
 }
 function AssetCard({ total, profile }: { total: number; profile: ProfileSummary | null }) {
   return (
-    <div className="rounded-3xl border border-blue-400/20 bg-blue-600 p-5 shadow-[0_18px_45px_-25px_rgba(37,99,235,0.9)]">
-      <p className="text-xs font-semibold uppercase text-blue-100">Total Assets</p>
-      <p className="mono mt-2 text-4xl font-semibold">{money(total)}</p>
+    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500 text-[#03130e] hover:bg-emerald-400 p-4 shadow-[0_16px_38px_-28px_rgba(16,185,129,0.75)]">
+      <p className="text-xs font-semibold uppercase text-emerald-100">Total Assets</p>
+      <p className="mono mt-2 text-2xl font-semibold">{money(total)}</p>
       <div className="mt-5 grid grid-cols-3 gap-2">
         <MiniMetric label="Available" value={money(profile?.balance)} />
         <MiniMetric label="Locked" value={money(profile?.locked_balance)} />
@@ -4219,14 +4262,16 @@ function AssetCard({ total, profile }: { total: number; profile: ProfileSummary 
 }
 function MiniMetric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-white/5 p-3">
+    <div className="rounded-xl border border-white/8 bg-white/5 p-2.5">
       <p className="text-[11px] text-slate-500">{label}</p>
       <p className="mt-1 text-sm font-semibold tabular-nums">{value}</p>
     </div>
   );
 }
 function Surface({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <div className={`rounded-[1.5rem] bg-[#0D121C] ${className}`}>{children}</div>;
+  return (
+    <div className={`rounded-2xl border border-white/10 bg-white/6 ${className}`}>{children}</div>
+  );
 }
 
 function SectionHeader({
@@ -4242,7 +4287,7 @@ function SectionHeader({
     <div className="flex w-full items-center justify-between gap-3">
       <h2 className="text-sm font-semibold">{title}</h2>
       {action ? (
-        <button className="text-xs font-medium text-blue-300" onClick={() => void onAction?.()}>
+        <button className="text-xs font-medium text-emerald-300" onClick={() => void onAction?.()}>
           {action}
         </button>
       ) : null}
@@ -4261,7 +4306,7 @@ function Action({
 }) {
   return (
     <button className="text-center" onClick={() => void onClick()}>
-      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white/8 text-blue-300 shadow-[0_10px_28px_-22px_rgba(59,130,246,0.9)]">
+      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white/8 text-emerald-300 ">
         <Icon className="h-5 w-5" />
       </span>
       <span className="mt-2 block text-[11px] text-slate-200">{label}</span>
@@ -4279,8 +4324,8 @@ function QuickAction({
 }) {
   return (
     <button className="text-center" onClick={() => void onClick()}>
-      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#111A29] text-blue-300">
-        <Icon className="h-5 w-5" />
+      <span className="mx-auto grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/6 text-emerald-300">
+        <Icon className="h-4 w-4" />
       </span>
       <span className="mt-2 block text-[11px] font-medium text-slate-300">{label}</span>
     </button>
@@ -4306,12 +4351,14 @@ function Section({
 }
 function EmptyLine({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-2xl bg-white/4 p-4 text-center text-sm text-slate-400">{children}</p>
+    <p className="rounded-xl border border-white/10 bg-white/4 p-3 text-center text-sm text-slate-400">
+      {children}
+    </p>
   );
 }
 function CompactEmpty({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-2xl bg-white/4 p-4 text-center">
+    <div className="rounded-xl border border-white/10 bg-white/4 p-3 text-center">
       <p className="text-sm font-semibold text-slate-200">{title}</p>
       <p className="mt-1 text-xs text-slate-500">{body}</p>
     </div>
@@ -4331,7 +4378,7 @@ function EmptyState({
   return (
     <div className="grid min-h-[70vh] place-items-center text-center">
       <div>
-        <Icon className="mx-auto h-10 w-10 text-blue-300" />
+        <Icon className="mx-auto h-10 w-10 text-emerald-300" />
         <h1 className="mt-4 text-2xl font-semibold tracking-normal">{title}</h1>
         <p className="mt-2 text-sm text-slate-400">{body}</p>
         {action}
@@ -4349,11 +4396,11 @@ function Tabs({
   items: Array<[string, string]>;
 }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-2xl bg-white/6 p-1">
+    <div className="flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/6 p-1">
       {items.map(([key, label]) => (
         <button
           key={key}
-          className={`shrink-0 rounded-xl px-3 py-2 text-sm ${value === key ? "bg-blue-600 text-white" : "text-slate-400"}`}
+          className={`shrink-0 rounded-lg px-3 py-2 text-sm ${value === key ? "bg-emerald-500 text-[#03130e] hover:bg-emerald-400" : "text-slate-400"}`}
           onClick={() => setValue(key)}
         >
           {label}
@@ -4372,12 +4419,12 @@ function SegmentedControl({
   items: Array<[string, string]>;
 }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-full bg-white/6 p-1">
+    <div className="flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/6 p-1">
       {items.map(([key, label]) => (
         <button
           key={key}
-          className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold ${
-            value === key ? "bg-blue-600 text-white" : "text-slate-400"
+          className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${
+            value === key ? "bg-emerald-500 text-[#03130e] hover:bg-emerald-400" : "text-slate-400"
           }`}
           onClick={() => setValue(key)}
         >
@@ -4399,7 +4446,7 @@ function PaymentMethodSummary({ method }: { method: PaymentMethodRow | null | un
   if (!method) return <EmptyLine>No payout method selected.</EmptyLine>;
   const display = paymentMethodDisplay(method);
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/6 p-3">
+    <div className="rounded-xl border border-white/10 bg-white/6 p-3">
       <p className="text-sm font-semibold">{display.title}</p>
       <div className="mt-2 space-y-1 text-xs text-slate-400">
         {display.lines.map((line) => (
@@ -4431,16 +4478,16 @@ function PaymentMethodPicker({
           <button
             key={method.id}
             type="button"
-            className={`w-full rounded-2xl border p-3 text-left ${
+            className={`w-full rounded-xl border p-3 text-left ${
               selectedId === method.id
-                ? "border-blue-500 bg-blue-600/15"
+                ? "border-emerald-500 bg-emerald-500/12"
                 : "border-white/10 bg-white/6"
             }`}
             onClick={() => setSelectedId(method.id)}
           >
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold">{display.title}</p>
-              {method.is_default ? <span className="text-xs text-blue-300">Default</span> : null}
+              {method.is_default ? <span className="text-xs text-emerald-300">Default</span> : null}
             </div>
             <div className="mt-2 space-y-1 text-xs text-slate-400">
               {display.lines.map((line) => (
@@ -4460,7 +4507,7 @@ function PaymentMethodPicker({
 }
 function FormCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Surface className="space-y-3 p-4">
+    <Surface className="space-y-3 p-3">
       <h2 className="text-sm font-semibold">{title}</h2>
       {children}
     </Surface>
@@ -4515,8 +4562,8 @@ function TypeOption({
         disabled
           ? "border-white/10 bg-black/10 opacity-60"
           : active
-            ? "border-blue-500 bg-blue-600/18"
-            : "border-white/10 bg-black/20"
+            ? "border-emerald-500 bg-emerald-500/12"
+            : "border-white/10 bg-white/5"
       }`}
       onClick={onClick}
     >
@@ -4580,7 +4627,7 @@ function ResourceBar({ label, used, limit }: { label: string; used: number; limi
         </span>
       </div>
       <div className="mt-2 h-1.5 rounded-full bg-white/8">
-        <div className="h-full rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -4634,7 +4681,7 @@ function WalletSelectorSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/65 p-3" onClick={onClose}>
       <div
-        className="mx-auto max-h-[82vh] w-full max-w-md overflow-y-auto rounded-[1.75rem] bg-[#0D121C] p-4 shadow-2xl"
+        className="mx-auto max-h-[82vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-[#0D121C] p-3 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
@@ -4648,8 +4695,8 @@ function WalletSelectorSheet({
           {wallets.map((wallet) => (
             <button
               key={wallet.id}
-              className={`w-full rounded-[1.25rem] p-3 text-left ${
-                wallet.id === selectedWalletId ? "bg-blue-600/16" : "bg-white/5"
+              className={`w-full rounded-xl p-3 text-left ${
+                wallet.id === selectedWalletId ? "bg-emerald-500/12" : "bg-white/5"
               }`}
               onClick={() => onSelect(wallet)}
             >
@@ -4663,7 +4710,7 @@ function WalletSelectorSheet({
                     {shortenHash(wallet.address, 8)}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {networkLabelForMini(wallet.network, t)} ·{" "}
+                    {networkLabelForMini(wallet.network, t)} /{" "}
                     {(wallet.wallet_type ?? "standard").toUpperCase()}
                   </p>
                 </div>
@@ -4683,7 +4730,11 @@ function WalletSelectorSheet({
           ))}
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <Button size="sm" className="bg-blue-600" onClick={onCreate}>
+          <Button
+            size="sm"
+            className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            onClick={onCreate}
+          >
             {t("createWallet")}
           </Button>
           <Button size="sm" variant="secondary" onClick={onImport}>
@@ -4713,7 +4764,7 @@ function WalletCard({
 }) {
   return (
     <button
-      className={`min-w-[82%] snap-center rounded-3xl border p-5 text-left ${active ? "border-blue-500 bg-blue-600/20" : "border-white/10 bg-white/6"}`}
+      className={`min-w-[74%] snap-center rounded-2xl border p-3 text-left ${active ? "border-emerald-500 bg-emerald-500/12" : "border-white/10 bg-white/6"}`}
       onClick={() => {
         onSelect();
         onOpen();
@@ -4723,17 +4774,17 @@ function WalletCard({
         <NetworkBadge wallet={wallet} t={t} />
         {wallet.wallet_type === "gasfree" ? <GasFreeIcon /> : <TronIcon />}
       </div>
-      <p className="mt-5 text-lg font-semibold">{wallet.name ?? "Wallet"}</p>
+      <p className="mt-4 text-base font-semibold">{wallet.name ?? "Wallet"}</p>
       <p className="mono mt-1 break-all text-xs text-slate-400">
         {shortenHash(wallet.address, 10)}
       </p>
-      <div className="mt-4 flex items-end justify-between">
+      <div className="mt-3 flex items-end justify-between">
         <div>
           <p className="text-xs text-slate-400">USDT</p>
           <p className="mono text-xl font-semibold">{money(walletDisplayBalance(wallet))}</p>
         </div>
         {wallet.is_default ? (
-          <span className="rounded-full bg-blue-600 px-2 py-1 text-[10px] font-semibold">
+          <span className="rounded-full bg-emerald-500 px-2 py-1 text-[10px] font-semibold text-[#03130e]">
             {t("active")}
           </span>
         ) : null}
@@ -4747,7 +4798,7 @@ function WalletCard({
 function NetworkBadge({ wallet, t }: { wallet: WalletRow; t?: MiniT }) {
   const network = t ? networkLabelForMini(wallet.network, t) : networkConfig(wallet.network).label;
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs">
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs">
       <TronIcon className="h-4 w-4" />
       {network} {(wallet.wallet_type ?? "standard").toUpperCase()}
     </span>
@@ -4767,7 +4818,7 @@ function WalletSummary({
   onBackup: () => void;
 }) {
   return wallet ? (
-    <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
+    <div className="rounded-2xl border border-white/10 bg-white/6 p-3">
       <p className="font-semibold">{wallet.name}</p>
       <p className="mono mt-1 break-all text-xs text-slate-400">{wallet.address}</p>
       <MetricGrid
@@ -4841,11 +4892,11 @@ function ListRow({
 }) {
   return (
     <button
-      className="flex w-full items-center gap-3 rounded-[1.25rem] bg-[#0D121C] p-3 text-left"
+      className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left"
       onClick={() => void onClick()}
     >
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/6">
-        <Icon className="h-5 w-5 text-blue-300" />
+        <Icon className="h-5 w-5 text-emerald-300" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold">{title}</span>
@@ -4868,11 +4919,11 @@ function SettingRow({
 }) {
   return (
     <button
-      className="flex w-full items-center gap-3 rounded-[1.25rem] bg-[#0D121C] p-3 text-left"
+      className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-left"
       onClick={() => void onClick()}
     >
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/6">
-        <Icon className="h-5 w-5 text-blue-300" />
+        <Icon className="h-5 w-5 text-emerald-300" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold">{title}</span>
@@ -4914,7 +4965,10 @@ function AdCard({ ad, onTake }: { ad: AdRow; onTake: () => void }) {
           ["Side", ad.side.toUpperCase()],
         ]}
       />
-      <Button className="mt-3 w-full bg-blue-600" onClick={onTake}>
+      <Button
+        className="mt-3 w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+        onClick={onTake}
+      >
         {ad.side === "sell" ? "Buy USDT" : "Sell USDT"}
       </Button>
     </Surface>
@@ -4943,7 +4997,10 @@ function VendorCard({ listing, onBuy }: { listing: VendorListingRow; onBuy: () =
           ["Orders", String(listing.trading_vendors?.completed_orders ?? 0)],
         ]}
       />
-      <Button className="mt-3 w-full bg-blue-600" onClick={onBuy}>
+      <Button
+        className="mt-3 w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+        onClick={onBuy}
+      >
         Buy from Vendor
       </Button>
     </Surface>
@@ -5005,10 +5062,10 @@ function DirectSellDetailScreen(props: {
         <EmptyLine>No direct sell order selected.</EmptyLine>
       ) : (
         <>
-          <div className="space-y-4 rounded-3xl border border-red-500/25 bg-red-500/10 p-4">
+          <div className="space-y-3 rounded-2xl border border-red-500/25 bg-red-500/10 p-3">
             <div>
               <p className="text-xs uppercase tracking-wide text-red-100">Send exactly</p>
-              <p className="mono mt-1 text-3xl font-bold text-white">
+              <p className="mono mt-1 text-2xl font-bold text-white">
                 {money(order.expected_usdt)} USDT
               </p>
             </div>
@@ -5029,15 +5086,15 @@ function DirectSellDetailScreen(props: {
             </div>
             <Button
               type="button"
-              className="w-full bg-blue-600"
+              className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
               disabled={!address}
               onClick={() => props.onCopy(address)}
             >
               Copy Address
             </Button>
             {props.qr ? (
-              <div className="rounded-2xl bg-white p-3">
-                <img src={props.qr} alt="Direct sell address QR" className="mx-auto h-56 w-56" />
+              <div className="rounded-xl bg-white p-2.5">
+                <img src={props.qr} alt="Direct sell address QR" className="mx-auto h-52 w-52" />
               </div>
             ) : null}
           </div>
@@ -5053,7 +5110,7 @@ function DirectSellDetailScreen(props: {
                   key={label}
                   className={`rounded-2xl border p-2 text-center text-[11px] ${
                     index <= Math.max(0, currentStep)
-                      ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
                       : "border-white/10 bg-white/6 text-slate-500"
                   }`}
                 >
@@ -5089,7 +5146,7 @@ function DirectSellDetailScreen(props: {
           <Section title="INR Payments">
             {props.items.length ? (
               props.items.map((item) => (
-                <div key={item.id} className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                <div key={item.id} className="rounded-xl border border-white/10 bg-white/6 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="mono text-sm">{money(item.amount_inr, "INR")}</p>
                     <StatusBadge status={String(item.status ?? "sent")} />
@@ -5111,7 +5168,7 @@ function DirectSellDetailScreen(props: {
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <Button
                         type="button"
-                        className="bg-blue-600"
+                        className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
                         disabled={props.busy}
                         onClick={() => props.onConfirm(item.id)}
                       >
@@ -5284,7 +5341,7 @@ function WalletTransactionRows({
 }
 function GenericRow({ row }: { row: Record<string, unknown> }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+    <div className="rounded-xl border border-white/10 bg-white/6 p-3">
       <p className="mono text-sm">{String(row["order_ref"] ?? row["id"] ?? "Trade")}</p>
       <MetricGrid
         items={[
@@ -5300,14 +5357,14 @@ function GenericRow({ row }: { row: Record<string, unknown> }) {
 function MiniChart({ rows }: { rows: { date: string; usdt: number }[] }) {
   const max = Math.max(1, ...rows.map((row) => Number(row.usdt ?? 0)));
   return (
-    <div className="flex h-36 items-end gap-1 rounded-3xl border border-white/10 bg-white/6 p-4">
+    <div className="flex h-32 items-end gap-1 rounded-2xl border border-white/10 bg-white/6 p-3">
       {rows.length ? (
         rows
           .slice(-18)
           .map((row, index) => (
             <div
               key={`${row.date}-${index}`}
-              className="flex-1 rounded-t bg-blue-500"
+              className="flex-1 rounded-t bg-emerald-500"
               style={{ height: `${Math.max(4, (Number(row.usdt ?? 0) / max) * 100)}%` }}
             />
           ))
@@ -5335,17 +5392,17 @@ function BottomNav({
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 bg-[#05070B]/94 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-xl">
-      <div className="mx-auto grid max-w-md grid-cols-5 rounded-[1.35rem] bg-[#0D121C]/95 p-1">
+      <div className="mx-auto grid max-w-md grid-cols-5 rounded-2xl bg-[#0D121C]/95 p-1">
         {items.map(([key, label, Icon]) => (
           <button
             key={key}
             className={`relative rounded-2xl px-1 py-2 text-[11px] font-medium transition ${
-              tab === key ? "text-blue-300" : "text-slate-500"
+              tab === key ? "text-emerald-300" : "text-slate-500"
             }`}
             onClick={() => setTab(key)}
           >
             {tab === key ? (
-              <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-blue-400" />
+              <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-emerald-400" />
             ) : null}
             <Icon className="mx-auto mb-1 h-5 w-5" />
             {label}

@@ -186,6 +186,22 @@
   color-scheme: light;
 }
 
+[data-mini-theme] {
+  --mini-surface: rgb(13 18 28 / 1);
+  --mini-surface-soft: rgb(255 255 255 / 0.06);
+  --mini-border: rgb(255 255 255 / 0.1);
+  --mini-muted: rgb(148 163 184 / 1);
+  --mini-accent: rgb(16 185 129 / 1);
+}
+
+[data-mini-theme="light"] {
+  --mini-surface: rgb(255 255 255 / 0.98);
+  --mini-surface-soft: rgb(255 255 255 / 0.98);
+  --mini-border: rgb(226 232 240 / 1);
+  --mini-muted: rgb(100 116 139 / 1);
+  --mini-accent: rgb(5 150 105 / 1);
+}
+
 [data-mini-theme="light"] .bg-\[\#05070B\],
 [data-mini-theme="light"] .bg-\[\#05070B\]\/92,
 [data-mini-theme="light"] .bg-\[\#05070B\]\/94 {
@@ -207,6 +223,10 @@
 
 [data-mini-theme="light"] .border-white\/10 {
   border-color: rgb(226 232 240 / 1) !important;
+}
+
+[data-mini-theme="light"] .border-white\/8 {
+  border-color: rgb(226 232 240 / 0.8) !important;
 }
 
 [data-mini-theme="light"] .text-white,
