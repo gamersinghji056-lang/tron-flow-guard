@@ -697,6 +697,8 @@ export async function linkTelegramIdentity(input: {
 
 export async function fetchTelegramOverview(initData: string) {
   const { userId } = await requireLinkedTelegramUser(initData);
+  const { backfillGasfreeCapabilitiesForUser } = await import("@/lib/wallets.server");
+  await backfillGasfreeCapabilitiesForUser(userId, { limit: 5 }).catch(() => undefined);
   const [
     { data: profile },
     { data: orders },

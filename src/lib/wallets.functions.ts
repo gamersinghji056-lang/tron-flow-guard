@@ -22,6 +22,9 @@ const importWalletInput = createWalletInput.extend({
 });
 
 const walletIdInput = z.object({ walletId: z.string().uuid() });
+const refreshWalletInput = walletIdInput.extend({
+  forceGasfreeCheck: z.boolean().optional(),
+});
 
 const renameInput = z.object({
   walletId: z.string().uuid(),
@@ -138,6 +141,8 @@ export const setDefaultWallet = createServerFn({ method: "POST" })
       .eq("id", data.walletId)
       .eq("user_id", context.userId);
     if (error) throw new Error(error.message);
+    const { refreshWalletGasfreeCapability } = await import("@/lib/wallets.server");
+    await refreshWalletGasfreeCapability(context.userId, data.walletId).catch(() => undefined);
     return { ok: true };
   });
 
@@ -151,10 +156,20 @@ export const archiveWallet = createServerFn({ method: "POST" })
 
 export const refreshWalletBalance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => walletIdInput.parse(data))
+  .inputValidator((data: unknown) => refreshWalletInput.parse(data))
   .handler(async ({ data, context }) => {
     const { refreshPersonalWalletOnChainBalance } = await import("@/lib/wallets.server");
-    return refreshPersonalWalletOnChainBalance(context.userId, data.walletId);
+    return refreshPersonalWalletOnChainBalance(context.userId, data.walletId, {
+      forceGasfreeCheck: data.forceGasfreeCheck === true,
+    });
+  });
+
+export const checkWalletGasFreeCapability = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => walletIdInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { refreshWalletGasfreeCapability } = await import("@/lib/wallets.server");
+    return refreshWalletGasfreeCapability(context.userId, data.walletId, { force: true });
   });
 
 export const sendTransfer = createServerFn({ method: "POST" })

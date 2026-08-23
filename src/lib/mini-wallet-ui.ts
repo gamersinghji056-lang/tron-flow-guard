@@ -80,9 +80,23 @@ export function preserveWalletTypeForExplicitCreation(walletType: "standard" | "
 }
 
 export function gasfreeCapabilityStatus(status?: string | null) {
-  return status === "available" || status === "limited" || status === "enabled"
+  return status === "available" ||
+    status === "limited" ||
+    status === "enabled" ||
+    status === "check_failed" ||
+    status === "unknown"
     ? status
     : "unavailable";
+}
+
+export function gasfreeCapabilityNeedsCheck(status?: string | null, checkedAt?: string | null) {
+  const normalized = gasfreeCapabilityStatus(status);
+  return !checkedAt || normalized === "check_failed" || normalized === "unknown";
+}
+
+export function gasfreeCapabilityClaimsSponsorship(status?: string | null) {
+  const normalized = gasfreeCapabilityStatus(status);
+  return normalized === "available" || normalized === "limited" || normalized === "enabled";
 }
 
 export function walletTypeAndGasfreeCapabilityAreIndependent(
@@ -111,7 +125,7 @@ export function walletGasfreePresentation(
     walletType,
     gasfreeCapability: gasfreeCapabilityStatus(gasfreeStatus),
     duplicateWalletRequired: false,
-    claimsSponsorship: gasfreeCapabilityStatus(gasfreeStatus) !== "unavailable",
+    claimsSponsorship: gasfreeCapabilityClaimsSponsorship(gasfreeStatus),
   };
 }
 

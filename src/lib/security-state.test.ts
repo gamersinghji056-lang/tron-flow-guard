@@ -51,6 +51,7 @@ import { collectPaginatedTronGridRows } from "./tron-pagination.ts";
 import {
   canAccessKnownWalletHistory,
   filterMiniWalletTransactions,
+  gasfreeCapabilityNeedsCheck,
   gasfreeCapabilityStatus,
   gasfreeUnavailableClaim,
   importedMnemonicWalletType,
@@ -730,8 +731,17 @@ describe("Mini App wallet UX routing and classification", () => {
   it("keeps imported wallets Standard while showing GasFree capability independently", () => {
     assert.equal(importedMnemonicWalletType(), "standard");
     assert.equal(gasfreeCapabilityStatus("unavailable"), "unavailable");
+    assert.equal(gasfreeCapabilityStatus("check_failed"), "check_failed");
+    assert.equal(gasfreeCapabilityStatus("unknown"), "unknown");
     assert.equal(walletTypeAndGasfreeCapabilityAreIndependent("standard", "unavailable"), true);
     assert.equal(walletTypeAndGasfreeCapabilityAreIndependent("standard", "available"), true);
+  });
+
+  it("distinguishes confirmed unavailable GasFree from missing or failed checks", () => {
+    assert.equal(gasfreeCapabilityNeedsCheck("unavailable", "2026-08-23T00:00:00.000Z"), false);
+    assert.equal(gasfreeCapabilityNeedsCheck("unavailable", null), true);
+    assert.equal(gasfreeCapabilityNeedsCheck("check_failed", "2026-08-23T00:00:00.000Z"), true);
+    assert.equal(gasfreeCapabilityNeedsCheck("unknown", "2026-08-23T00:00:00.000Z"), true);
   });
 
   it("does not create a duplicate wallet or claim sponsorship when GasFree is unavailable", () => {
@@ -752,6 +762,7 @@ describe("Mini App wallet UX routing and classification", () => {
       duplicateWalletRequired: false,
       claimsSponsorship: false,
     });
+    assert.equal(walletGasfreePresentation("standard", "check_failed").claimsSponsorship, false);
     assert.equal(walletGasfreePresentation("standard", "available").walletType, "standard");
     assert.equal(walletGasfreePresentation("standard", "available").claimsSponsorship, true);
   });

@@ -93,20 +93,175 @@ async function readGasfreeStatus() {
   return value === "available" || value === "limited" ? value : "unavailable";
 }
 
-async function readGasfreeStatusForAddress(address: string, network: ChainNetwork) {
+type GasfreeCapabilityStatus =
+  "available" | "limited" | "enabled" | "unavailable" | "check_failed" | "unknown";
+
+const GASFREE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
+
+let gasfreeCapabilityColumnsAvailable: boolean | null = null;
+
+function normalizeGasfreeCapabilityStatus(status: unknown): GasfreeCapabilityStatus {
+  const value = String(status ?? "").toLowerCase();
+  if (value === "available" || value === "limited" || value === "enabled") return value;
+  if (value === "check_failed" || value === "unknown") return value;
+  return "unavailable";
+}
+
+async function hasGasfreeCapabilityColumns() {
+  if (gasfreeCapabilityColumnsAvailable !== null) return gasfreeCapabilityColumnsAvailable;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("gasfree_capability_checked_at")
+    .limit(1);
+  gasfreeCapabilityColumnsAvailable = !error;
+  if (error && error.code !== "42703") throw new Error(error.message);
+  return gasfreeCapabilityColumnsAvailable;
+}
+
+async function readWalletGasfreeMetadata(walletId: string) {
+  if (!(await hasGasfreeCapabilityColumns())) return null;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("gasfree_capability_checked_at, gasfree_capability_error, gasfree_capability_metadata")
+    .eq("id", walletId as never)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as {
+    gasfree_capability_checked_at?: string | null;
+    gasfree_capability_error?: string | null;
+    gasfree_capability_metadata?: unknown;
+  } | null;
+}
+
+async function updateWalletGasfreeCapability(
+  walletId: string,
+  capability: Awaited<ReturnType<typeof checkGasFreeCapability>>,
+) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const hasMetadataColumns = await hasGasfreeCapabilityColumns();
+  const update = {
+    gas_sponsorship_status: capability.status,
+    ...(hasMetadataColumns
+      ? {
+          gasfree_capability_checked_at: capability.checkedAt,
+          gasfree_capability_error: capability.error,
+          gasfree_capability_metadata: capability.metadata,
+        }
+      : {}),
+  };
+  const { error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .update(update as never)
+    .eq("id", walletId as never);
+  if (error && capability.status === "check_failed" && error.code === "23514") return false;
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function checkGasFreeCapability(address: string, network: ChainNetwork) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data, error } = await supabaseAdmin
     .from("gasfree_wallet_registry" as never)
-    .select("status")
+    .select("status, metadata, updated_at")
     .eq("address", address as never)
     .eq("network", network as never)
     .maybeSingle();
   if (error) {
-    if (error.code === "42P01") return "unavailable";
-    throw new Error(error.message);
+    return {
+      status: "check_failed" as const,
+      checkedAt: new Date().toISOString(),
+      error:
+        error.code === "42P01"
+          ? "GasFree registry is not configured"
+          : "GasFree availability check failed",
+      metadata: { provider: "wtron_registry", network },
+    };
   }
-  const status = String((data as { status?: string } | null)?.status ?? "");
-  return status === "available" || status === "limited" ? status : "unavailable";
+  const row = data as {
+    status?: string | null;
+    metadata?: unknown;
+    updated_at?: string | null;
+  } | null;
+  const status = normalizeGasfreeCapabilityStatus(row?.status);
+  return {
+    status,
+    checkedAt: new Date().toISOString(),
+    error: null,
+    metadata: {
+      provider: "wtron_registry",
+      network,
+      registered: status === "available" || status === "limited" || status === "enabled",
+      registryUpdatedAt: row?.updated_at ?? null,
+      registry: row?.metadata ?? null,
+    },
+  };
+}
+
+export async function refreshWalletGasfreeCapability(
+  userId: string,
+  walletId: string,
+  options: { force?: boolean } = {},
+) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: wallet, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("id, user_id, address, network, wallet_type, is_archived, gas_sponsorship_status")
+    .eq("id", walletId as never)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const row = wallet as {
+    id: string;
+    user_id?: string | null;
+    address?: string | null;
+    network?: ChainNetwork | null;
+    wallet_type?: string | null;
+    is_archived?: boolean | null;
+    gas_sponsorship_status?: string | null;
+  } | null;
+  if (!row || row.user_id !== userId || row.is_archived) throw new Error("Wallet not found");
+
+  const metadata = await readWalletGasfreeMetadata(row.id);
+  const checkedAtMs = metadata?.gasfree_capability_checked_at
+    ? Date.parse(metadata.gasfree_capability_checked_at)
+    : 0;
+  if (!options.force && checkedAtMs && Date.now() - checkedAtMs < GASFREE_CHECK_TTL_MS) {
+    return {
+      walletId: row.id,
+      status: normalizeGasfreeCapabilityStatus(row.gas_sponsorship_status),
+      checkedAt: metadata?.gasfree_capability_checked_at ?? null,
+      error: metadata?.gasfree_capability_error ?? null,
+      metadata: metadata?.gasfree_capability_metadata ?? {},
+      cached: true,
+    };
+  }
+
+  const capability = await checkGasFreeCapability(row.address ?? "", row.network as ChainNetwork);
+  const persisted = await updateWalletGasfreeCapability(row.id, capability);
+
+  return { walletId: row.id, ...capability, cached: false, persisted };
+}
+
+export async function backfillGasfreeCapabilitiesForUser(
+  userId: string,
+  options: { force?: boolean; limit?: number } = {},
+) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("id")
+    .eq("user_id", userId as never)
+    .eq("wallet_type", "standard" as never)
+    .eq("is_archived", false as never)
+    .order("created_at", { ascending: true })
+    .limit(options.limit ?? 5);
+  if (error) throw new Error(error.message);
+  const results = [];
+  for (const wallet of (data ?? []) as Array<{ id: string }>) {
+    results.push(await refreshWalletGasfreeCapability(userId, wallet.id, options));
+  }
+  return results;
 }
 
 function isUniqueWalletAddressError(error: { code?: string; message?: string } | null) {
@@ -234,6 +389,8 @@ export async function provisionPersonalWallet(params: {
     },
   });
 
+  await refreshWalletGasfreeCapability(params.userId, row.id, { force: true });
+
   return { wallet, recoveryPhrase: mnemonic };
 }
 
@@ -270,7 +427,11 @@ export async function importPersonalWallet(params: {
     };
   }
   const detectedNetwork = networkDecision.network;
-  const gasStatus = await readGasfreeStatusForAddress(derived.address, detectedNetwork);
+  const capability = await checkGasFreeCapability(derived.address, detectedNetwork);
+  const gasStatus = capability.status;
+  const hasMetadataColumns = await hasGasfreeCapabilityColumns();
+  const dbGasStatus =
+    !hasMetadataColumns && gasStatus === "check_failed" ? "unavailable" : gasStatus;
 
   const { data: duplicate, error: duplicateError } = await supabaseAdmin
     .from("user_wallets" as never)
@@ -296,15 +457,24 @@ export async function importPersonalWallet(params: {
         "This wallet is already linked to another WTRON account. Contact support to recover access.",
       );
     }
+    const duplicateMetadata = await readWalletGasfreeMetadata(duplicateRow.id);
     const importedGasfree =
       duplicateRow.wallet_type === "gasfree" && duplicateRow.backup_status === "imported";
-    const restoredGasfree =
-      gasStatus !== "unavailable" && duplicateRow.gas_sponsorship_status !== gasStatus;
-    if (duplicateRow.network !== detectedNetwork || importedGasfree || restoredGasfree) {
+    const statusChanged =
+      duplicateRow.gas_sponsorship_status !== dbGasStatus ||
+      (hasMetadataColumns && !duplicateMetadata?.gasfree_capability_checked_at);
+    if (duplicateRow.network !== detectedNetwork || importedGasfree || statusChanged) {
       const update = {
         network: detectedNetwork,
         ...(importedGasfree ? { wallet_type: importedWalletType } : {}),
-        ...(restoredGasfree || importedGasfree ? { gas_sponsorship_status: gasStatus } : {}),
+        gas_sponsorship_status: dbGasStatus,
+        ...(hasMetadataColumns
+          ? {
+              gasfree_capability_checked_at: capability.checkedAt,
+              gasfree_capability_error: capability.error,
+              gasfree_capability_metadata: capability.metadata,
+            }
+          : {}),
         onchain_checked_at: null,
         onchain_trx_checked_at: null,
         last_synced_at: null,
@@ -326,7 +496,14 @@ export async function importPersonalWallet(params: {
         ...(duplicateRecord ?? {}),
         network: detectedNetwork,
         ...(importedGasfree ? { wallet_type: importedWalletType } : {}),
-        ...(restoredGasfree || importedGasfree ? { gas_sponsorship_status: gasStatus } : {}),
+        gas_sponsorship_status: gasStatus,
+        ...(hasMetadataColumns
+          ? {
+              gasfree_capability_checked_at: capability.checkedAt,
+              gasfree_capability_error: capability.error,
+              gasfree_capability_metadata: capability.metadata,
+            }
+          : {}),
       },
       existing: true,
       message: "Wallet already exists. Existing wallet opened.",
@@ -355,7 +532,14 @@ export async function importPersonalWallet(params: {
       wallet_type: importedWalletType,
       backup_status: "imported",
       derivation_path: derived.derivationPath,
-      gas_sponsorship_status: gasStatus,
+      gas_sponsorship_status: dbGasStatus,
+      ...(hasMetadataColumns
+        ? {
+            gasfree_capability_checked_at: capability.checkedAt,
+            gasfree_capability_error: capability.error,
+            gasfree_capability_metadata: capability.metadata,
+          }
+        : {}),
       monitored: true,
       derivation_index: 0,
       is_default: params.makeDefault || isFirst,
@@ -428,6 +612,7 @@ export async function importPersonalWallet(params: {
   });
 
   await refreshPersonalWalletOnChainBalance(params.userId, row.id);
+  await refreshWalletGasfreeCapability(params.userId, row.id, { force: true });
 
   return { wallet };
 }
@@ -511,7 +696,11 @@ export async function archiveOwnedWallet(userId: string, walletId: string) {
   return { ok: true };
 }
 
-export async function refreshPersonalWalletOnChainBalance(userId: string, walletId: string) {
+export async function refreshPersonalWalletOnChainBalance(
+  userId: string,
+  walletId: string,
+  options: { forceGasfreeCheck?: boolean } = {},
+) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const {
     getAccountResources,
@@ -677,7 +866,11 @@ export async function refreshPersonalWalletOnChainBalance(userId: string, wallet
     .eq("id", wallet.id);
   if (updateError) throw new Error(updateError.message);
 
-  return { walletId: wallet.id, balance, trxBalance, resources, checkedAt };
+  const gasfree = await refreshWalletGasfreeCapability(userId, wallet.id, {
+    force: options.forceGasfreeCheck === true,
+  });
+
+  return { walletId: wallet.id, balance, trxBalance, resources, checkedAt, gasfree };
 }
 
 export async function executeTransfer(

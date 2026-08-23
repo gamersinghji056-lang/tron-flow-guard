@@ -53,6 +53,7 @@ import {
 import { createP2pAd, createP2pOrderFromAd } from "@/lib/p2p.functions";
 import {
   createWallet,
+  checkWalletGasFreeCapability,
   importWallet,
   getWalletSecurityStatus,
   refreshWalletBalance,
@@ -87,6 +88,8 @@ import {
 } from "@/lib/mini-i18n";
 import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
 import {
+  gasfreeCapabilityNeedsCheck,
+  gasfreeCapabilityStatus,
   paymentMethodDisplay,
   resolveMiniTheme,
   type MiniThemePreference,
@@ -304,6 +307,9 @@ interface WalletRow {
   wallet_type?: string | null;
   backup_status?: string | null;
   gas_sponsorship_status?: string | null;
+  gasfree_capability_checked_at?: string | null;
+  gasfree_capability_error?: string | null;
+  gasfree_capability_metadata?: unknown;
 }
 
 interface WalletResourceSnapshot {
@@ -455,6 +461,8 @@ function gasfreeStatusLabel(status: string | null | undefined, t: MiniT) {
   if (normalized === "available") return t("available");
   if (normalized === "limited") return t("limited");
   if (normalized === "enabled") return t("enabled");
+  if (normalized === "check_failed") return t("checkFailed");
+  if (normalized === "unknown") return t("statusUnavailable");
   return t("unavailable");
 }
 
@@ -537,6 +545,7 @@ function TelegramMiniApp() {
   const revealPhrase = useServerFn(revealRecoveryPhrase);
   const loadWalletSecurityStatus = useServerFn(getWalletSecurityStatus);
   const refreshBalance = useServerFn(refreshWalletBalance);
+  const checkGasfreeCapability = useServerFn(checkWalletGasFreeCapability);
   const loadPaymentMethods = useServerFn(listPaymentMethods);
   const saveUpi = useServerFn(saveUpiMethod);
   const saveBank = useServerFn(saveBankMethod);
@@ -1339,7 +1348,9 @@ function TelegramMiniApp() {
     if (!selectedWallet?.id) return;
     setBusy(true);
     try {
-      const result = (await refreshBalance({ data: { walletId: selectedWallet.id } })) as {
+      const result = (await refreshBalance({
+        data: { walletId: selectedWallet.id, forceGasfreeCheck: true },
+      })) as {
         resources?: WalletResourceSnapshot | null;
         checkedAt?: string;
       };
@@ -1350,6 +1361,22 @@ function TelegramMiniApp() {
       toast.success(t("walletSyncCompleted"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not refresh balance");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkSelectedWalletGasfree() {
+    if (!selectedWallet?.id) return;
+    setBusy(true);
+    try {
+      const result = (await checkGasfreeCapability({ data: { walletId: selectedWallet.id } })) as {
+        status?: string;
+      };
+      await refresh("wallet-gasfree");
+      toast.success(result.status === "check_failed" ? t("checkFailed") : t("walletSyncCompleted"));
+    } catch (error) {
+      toast.error(friendlyMiniError(error, t("checkFailed")));
     } finally {
       setBusy(false);
     }
@@ -1684,7 +1711,14 @@ function TelegramMiniApp() {
             t={t}
           />
         ) : null}
-        {screen === "wallet-gasfree" ? <WalletGasFreeScreen wallet={selectedWallet} t={t} /> : null}
+        {screen === "wallet-gasfree" ? (
+          <WalletGasFreeScreen
+            wallet={selectedWallet}
+            busy={busy}
+            t={t}
+            onCheck={() => void checkSelectedWalletGasfree()}
+          />
+        ) : null}
         {screen === "wallet-backup" ? (
           <BackupScreen
             wallet={selectedWallet}
@@ -2906,7 +2940,17 @@ function WalletMoreScreen({
   );
 }
 
-function WalletGasFreeScreen({ wallet, t }: { wallet: WalletRow | null; t: MiniT }) {
+function WalletGasFreeScreen({
+  wallet,
+  busy,
+  t,
+  onCheck,
+}: {
+  wallet: WalletRow | null;
+  busy: boolean;
+  t: MiniT;
+  onCheck: () => void;
+}) {
   if (!wallet) {
     return (
       <Screen title="GasFree" subtitle={t("gasfreeCapability")}>
@@ -2915,13 +2959,30 @@ function WalletGasFreeScreen({ wallet, t }: { wallet: WalletRow | null; t: MiniT
     );
   }
   const status = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
-  const rawStatus = String(wallet.gas_sponsorship_status ?? "unavailable");
+  const rawStatus = gasfreeCapabilityStatus(wallet.gas_sponsorship_status);
+  const needsCheck = gasfreeCapabilityNeedsCheck(
+    wallet.gas_sponsorship_status,
+    wallet.gasfree_capability_checked_at,
+  );
+  const checkedAt = wallet.gasfree_capability_checked_at
+    ? new Date(wallet.gasfree_capability_checked_at).toLocaleString()
+    : t("notCheckedYet");
+  const pillTone =
+    rawStatus === "available" || rawStatus === "limited" || rawStatus === "enabled"
+      ? "success"
+      : rawStatus === "check_failed" || rawStatus === "unknown" || needsCheck
+        ? "warning"
+        : "muted";
   const explanation =
     rawStatus === "available"
-      ? "WTRON sponsorship is available for supported transfers on this wallet."
+      ? t("gasfreeAvailableMessage")
       : rawStatus === "limited"
-        ? "WTRON sponsorship is limited. Some transfers may still require TRX resources."
-        : "GasFree is not configured for this wallet. Standard TRON network fees/resources apply.";
+        ? t("gasfreeLimitedMessage")
+        : rawStatus === "check_failed"
+          ? t("gasfreeCheckFailedMessage")
+          : needsCheck
+            ? t("gasfreeStatusUnavailableMessage")
+            : t("gasfreeUnavailableConfirmedMessage");
   return (
     <Screen title={t("gasfreeTransactions")} subtitle={wallet.name ?? t("wallet")}>
       <Surface className="p-5">
@@ -2931,22 +2992,39 @@ function WalletGasFreeScreen({ wallet, t }: { wallet: WalletRow | null; t: MiniT
             <p className="font-semibold">GasFree</p>
             <p className="text-xs text-slate-400">{t("gasfreeCapability")}</p>
           </div>
+          <div className="ml-auto">
+            <StatusPill label={status} tone={pillTone} />
+          </div>
         </div>
         <MetricGrid
           items={[
             [t("status"), status],
             [t("currentSponsorship"), status],
             [t("supportedAssets"), "USDT / TRX"],
-            [t("resourceStatus"), t("resourceUnavailable")],
+            [t("lastChecked"), checkedAt],
           ]}
         />
+        {wallet.gasfree_capability_error ? (
+          <p className="mt-3 rounded-2xl bg-amber-500/10 p-3 text-xs text-amber-200">
+            {t("gasfreeCheckFailedMessage")}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          className="mt-4 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          onClick={onCheck}
+          disabled={busy}
+        >
+          {busy
+            ? t("refreshing")
+            : rawStatus === "check_failed"
+              ? t("retry")
+              : t("checkAvailability")}
+        </button>
       </Surface>
       <CompactEmpty title={status} body={explanation} />
-      <Section title="Recent GasFree transactions">
-        <CompactEmpty
-          title={t("noTransactionsYet")}
-          body="GasFree transfers will appear here when real sponsorship is configured."
-        />
+      <Section title={t("recentGasfreeTransactions")}>
+        <CompactEmpty title={t("noTransactionsYet")} body={t("gasfreeTransactionsEmpty")} />
       </Section>
     </Screen>
   );

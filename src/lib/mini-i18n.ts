@@ -142,6 +142,24 @@ export const miniWalletMessages = {
     resourceUnavailable: "Resource data unavailable",
     comingSoonUnavailable: "Coming soon / unavailable",
     unavailable: "unavailable",
+    checkFailed: "Check failed",
+    statusUnavailable: "Status unavailable",
+    checkAvailability: "Check availability",
+    retry: "Retry",
+    lastChecked: "Last checked",
+    notCheckedYet: "Not checked yet",
+    gasfreeAvailableMessage:
+      "WTRON sponsorship is available for supported transfers on this wallet.",
+    gasfreeLimitedMessage:
+      "WTRON sponsorship is limited. Some transfers may still require TRX resources.",
+    gasfreeCheckFailedMessage: "GasFree status check failed. Retry to check again.",
+    gasfreeStatusUnavailableMessage:
+      "GasFree status is unavailable until WTRON checks this wallet address.",
+    gasfreeUnavailableConfirmedMessage:
+      "GasFree is not registered for this wallet. Standard TRON network fees/resources apply.",
+    recentGasfreeTransactions: "Recent GasFree transactions",
+    gasfreeTransactionsEmpty:
+      "GasFree transfers will appear here when real sponsorship is configured.",
     personalWalletReceive: "Personal Wallet Receive",
     receiveSubtitle: "This is not the WTRON platform deposit address",
     receiveUsdtWarning: "Only send TRC20 USDT on the selected TRON network.",
@@ -281,6 +299,19 @@ export const miniWalletMessages = {
     resourceUnavailable: "资源数据不可用",
     comingSoonUnavailable: "即将推出 / 不可用",
     unavailable: "不可用",
+    checkFailed: "检查失败",
+    statusUnavailable: "状态不可用",
+    checkAvailability: "检查可用性",
+    retry: "重试",
+    lastChecked: "上次检查",
+    notCheckedYet: "尚未检查",
+    gasfreeAvailableMessage: "此钱包支持的转账可使用 WTRON 赞助。",
+    gasfreeLimitedMessage: "WTRON 赞助受限，部分转账仍可能需要 TRX 资源。",
+    gasfreeCheckFailedMessage: "GasFree 状态检查失败。请重试。",
+    gasfreeStatusUnavailableMessage: "WTRON 检查此钱包地址前，GasFree 状态不可用。",
+    gasfreeUnavailableConfirmedMessage: "此钱包未注册 GasFree。将使用标准 TRON 网络手续费/资源。",
+    recentGasfreeTransactions: "最近 GasFree 交易",
+    gasfreeTransactionsEmpty: "真实赞助配置后，GasFree 转账会显示在这里。",
     personalWalletReceive: "接收至个人钱包",
     receiveSubtitle: "这不是 WTRON 平台充值地址",
     receiveUsdtWarning: "只能在所选 TRON 网络发送 TRC20 USDT。",
@@ -419,6 +450,24 @@ export const miniWalletMessages = {
     resourceUnavailable: "Данные ресурсов недоступны",
     comingSoonUnavailable: "Скоро / недоступно",
     unavailable: "недоступно",
+    checkFailed: "Проверка не удалась",
+    statusUnavailable: "Статус недоступен",
+    checkAvailability: "Проверить доступность",
+    retry: "Повторить",
+    lastChecked: "Последняя проверка",
+    notCheckedYet: "Еще не проверялось",
+    gasfreeAvailableMessage:
+      "Спонсирование WTRON доступно для поддерживаемых переводов этого кошелька.",
+    gasfreeLimitedMessage:
+      "Спонсирование WTRON ограничено. Для некоторых переводов могут требоваться ресурсы TRX.",
+    gasfreeCheckFailedMessage: "Не удалось проверить статус GasFree. Повторите проверку.",
+    gasfreeStatusUnavailableMessage:
+      "Статус GasFree недоступен, пока WTRON не проверит адрес кошелька.",
+    gasfreeUnavailableConfirmedMessage:
+      "GasFree не зарегистрирован для этого кошелька. Применяются стандартные комиссии/ресурсы TRON.",
+    recentGasfreeTransactions: "Последние GasFree-транзакции",
+    gasfreeTransactionsEmpty:
+      "GasFree-переводы появятся здесь после настройки реального спонсирования.",
     personalWalletReceive: "Получить в личный кошелек",
     receiveSubtitle: "Это не адрес пополнения платформы WTRON",
     receiveUsdtWarning: "Отправляйте только TRC20 USDT в выбранной сети TRON.",
@@ -559,6 +608,24 @@ export const miniWalletMessages = {
     resourceUnavailable: "داده منابع در دسترس نیست",
     comingSoonUnavailable: "به‌زودی / در دسترس نیست",
     unavailable: "در دسترس نیست",
+    checkFailed: "بررسی ناموفق بود",
+    statusUnavailable: "وضعیت در دسترس نیست",
+    checkAvailability: "بررسی دسترسی",
+    retry: "تلاش دوباره",
+    lastChecked: "آخرین بررسی",
+    notCheckedYet: "هنوز بررسی نشده",
+    gasfreeAvailableMessage:
+      "اسپانسرینگ WTRON برای انتقال‌های پشتیبانی‌شده این کیف پول در دسترس است.",
+    gasfreeLimitedMessage:
+      "اسپانسرینگ WTRON محدود است. برخی انتقال‌ها ممکن است هنوز به منابع TRX نیاز داشته باشند.",
+    gasfreeCheckFailedMessage: "بررسی وضعیت GasFree ناموفق بود. دوباره تلاش کنید.",
+    gasfreeStatusUnavailableMessage:
+      "تا زمانی که WTRON آدرس این کیف پول را بررسی نکند، وضعیت GasFree در دسترس نیست.",
+    gasfreeUnavailableConfirmedMessage:
+      "GasFree برای این کیف پول ثبت نشده است. کارمزد/منابع استاندارد شبکه TRON اعمال می‌شود.",
+    recentGasfreeTransactions: "تراکنش‌های اخیر GasFree",
+    gasfreeTransactionsEmpty:
+      "انتقال‌های GasFree پس از پیکربندی اسپانسرینگ واقعی اینجا نمایش داده می‌شوند.",
     personalWalletReceive: "دریافت در کیف پول شخصی",
     receiveSubtitle: "این آدرس واریز پلتفرم WTRON نیست",
     receiveUsdtWarning: "فقط TRC20 USDT را در شبکه TRON انتخاب‌شده ارسال کنید.",
