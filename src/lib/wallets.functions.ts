@@ -172,6 +172,14 @@ export const checkWalletGasFreeCapability = createServerFn({ method: "POST" })
     return refreshWalletGasfreeCapability(context.userId, data.walletId, { force: true });
   });
 
+export const discoverWalletGasFreeAddress = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => walletIdInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { ensureGasFreeChildWalletForGeneral } = await import("@/lib/wallets.server");
+    return (await ensureGasFreeChildWalletForGeneral(context.userId, data.walletId)) as never;
+  });
+
 export const sendTransfer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => transferInput.parse(data))

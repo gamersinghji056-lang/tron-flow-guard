@@ -2,6 +2,32 @@ import { sha256 } from "@noble/hashes/sha2.js";
 
 const B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
+export function base58CheckEncode(payload: Uint8Array): string {
+  const checksum = sha256(sha256(payload)).slice(0, 4);
+  const full = new Uint8Array(payload.length + checksum.length);
+  full.set(payload);
+  full.set(checksum, payload.length);
+
+  let num = 0n;
+  for (const byte of full) {
+    num = (num << 8n) + BigInt(byte);
+  }
+
+  let encoded = "";
+  while (num > 0n) {
+    const mod = Number(num % 58n);
+    encoded = B58_ALPHABET[mod] + encoded;
+    num /= 58n;
+  }
+
+  for (const byte of full) {
+    if (byte !== 0) break;
+    encoded = "1" + encoded;
+  }
+
+  return encoded || "1";
+}
+
 export function base58CheckDecode(value: string): Uint8Array {
   let num = 0n;
   for (const char of value) {

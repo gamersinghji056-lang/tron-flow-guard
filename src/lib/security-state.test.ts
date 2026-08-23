@@ -35,6 +35,7 @@ import {
   deriveTronWalletFromMnemonic,
 } from "./tron-personal-wallet.ts";
 import { isTronAddress, parseTokenBalanceHex } from "./chain.ts";
+import { deriveGasFreeAddressFromGeneralAddress } from "./gasfree-address.ts";
 import { decryptMnemonic, encryptMnemonic } from "./wallet-crypto.ts";
 import {
   addressesAreSeparated,
@@ -765,6 +766,39 @@ describe("Mini App wallet UX routing and classification", () => {
     assert.equal(walletGasfreePresentation("standard", "check_failed").claimsSponsorship, false);
     assert.equal(walletGasfreePresentation("standard", "available").walletType, "standard");
     assert.equal(walletGasfreePresentation("standard", "available").claimsSponsorship, true);
+  });
+
+  it("derives a deterministic GasFree child address from the General wallet address", () => {
+    const mnemonic =
+      "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const general = deriveTronWalletFromMnemonic(mnemonic);
+    const gasfree = deriveGasFreeAddressFromGeneralAddress(general.address, "trc20-mainnet");
+    const gasfreeAgain = deriveGasFreeAddressFromGeneralAddress(general.address, "trc20-mainnet");
+
+    assert.equal(general.derivationPath, "m/44'/195'/0'/0/0");
+    assert.equal(isTronAddress(gasfree), true);
+    assert.equal(gasfree, gasfreeAgain);
+    assert.notEqual(gasfree, general.address);
+  });
+
+  it("keeps General and GasFree child wallet histories and signing states separate", () => {
+    const generalWallet = { id: "general", wallet_type: "standard", wallet_role: "general" };
+    const gasfreeWallet = { id: "gasfree", wallet_type: "gasfree", wallet_role: "gasfree" };
+    const history = [
+      { id: "general-tx", wallet_id: "general" },
+      { id: "gasfree-tx", wallet_id: "gasfree" },
+    ];
+
+    assert.equal(onChainSendEnabled(generalWallet), true);
+    assert.equal(onChainSendEnabled(gasfreeWallet), false);
+    assert.deepEqual(
+      filterWalletHistory(history, "general").map((row) => row.id),
+      ["general-tx"],
+    );
+    assert.deepEqual(
+      filterWalletHistory(history, "gasfree").map((row) => row.id),
+      ["gasfree-tx"],
+    );
   });
 
   it("keeps read-only resource display separate from balances", () => {

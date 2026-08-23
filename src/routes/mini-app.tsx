@@ -54,6 +54,7 @@ import { createP2pAd, createP2pOrderFromAd } from "@/lib/p2p.functions";
 import {
   createWallet,
   checkWalletGasFreeCapability,
+  discoverWalletGasFreeAddress,
   importWallet,
   getWalletSecurityStatus,
   refreshWalletBalance,
@@ -310,6 +311,9 @@ interface WalletRow {
   gasfree_capability_checked_at?: string | null;
   gasfree_capability_error?: string | null;
   gasfree_capability_metadata?: unknown;
+  wallet_role?: string | null;
+  parent_wallet_id?: string | null;
+  wallet_group_id?: string | null;
 }
 
 interface WalletResourceSnapshot {
@@ -546,6 +550,7 @@ function TelegramMiniApp() {
   const loadWalletSecurityStatus = useServerFn(getWalletSecurityStatus);
   const refreshBalance = useServerFn(refreshWalletBalance);
   const checkGasfreeCapability = useServerFn(checkWalletGasFreeCapability);
+  const discoverGasfreeWallet = useServerFn(discoverWalletGasFreeAddress);
   const loadPaymentMethods = useServerFn(listPaymentMethods);
   const saveUpi = useServerFn(saveUpiMethod);
   const saveBank = useServerFn(saveBankMethod);
@@ -650,6 +655,15 @@ function TelegramMiniApp() {
   const profile = overview?.profile ?? null;
   const wallets = overview?.wallets ?? [];
   const selectedWallet = selectActiveWallet(wallets, selectedWalletId);
+  const selectedGasfreeWallet =
+    selectedWallet?.wallet_role === "gasfree"
+      ? selectedWallet
+      : wallets.find(
+          (wallet) =>
+            wallet.wallet_role === "gasfree" &&
+            wallet.parent_wallet_id === selectedWallet?.id &&
+            wallet.network === selectedWallet?.network,
+        );
   const selectedAddress = safeAddress(selectedWallet?.address);
   const selectedWalletTransaction =
     walletTransactions.find((row) => row.id === selectedWalletTransactionId) ?? null;
@@ -1382,6 +1396,20 @@ function TelegramMiniApp() {
     }
   }
 
+  async function discoverSelectedWalletGasfree() {
+    if (!selectedWallet?.id) return;
+    setBusy(true);
+    try {
+      await discoverGasfreeWallet({ data: { walletId: selectedWallet.id } });
+      await refresh("wallet-gasfree");
+      toast.success(t("gasfreeWalletDiscovered"));
+    } catch (error) {
+      toast.error(friendlyMiniError(error, t("gasfreeDiscoveryFailed")));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function revealBackupPhrase(event: FormEvent) {
     event.preventDefault();
     if (!selectedWallet?.id) return;
@@ -1714,9 +1742,11 @@ function TelegramMiniApp() {
         {screen === "wallet-gasfree" ? (
           <WalletGasFreeScreen
             wallet={selectedWallet}
+            gasfreeWallet={selectedGasfreeWallet ?? null}
             busy={busy}
             t={t}
             onCheck={() => void checkSelectedWalletGasfree()}
+            onDiscover={() => void discoverSelectedWalletGasfree()}
           />
         ) : null}
         {screen === "wallet-backup" ? (
@@ -2942,14 +2972,18 @@ function WalletMoreScreen({
 
 function WalletGasFreeScreen({
   wallet,
+  gasfreeWallet,
   busy,
   t,
   onCheck,
+  onDiscover,
 }: {
   wallet: WalletRow | null;
+  gasfreeWallet: WalletRow | null;
   busy: boolean;
   t: MiniT;
   onCheck: () => void;
+  onDiscover: () => void;
 }) {
   if (!wallet) {
     return (
@@ -2958,6 +2992,8 @@ function WalletGasFreeScreen({
       </Screen>
     );
   }
+  const discovered = Boolean(gasfreeWallet?.address);
+  const walletAddress = safeAddress(gasfreeWallet?.address);
   const status = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
   const rawStatus = gasfreeCapabilityStatus(wallet.gas_sponsorship_status);
   const needsCheck = gasfreeCapabilityNeedsCheck(
@@ -2998,12 +3034,22 @@ function WalletGasFreeScreen({
         </div>
         <MetricGrid
           items={[
-            [t("status"), status],
-            [t("currentSponsorship"), status],
+            [t("gasfreeWallet"), discovered ? t("discovered") : t("notDiscovered")],
+            [t("gasfreeTransfers"), status],
             [t("supportedAssets"), "USDT / TRX"],
             [t("lastChecked"), checkedAt],
           ]}
         />
+        {discovered ? (
+          <button
+            type="button"
+            className="mono mt-3 w-full rounded-2xl bg-white/6 p-3 text-left text-xs"
+            dir={technicalTextDirection()}
+            onClick={() => copyText(walletAddress, t("addressCopied"))}
+          >
+            {walletAddress}
+          </button>
+        ) : null}
         {wallet.gasfree_capability_error ? (
           <p className="mt-3 rounded-2xl bg-amber-500/10 p-3 text-xs text-amber-200">
             {t("gasfreeCheckFailedMessage")}
@@ -3011,7 +3057,19 @@ function WalletGasFreeScreen({
         ) : null}
         <button
           type="button"
-          className="mt-4 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          className="mt-4 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-[#03130e] disabled:opacity-60"
+          onClick={onDiscover}
+          disabled={busy}
+        >
+          {busy
+            ? t("refreshing")
+            : discovered
+              ? t("gasfreeWalletDiscovered")
+              : t("discoverGasfreeWallet")}
+        </button>
+        <button
+          type="button"
+          className="mt-2 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
           onClick={onCheck}
           disabled={busy}
         >

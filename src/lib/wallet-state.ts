@@ -6,6 +6,8 @@ export interface WalletBalanceLike {
   onchain_balance?: number | string | null;
   custody?: string | null;
   is_default?: boolean | null;
+  wallet_type?: string | null;
+  wallet_role?: string | null;
 }
 
 export interface WalletTransactionLike {
@@ -61,5 +63,5 @@ export function gasSponsorshipUsable(status?: string | null) {
 }
 
 export function onChainSendEnabled(wallet: WalletBalanceLike | null | undefined) {
-  return Boolean(wallet);
+  return Boolean(wallet && wallet.wallet_type !== "gasfree" && wallet.wallet_role !== "gasfree");
 }

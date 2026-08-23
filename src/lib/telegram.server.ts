@@ -750,7 +750,7 @@ export async function fetchTelegramOverview(initData: string) {
     supabaseAdmin
       .from("user_wallets" as never)
       .select(
-        "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
+        "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, wallet_role, parent_wallet_id, wallet_group_id",
       )
       .eq("user_id", userId as never)
       .eq("is_archived", false as never)

@@ -8,6 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import type { ChainNetwork } from "@/lib/chain";
+import { TRON_BIP44_DERIVATION_PATH } from "@/lib/tron-personal-wallet";
 
 type Client = SupabaseClient<Database>;
 
@@ -160,6 +161,118 @@ async function updateWalletGasfreeCapability(
   return true;
 }
 
+function gasfreeDerivationLabel(network: ChainNetwork, generalPath?: string | null) {
+  const chainId = network === "trc20-mainnet" ? "0x2b6653dc" : "0xcd8690dc";
+  return `gasfree:create2:${chainId}:${generalPath ?? TRON_BIP44_DERIVATION_PATH}`;
+}
+
+export async function ensureGasFreeChildWalletForGeneral(userId: string, generalWalletId: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { deriveGasFreeAddressFromGeneralAddress } = await import("@/lib/gasfree-address");
+
+  const { data: general, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select(
+      "id, user_id, name, address, network, wallet_type, backup_status, derivation_path, wallet_role, wallet_group_id, is_archived",
+    )
+    .eq("id", generalWalletId as never)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const row = general as {
+    id: string;
+    user_id?: string | null;
+    name?: string | null;
+    address?: string | null;
+    network?: ChainNetwork | null;
+    wallet_type?: string | null;
+    backup_status?: string | null;
+    derivation_path?: string | null;
+    wallet_role?: string | null;
+    wallet_group_id?: string | null;
+    is_archived?: boolean | null;
+  } | null;
+  if (!row || row.user_id !== userId || row.is_archived) throw new Error("Wallet not found");
+  if (row.wallet_role === "gasfree") {
+    return { wallet: row, existing: true, skipped: true };
+  }
+  if (!row.address || !row.network) throw new Error("Wallet address is unavailable");
+
+  const gasfreeAddress = deriveGasFreeAddressFromGeneralAddress(row.address, row.network);
+  if (gasfreeAddress === row.address) throw new Error("GasFree address discovery failed");
+
+  const { data: existingChildren, error: childError } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select(
+      "id, user_id, name, address, network, wallet_type, backup_status, gas_sponsorship_status, wallet_role, parent_wallet_id, wallet_group_id",
+    )
+    .eq("parent_wallet_id", row.id as never)
+    .eq("wallet_role", "gasfree" as never)
+    .eq("is_archived", false as never)
+    .limit(1);
+  if (childError && childError.code !== "42703") throw new Error(childError.message);
+  const existingChild = ((existingChildren as unknown[])?.[0] ?? null) as Record<
+    string,
+    unknown
+  > | null;
+  if (existingChild) return { wallet: existingChild, existing: true, skipped: false };
+
+  const { data: addressOwners, error: ownerError } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("id, user_id, address, wallet_role")
+    .eq("address", gasfreeAddress as never)
+    .eq("is_archived", false as never)
+    .limit(1);
+  if (ownerError) throw new Error(ownerError.message);
+  const addressOwner = ((addressOwners as unknown[])?.[0] ?? null) as {
+    id: string;
+    user_id?: string | null;
+  } | null;
+  if (addressOwner) {
+    if (addressOwner.user_id !== userId) {
+      throw new Error("GasFree wallet is already linked to another WTRON account.");
+    }
+    await supabaseAdmin
+      .from("user_wallets" as never)
+      .update({
+        wallet_role: "gasfree",
+        wallet_type: "gasfree",
+        parent_wallet_id: row.id,
+        wallet_group_id: row.wallet_group_id ?? row.id,
+      } as never)
+      .eq("id", addressOwner.id as never);
+    return { wallet: { ...addressOwner, address: gasfreeAddress }, existing: true, skipped: false };
+  }
+
+  const { data: child, error: insertError } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .insert({
+      user_id: userId,
+      name: `${row.name ?? "Wallet"} GasFree`,
+      network: row.network,
+      address: gasfreeAddress,
+      custody: "non_custodial",
+      wallet_type: "gasfree",
+      wallet_role: "gasfree",
+      parent_wallet_id: row.id,
+      wallet_group_id: row.wallet_group_id ?? row.id,
+      backup_status: row.backup_status ?? "imported",
+      derivation_path: gasfreeDerivationLabel(row.network, row.derivation_path),
+      gas_sponsorship_status: "unavailable",
+      monitored: true,
+      derivation_index: 0,
+      is_default: false,
+    } as never)
+    .select(
+      "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at, wallet_role, parent_wallet_id, wallet_group_id",
+    )
+    .single();
+  if (insertError) throw new Error(insertError.message);
+
+  const childRow = child as unknown as { id: string };
+  await refreshPersonalWalletOnChainBalance(userId, childRow.id).catch(() => undefined);
+  return { wallet: child, existing: false, skipped: false };
+}
+
 export async function checkGasFreeCapability(address: string, network: ChainNetwork) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data, error } = await supabaseAdmin
@@ -259,7 +372,13 @@ export async function backfillGasfreeCapabilitiesForUser(
   if (error) throw new Error(error.message);
   const results = [];
   for (const wallet of (data ?? []) as Array<{ id: string }>) {
-    results.push(await refreshWalletGasfreeCapability(userId, wallet.id, options));
+    const capability = await refreshWalletGasfreeCapability(userId, wallet.id, options);
+    const gasfreeWallet = await ensureGasFreeChildWalletForGeneral(userId, wallet.id).catch(
+      (error: unknown) => ({
+        error: error instanceof Error ? error.message : "GasFree wallet discovery failed",
+      }),
+    );
+    results.push({ ...capability, gasfreeWallet });
   }
   return results;
 }
@@ -390,6 +509,7 @@ export async function provisionPersonalWallet(params: {
   });
 
   await refreshWalletGasfreeCapability(params.userId, row.id, { force: true });
+  await ensureGasFreeChildWalletForGeneral(params.userId, row.id).catch(() => undefined);
 
   return { wallet, recoveryPhrase: mnemonic };
 }
@@ -491,6 +611,7 @@ export async function importPersonalWallet(params: {
         .eq("id", duplicateRow.id as never);
     }
     await refreshPersonalWalletOnChainBalance(params.userId, duplicateRow.id);
+    await ensureGasFreeChildWalletForGeneral(params.userId, duplicateRow.id).catch(() => undefined);
     return {
       wallet: {
         ...(duplicateRecord ?? {}),
@@ -613,6 +734,7 @@ export async function importPersonalWallet(params: {
 
   await refreshPersonalWalletOnChainBalance(params.userId, row.id);
   await refreshWalletGasfreeCapability(params.userId, row.id, { force: true });
+  await ensureGasFreeChildWalletForGeneral(params.userId, row.id).catch(() => undefined);
 
   return { wallet };
 }
