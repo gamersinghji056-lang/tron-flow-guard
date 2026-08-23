@@ -3067,7 +3067,7 @@ function SendScreen({
   const network = networkConfig(wallet?.network);
   const available =
     asset === "USDT" ? walletDisplayBalance(wallet) : Number(wallet?.onchain_trx_balance ?? 0);
-  const mainnetDisabled = wallet?.network === "trc20-mainnet" && !enabled;
+  const mainnetDisabled = wallet?.network === "trc20-mainnet";
   return (
     <Screen title={t("send")} subtitle={t("selfCustodyWallet")}>
       <Surface className="p-4">
@@ -3126,7 +3126,7 @@ function SendScreen({
       <p className="rounded-2xl bg-yellow-500/10 p-3 text-sm text-yellow-100">
         {mainnetDisabled ? t("mainnetSendDisabled") : t("sendUnavailable")}
       </p>
-      <Button className="w-full" disabled={!enabled}>
+      <Button className="w-full" disabled={!enabled || mainnetDisabled}>
         {t("continue")}
       </Button>
     </Screen>
