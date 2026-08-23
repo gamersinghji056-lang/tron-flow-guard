@@ -70,7 +70,7 @@ export const importWallet = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => importWalletInput.parse(data))
   .handler(async ({ data, context }) => {
     const { importPersonalWallet } = await import("@/lib/wallets.server");
-    return importPersonalWallet({
+    const result = await importPersonalWallet({
       userId: context.userId,
       name: data.name,
       network: data.network,
@@ -80,6 +80,7 @@ export const importWallet = createServerFn({ method: "POST" })
       mnemonic: data.mnemonic,
       networkConfirmed: data.networkConfirmed ?? false,
     });
+    return result as never;
   });
 
 export const setWalletTransactionPassword = createServerFn({ method: "POST" })
@@ -93,6 +94,13 @@ export const setWalletTransactionPassword = createServerFn({ method: "POST" })
       ...(data.currentPassword ? { currentPassword: data.currentPassword } : {}),
     });
     return { ok: true };
+  });
+
+export const getWalletSecurityStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { hasTransactionPassword } = await import("@/lib/wallet-security.server");
+    return { transactionPasswordEnabled: await hasTransactionPassword(context.userId) };
   });
 
 export const revealRecoveryPhrase = createServerFn({ method: "POST" })

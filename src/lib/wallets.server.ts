@@ -11,7 +11,7 @@ import type { ChainNetwork } from "@/lib/chain";
 
 type Client = SupabaseClient<Database>;
 
-export const DEFAULT_TRANSFER_FEE = 1.5;
+export const DEFAULT_TRANSFER_FEE = 1;
 
 export async function readTransferFee(): Promise<number> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -93,6 +93,32 @@ async function readGasfreeStatus() {
   return value === "available" || value === "limited" ? value : "unavailable";
 }
 
+async function readGasfreeStatusForAddress(address: string, network: ChainNetwork) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("gasfree_wallet_registry" as never)
+    .select("status")
+    .eq("address", address as never)
+    .eq("network", network as never)
+    .maybeSingle();
+  if (error) {
+    if (error.code === "42P01") return "unavailable";
+    throw new Error(error.message);
+  }
+  const status = String((data as { status?: string } | null)?.status ?? "");
+  return status === "available" || status === "limited" ? status : "unavailable";
+}
+
+function isUniqueWalletAddressError(error: { code?: string; message?: string } | null) {
+  const message = String(error?.message ?? "");
+  return (
+    error?.code === "23505" &&
+    (message.includes("user_wallets_address_key") ||
+      message.includes("user_wallets_active_address_key") ||
+      message.includes("user_wallets_address_network_key"))
+  );
+}
+
 async function detectImportedNetwork(address: string, requested: ChainNetwork, confirmed: boolean) {
   const { getIncomingUsdtTransfers, getNativeTrxBalance, getOutgoingUsdtTransfers } =
     await import("@/lib/tron.server");
@@ -131,10 +157,10 @@ export async function provisionPersonalWallet(params: {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { createPersonalWalletMnemonic, deriveTronWalletFromMnemonic } =
     await import("@/lib/tron-personal-wallet");
-  const { encryptMnemonic, verifyTransactionPasswordOrThrow } =
+  const { encryptMnemonic, ensureTransactionPasswordForWalletAction } =
     await import("@/lib/wallet-security.server");
 
-  await verifyTransactionPasswordOrThrow(params.userId, params.transactionPassword);
+  await ensureTransactionPasswordForWalletAction(params.userId, params.transactionPassword);
 
   const mnemonic = createPersonalWalletMnemonic();
   const derived = deriveTronWalletFromMnemonic(mnemonic);
@@ -223,15 +249,13 @@ export async function importPersonalWallet(params: {
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { deriveTronWalletFromMnemonic } = await import("@/lib/tron-personal-wallet");
-  const { encryptMnemonic, verifyTransactionPasswordOrThrow } =
+  const { encryptMnemonic, ensureTransactionPasswordForWalletAction } =
     await import("@/lib/wallet-security.server");
 
-  await verifyTransactionPasswordOrThrow(params.userId, params.transactionPassword);
+  await ensureTransactionPasswordForWalletAction(params.userId, params.transactionPassword);
 
   const derived = deriveTronWalletFromMnemonic(params.mnemonic);
-  const encrypted = encryptMnemonic(derived.mnemonic, params.transactionPassword);
   const importedWalletType = "standard";
-  const gasStatus = "unavailable";
   const networkDecision = await detectImportedNetwork(
     derived.address,
     params.network,
@@ -246,32 +270,41 @@ export async function importPersonalWallet(params: {
     };
   }
   const detectedNetwork = networkDecision.network;
+  const gasStatus = await readGasfreeStatusForAddress(derived.address, detectedNetwork);
 
   const { data: duplicate, error: duplicateError } = await supabaseAdmin
     .from("user_wallets" as never)
     .select(
-      "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+      "id, user_id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
     )
-    .eq("user_id", params.userId as never)
     .eq("address", derived.address as never)
     .eq("is_archived", false as never)
-    .maybeSingle();
+    .limit(1);
   if (duplicateError) throw new Error(duplicateError.message);
-  if (duplicate) {
-    const duplicateRow = duplicate as {
-      id: string;
-      network?: ChainNetwork;
-      wallet_type?: string | null;
-      backup_status?: string | null;
-    };
+  const duplicateRecord = ((duplicate as unknown[])?.[0] ?? null) as Record<string, unknown> | null;
+  const duplicateRow = duplicateRecord as {
+    id: string;
+    user_id?: string | null;
+    network?: ChainNetwork;
+    wallet_type?: string | null;
+    backup_status?: string | null;
+    gas_sponsorship_status?: string | null;
+  } | null;
+  if (duplicateRow) {
+    if (duplicateRow.user_id !== params.userId) {
+      throw new Error(
+        "This wallet is already linked to another WTRON account. Contact support to recover access.",
+      );
+    }
     const importedGasfree =
       duplicateRow.wallet_type === "gasfree" && duplicateRow.backup_status === "imported";
-    if (duplicateRow.network !== detectedNetwork || importedGasfree) {
+    const restoredGasfree =
+      gasStatus !== "unavailable" && duplicateRow.gas_sponsorship_status !== gasStatus;
+    if (duplicateRow.network !== detectedNetwork || importedGasfree || restoredGasfree) {
       const update = {
         network: detectedNetwork,
-        ...(importedGasfree
-          ? { wallet_type: importedWalletType, gas_sponsorship_status: gasStatus }
-          : {}),
+        ...(importedGasfree ? { wallet_type: importedWalletType } : {}),
+        ...(restoredGasfree || importedGasfree ? { gas_sponsorship_status: gasStatus } : {}),
         onchain_checked_at: null,
         onchain_trx_checked_at: null,
         last_synced_at: null,
@@ -290,17 +323,18 @@ export async function importPersonalWallet(params: {
     await refreshPersonalWalletOnChainBalance(params.userId, duplicateRow.id);
     return {
       wallet: {
-        ...(duplicate as Record<string, unknown>),
+        ...(duplicateRecord ?? {}),
         network: detectedNetwork,
-        ...(importedGasfree
-          ? { wallet_type: importedWalletType, gas_sponsorship_status: gasStatus }
-          : {}),
+        ...(importedGasfree ? { wallet_type: importedWalletType } : {}),
+        ...(restoredGasfree || importedGasfree ? { gas_sponsorship_status: gasStatus } : {}),
       },
       existing: true,
+      message: "Wallet already exists. Existing wallet opened.",
       detectedNetwork,
     };
   }
 
+  const encrypted = encryptMnemonic(derived.mnemonic, params.transactionPassword);
   const { data: existing, error: countError } = await supabaseAdmin
     .from("user_wallets" as never)
     .select("id")
@@ -331,6 +365,30 @@ export async function importPersonalWallet(params: {
       "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
     )
     .single();
+  if (isUniqueWalletAddressError(error)) {
+    const { data: afterConflict } = await supabaseAdmin
+      .from("user_wallets" as never)
+      .select(
+        "id, user_id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+      )
+      .eq("address", derived.address as never)
+      .eq("is_archived", false as never)
+      .limit(1);
+    const row = ((afterConflict as unknown[])?.[0] ?? null) as
+      ({ id: string; user_id?: string | null } & Record<string, unknown>) | null;
+    if (row?.user_id === params.userId) {
+      await refreshPersonalWalletOnChainBalance(params.userId, row.id);
+      return {
+        wallet: row,
+        existing: true,
+        message: "Wallet already exists. Existing wallet opened.",
+        detectedNetwork,
+      };
+    }
+    throw new Error(
+      "This wallet is already linked to another WTRON account. Contact support to recover access.",
+    );
+  }
   if (error) throw new Error(error.message);
 
   const row = wallet as unknown as { id: string; name: string; address: string };

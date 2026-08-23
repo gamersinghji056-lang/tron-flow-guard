@@ -20,9 +20,19 @@ export function hashTransactionPassword(password: string) {
 }
 
 export function verifyTransactionPasswordHash(password: string, salt: string, expected: string) {
-  const actual = Buffer.from(digest(password, salt), "base64url");
-  const expectedBytes = Buffer.from(expected, "base64url");
-  return actual.length === expectedBytes.length && timingSafeEqual(actual, expectedBytes);
+  try {
+    const actual = Buffer.from(digest(password, salt), "base64url");
+    const expectedBytes = Buffer.from(expected, "base64url");
+    return actual.length === expectedBytes.length && timingSafeEqual(actual, expectedBytes);
+  } catch {
+    return false;
+  }
+}
+
+export function transactionPasswordHashFormat(salt: string, passwordHash: string) {
+  return fromB64(salt).length === 16 && Buffer.from(passwordHash, "base64url").length === 64
+    ? "scrypt-base64url-v1"
+    : "unsupported";
 }
 
 export function shouldLockTransactionPassword(

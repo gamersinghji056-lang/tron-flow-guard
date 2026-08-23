@@ -54,6 +54,7 @@ import { createP2pAd, createP2pOrderFromAd } from "@/lib/p2p.functions";
 import {
   createWallet,
   importWallet,
+  getWalletSecurityStatus,
   refreshWalletBalance,
   revealRecoveryPhrase,
   setDefaultWallet,
@@ -85,7 +86,14 @@ import {
   type MiniT,
 } from "@/lib/mini-i18n";
 import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
+import {
+  paymentMethodDisplay,
+  resolveMiniTheme,
+  type MiniThemePreference,
+} from "@/lib/mini-wallet-ui";
 import { onChainSendEnabled, selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
+
+const MINI_THEME_STORAGE_KEY = "wtron-mini-theme";
 
 export const Route = createFileRoute("/mini-app")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -247,6 +255,7 @@ interface DirectSellOrderRow {
   id: string;
   order_ref?: string | null;
   deposit_request_id?: string | null;
+  payment_method_id?: string | null;
   expected_usdt?: number | string | null;
   received_usdt?: number | string | null;
   expected_inr?: number | string | null;
@@ -449,11 +458,35 @@ function gasfreeStatusLabel(status: string | null | undefined, t: MiniT) {
   return t("unavailable");
 }
 
+function friendlyMiniError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("duplicate key") ||
+    lower.includes("user_wallets_address_key") ||
+    lower.includes("user_wallets_address_network_key") ||
+    lower.includes("violates unique constraint")
+  ) {
+    return "Wallet already exists. Existing wallet opened.";
+  }
+  if (lower.includes("temporarily locked")) return "Too many failed attempts. Try again later.";
+  if (
+    lower.includes("supabase") ||
+    lower.includes("postgres") ||
+    lower.includes("rpc") ||
+    lower.includes("trongrid") ||
+    lower.includes("stack")
+  ) {
+    return fallback;
+  }
+  return message || fallback;
+}
+
 function screenTitle(screen: MiniScreen, t: MiniT) {
   const titles: Partial<Record<MiniScreen, string>> = {
-    home: "Home",
-    p2p: "P2P",
-    trade: "Trade",
+    home: t("home"),
+    p2p: t("p2p"),
+    trade: t("trade"),
     wallet: t("wallet"),
     more: t("more"),
     "wallet-create": t("createWallet"),
@@ -467,15 +500,15 @@ function screenTitle(screen: MiniScreen, t: MiniT) {
     "wallet-more": t("walletInformation"),
     "wallet-gasfree": "GasFree",
     "platform-deposit": "Deposit",
-    "direct-sell-detail": "Direct Sell",
+    "direct-sell-detail": t("directSell"),
     send: t("send"),
-    orders: "Orders",
+    orders: t("orders"),
     analytics: "Analytics",
-    "bank-accounts": "Payments",
-    history: "History",
-    profile: "Profile",
-    notifications: "Notifications",
-    security: "Security",
+    "bank-accounts": t("payments"),
+    history: t("history"),
+    profile: t("profile"),
+    notifications: t("notifications"),
+    security: t("security"),
     referral: "Referral",
   };
   return titles[screen] ?? "WTRON";
@@ -502,6 +535,7 @@ function TelegramMiniApp() {
   const setMiniDefaultWallet = useServerFn(setDefaultWallet);
   const setMiniTransactionPassword = useServerFn(setWalletTransactionPassword);
   const revealPhrase = useServerFn(revealRecoveryPhrase);
+  const loadWalletSecurityStatus = useServerFn(getWalletSecurityStatus);
   const refreshBalance = useServerFn(refreshWalletBalance);
   const loadPaymentMethods = useServerFn(listPaymentMethods);
   const saveUpi = useServerFn(saveUpiMethod);
@@ -518,6 +552,11 @@ function TelegramMiniApp() {
   const [locale, setLocale] = useState<MiniLocale>(() => {
     if (typeof window === "undefined") return "en";
     return normalizeMiniLocale(window.localStorage.getItem(MINI_LOCALE_STORAGE_KEY));
+  });
+  const [theme, setTheme] = useState<MiniThemePreference>(() => {
+    if (typeof window === "undefined") return "system";
+    const stored = window.localStorage.getItem(MINI_THEME_STORAGE_KEY);
+    return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
   });
   const [authMode, setAuthMode] = useState<"login" | "register">(
     search.auth as "login" | "register",
@@ -579,7 +618,10 @@ function TelegramMiniApp() {
     address: string;
   } | null>(null);
   const [walletPassword, setWalletPassword] = useState("");
+  const [walletCurrentPassword, setWalletCurrentPassword] = useState("");
   const [walletPasswordConfirm, setWalletPasswordConfirm] = useState("");
+  const [transactionPasswordEnabled, setTransactionPasswordEnabled] = useState(false);
+  const [transactionPasswordChangeOpen, setTransactionPasswordChangeOpen] = useState(false);
   const [importPhrase, setImportPhrase] = useState("");
   const [backupPassword, setBackupPassword] = useState("");
   const [revealedPhrase, setRevealedPhrase] = useState("");
@@ -605,6 +647,13 @@ function TelegramMiniApp() {
   const primaryTab = tabForScreen(screen);
   const t = useMemo(() => createMiniT(locale), [locale]);
   const isRtl = isMiniRtl(locale);
+  const appliedTheme = useMemo(() => {
+    const systemDark =
+      typeof window === "undefined"
+        ? true
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return resolveMiniTheme(theme, systemDark);
+  }, [theme]);
   const platformBalance = Number(profile?.balance ?? 0);
   const lockedBalance = Number(profile?.locked_balance ?? 0);
   const pendingBalance = Number(profile?.pending_balance ?? 0);
@@ -615,6 +664,11 @@ function TelegramMiniApp() {
   const activeUpiMethods = paymentMethods.filter(
     (method) => method.kind === "upi" && (method.status ?? "active") === "active",
   );
+  const activePayoutMethods = paymentMethods.filter(
+    (method) =>
+      ["upi", "bank"].includes(String(method.kind ?? "")) &&
+      (method.status ?? "active") === "active",
+  );
   const selectedDirectSell =
     directSellOrders.find((order) => order.id === selectedDirectSellId) ??
     (createdDirectSell
@@ -622,6 +676,7 @@ function TelegramMiniApp() {
           id: createdDirectSell.order_id,
           order_ref: createdDirectSell.order_ref,
           deposit_request_id: createdDirectSell.deposit_request_id,
+          payment_method_id: selectedPaymentMethodId,
           expected_usdt: createdDirectSell.amount_usdt ?? directSellAmount,
           expected_inr: createdDirectSell.expected_inr,
           assigned_company_address: createdDirectSell.wallet_address,
@@ -632,6 +687,11 @@ function TelegramMiniApp() {
     paymentMethods.find((method) => method.id === selectedPaymentMethodId) ??
     paymentMethods.find((method) => method.is_default) ??
     paymentMethods[0] ??
+    null;
+  const selectedActivePayout =
+    activePayoutMethods.find((method) => method.id === selectedPaymentMethodId) ??
+    activePayoutMethods.find((method) => method.is_default) ??
+    activePayoutMethods[0] ??
     null;
   const selectedActiveUpi =
     activeUpiMethods.find((method) => method.id === selectedPaymentMethodId) ??
@@ -648,6 +708,7 @@ function TelegramMiniApp() {
       analyticsResult,
       historyResult,
       referralResult,
+      securityResult,
     ] = await Promise.allSettled([
       loadHome({ data: { initData: launch } }),
       loadWallet({ data: { initData: launch } }),
@@ -656,6 +717,7 @@ function TelegramMiniApp() {
       loadAnalytics({ data: { range: "30d" } }),
       loadTradeHistory(),
       loadReferral(),
+      loadWalletSecurityStatus(),
     ]);
     if (homeResult.status === "fulfilled") setOverview(homeResult.value as unknown as Overview);
     if (walletResult.status === "fulfilled") {
@@ -682,6 +744,10 @@ function TelegramMiniApp() {
     if (historyResult.status === "fulfilled")
       setTradeHistory((historyResult.value ?? []) as unknown[]);
     if (referralResult.status === "fulfilled") setReferral(referralResult.value as ReferralSummary);
+    if (securityResult.status === "fulfilled") {
+      setTransactionPasswordEnabled(Boolean(securityResult.value.transactionPasswordEnabled));
+      setTransactionPasswordChangeOpen(false);
+    }
     if (tabForScreen(nextScreen) === "p2p") {
       const p2p = await loadP2p({ data: { initData: launch } });
       setAds((p2p.marketplace ?? []) as AdRow[]);
@@ -781,6 +847,11 @@ function TelegramMiniApp() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(MINI_LOCALE_STORAGE_KEY, locale);
   }, [locale]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(MINI_THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!initData || !linked) return;
@@ -1007,14 +1078,14 @@ function TelegramMiniApp() {
       toast.error("Enter a valid USDT amount");
       return;
     }
-    if (!selectedActiveUpi?.id) {
-      toast.error("Add UPI ID first");
+    if (!selectedActivePayout?.id) {
+      toast.error("Add payout method first");
       return;
     }
     setBusy(true);
     try {
       const order = await createDirectSell({
-        data: { amount, paymentMethodId: selectedActiveUpi.id },
+        data: { amount, paymentMethodId: selectedActivePayout.id },
       });
       toast.success(`WTRON sell order ${order.order_ref ?? order.order_id} created`);
       const created = { ...order, amount_usdt: amount } as DirectSellOrderCreated;
@@ -1151,25 +1222,28 @@ function TelegramMiniApp() {
       toast.error("Passwords do not match");
       return;
     }
+    if (transactionPasswordEnabled && !walletCurrentPassword) {
+      toast.error("Current transaction password is required");
+      return;
+    }
     setBusy(true);
     try {
-      await setMiniTransactionPassword({ data: { password: walletPassword } });
+      await setMiniTransactionPassword({
+        data: {
+          password: walletPassword,
+          ...(transactionPasswordEnabled ? { currentPassword: walletCurrentPassword } : {}),
+        },
+      });
+      setTransactionPasswordEnabled(true);
+      setTransactionPasswordChangeOpen(false);
+      setWalletCurrentPassword("");
       setWalletPassword("");
       setWalletPasswordConfirm("");
       toast.success("Transaction password saved");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save password");
+      toast.error(friendlyMiniError(error, "Could not save password"));
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function ensurePasswordForWalletAction(passwordValue: string) {
-    try {
-      await setMiniTransactionPassword({ data: { password: passwordValue } });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (!message.toLowerCase().includes("incorrect")) throw error;
     }
   }
 
@@ -1181,7 +1255,6 @@ function TelegramMiniApp() {
     }
     setBusy(true);
     try {
-      await ensurePasswordForWalletAction(walletPassword);
       const created = await createPersonalWallet({
         data: {
           name: createWalletName,
@@ -1199,7 +1272,7 @@ function TelegramMiniApp() {
       await refresh("wallet-detail");
       setScreen("wallet-detail");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create wallet");
+      toast.error(friendlyMiniError(error, "Could not create wallet"));
     } finally {
       setBusy(false);
     }
@@ -1209,7 +1282,6 @@ function TelegramMiniApp() {
     event.preventDefault();
     setBusy(true);
     try {
-      await ensurePasswordForWalletAction(walletPassword);
       const imported = await importPersonalWallet({
         data: {
           name: createWalletName,
@@ -1237,13 +1309,13 @@ function TelegramMiniApp() {
       setImportNetworkRequired(null);
       toast.success(
         (imported as { existing?: boolean }).existing
-          ? "Existing wallet opened"
+          ? "Wallet already exists. Existing wallet opened."
           : "Wallet imported",
       );
       await refresh("wallet-detail");
       setScreen("wallet-detail");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not import wallet");
+      toast.error(friendlyMiniError(error, "Could not import wallet"));
     } finally {
       setBusy(false);
     }
@@ -1352,7 +1424,7 @@ function TelegramMiniApp() {
 
   if (loading || !launchChecked) {
     return (
-      <MiniFrame locale={locale}>
+      <MiniFrame locale={locale} theme={appliedTheme}>
         <div className="grid min-h-[70vh] place-items-center text-center">
           <div>
             <WtronMark className="mx-auto h-14 w-14" />
@@ -1366,7 +1438,7 @@ function TelegramMiniApp() {
 
   if (!initData) {
     return (
-      <MiniFrame locale={locale}>
+      <MiniFrame locale={locale} theme={appliedTheme}>
         <EmptyState
           icon={ShieldCheck}
           title="Open WTRON through @wtron_bot"
@@ -1386,7 +1458,7 @@ function TelegramMiniApp() {
 
   if (bootstrapError) {
     return (
-      <MiniFrame locale={locale}>
+      <MiniFrame locale={locale} theme={appliedTheme}>
         <EmptyState
           icon={ShieldCheck}
           title="Session expired"
@@ -1403,7 +1475,7 @@ function TelegramMiniApp() {
 
   if (!linked) {
     return (
-      <MiniFrame locale={locale}>
+      <MiniFrame locale={locale} theme={appliedTheme}>
         <AuthScreen
           authMode={authMode}
           setAuthMode={setAuthMode}
@@ -1421,7 +1493,7 @@ function TelegramMiniApp() {
   }
 
   return (
-    <MiniFrame locale={locale}>
+    <MiniFrame locale={locale} theme={appliedTheme}>
       <div className="space-y-5 pb-28">
         <MiniHeader
           profile={profile}
@@ -1646,6 +1718,11 @@ function TelegramMiniApp() {
             onCopy={(value) => copyText(value, "Address copied")}
             onConfirm={(itemId) => void confirmDirectSellPayment(itemId)}
             onDispute={(itemId) => void disputeDirectSellPayment(itemId)}
+            paymentMethod={
+              paymentMethods.find(
+                (method) => method.id === selectedDirectSell?.payment_method_id,
+              ) ?? selectedActivePayout
+            }
           />
         ) : null}
         {screen === "send" ? (
@@ -1698,7 +1775,16 @@ function TelegramMiniApp() {
             onAddPayment={() => void navigate("bank-accounts")}
           />
         ) : null}
-        {screen === "more" ? <MoreScreen onNavigate={navigate} /> : null}
+        {screen === "more" ? (
+          <MoreScreen
+            onNavigate={navigate}
+            locale={locale}
+            setLocale={setLocale}
+            theme={theme}
+            setTheme={setTheme}
+            t={t}
+          />
+        ) : null}
         {screen === "orders" ? (
           <OrdersScreen
             orders={overview?.orders ?? []}
@@ -1742,6 +1828,11 @@ function TelegramMiniApp() {
         {screen === "security" ? (
           <SecurityScreen
             wallets={wallets}
+            enabled={transactionPasswordEnabled}
+            changing={transactionPasswordChangeOpen}
+            setChanging={setTransactionPasswordChangeOpen}
+            currentPassword={walletCurrentPassword}
+            setCurrentPassword={setWalletCurrentPassword}
             password={walletPassword}
             setPassword={setWalletPassword}
             confirm={walletPasswordConfirm}
@@ -1756,17 +1847,28 @@ function TelegramMiniApp() {
         ) : null}
         {screen === "referral" ? <ReferralScreen summary={referral} /> : null}
       </div>
-      <BottomNav tab={primaryTab} setTab={(next) => void navigate(next)} />
+      <BottomNav tab={primaryTab} setTab={(next) => void navigate(next)} t={t} />
     </MiniFrame>
   );
 }
 
-function MiniFrame({ children, locale }: { children: React.ReactNode; locale: MiniLocale }) {
+function MiniFrame({
+  children,
+  locale,
+  theme,
+}: {
+  children: React.ReactNode;
+  locale: MiniLocale;
+  theme: "light" | "dark";
+}) {
   return (
     <div
       lang={locale}
       dir={isMiniRtl(locale) ? "rtl" : "ltr"}
-      className="min-h-screen overflow-x-hidden bg-[#05070B] text-white antialiased"
+      data-mini-theme={theme}
+      className={`min-h-screen overflow-x-hidden antialiased ${
+        theme === "light" ? "bg-[#F7F9FC] text-slate-950" : "bg-[#05070B] text-white"
+      }`}
     >
       <div className="mx-auto min-h-screen max-w-md px-4 pt-[max(env(safe-area-inset-top),0.75rem)]">
         {children}
@@ -3211,17 +3313,11 @@ function P2pScreen(props: {
           })}
           {props.paymentMethods.length ? (
             <FormField label="Saved UPI">
-              <select
-                className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
-                value={props.selectedPaymentMethodId}
-                onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
-              >
-                {props.paymentMethods.map((method) => (
-                  <option key={method.id} value={method.id}>
-                    {method.label || method.upi_id || "Saved UPI"}
-                  </option>
-                ))}
-              </select>
+              <PaymentMethodPicker
+                methods={props.paymentMethods}
+                selectedId={props.selectedPaymentMethodId}
+                setSelectedId={props.setSelectedPaymentMethodId}
+              />
             </FormField>
           ) : (
             <CompactEmpty
@@ -3301,17 +3397,11 @@ function TradeScreen(props: {
               </FormField>
               {props.paymentMethods.length ? (
                 <FormField label="Payout account">
-                  <select
-                    className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
-                    value={props.selectedPaymentMethodId}
-                    onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
-                  >
-                    {props.paymentMethods.map((method) => (
-                      <option key={method.id} value={method.id}>
-                        {method.label || method.upi_id || "Saved UPI"}
-                      </option>
-                    ))}
-                  </select>
+                  <PaymentMethodPicker
+                    methods={props.paymentMethods}
+                    selectedId={props.selectedPaymentMethodId}
+                    setSelectedId={props.setSelectedPaymentMethodId}
+                  />
                 </FormField>
               ) : (
                 <CompactEmpty
@@ -3374,22 +3464,36 @@ function TradeScreen(props: {
   );
 }
 
-function MoreScreen({ onNavigate }: { onNavigate: (screen: MiniScreen) => Promise<void> }) {
+function MoreScreen({
+  onNavigate,
+  locale,
+  setLocale,
+  theme,
+  setTheme,
+  t,
+}: {
+  onNavigate: (screen: MiniScreen) => Promise<void>;
+  locale: MiniLocale;
+  setLocale: (locale: MiniLocale) => void;
+  theme: MiniThemePreference;
+  setTheme: (theme: MiniThemePreference) => void;
+  t: MiniT;
+}) {
   const sections: Array<[string, Array<[MiniScreen, string, string, MiniIcon]>]> = [
     [
-      "Account",
+      t("profile"),
       [
-        ["profile", "Profile", "Name, Telegram and account ID", MiniIcons.profile],
-        ["notifications", "Notifications", "Wallet and order alerts", MiniIcons.notifications],
-        ["security", "Security", "Transaction password and backup", MiniIcons.security],
+        ["profile", t("profile"), "Name, Telegram and account ID", MiniIcons.profile],
+        ["notifications", t("notifications"), "Wallet and order alerts", MiniIcons.notifications],
+        ["security", t("security"), "Transaction password and backup", MiniIcons.security],
       ],
     ],
     [
-      "Payments",
+      t("payments"),
       [
-        ["bank-accounts", "Bank Accounts / UPI", "Manage receiving accounts", MiniIcons.bank],
-        ["orders", "Orders", "P2P and WTRON order status", MiniIcons.orders],
-        ["history", "History", "Company and vendor trade history", MiniIcons.history],
+        ["bank-accounts", t("bankAccounts"), "Manage receiving accounts", MiniIcons.bank],
+        ["orders", t("orders"), "P2P and WTRON order status", MiniIcons.orders],
+        ["history", t("history"), "Company and vendor trade history", MiniIcons.history],
       ],
     ],
     [
@@ -3410,6 +3514,37 @@ function MoreScreen({ onNavigate }: { onNavigate: (screen: MiniScreen) => Promis
   ];
   return (
     <Screen title="More" subtitle="Account, trading and security tools" compact>
+      <Section title={t("preferences")}>
+        <Surface className="space-y-4 p-4">
+          <div>
+            <p className="text-sm font-semibold">{t("appearance")}</p>
+            <SegmentedControl
+              value={theme}
+              setValue={(value) => setTheme(value as MiniThemePreference)}
+              items={[
+                ["system", t("system")],
+                ["light", t("light")],
+                ["dark", t("dark")],
+              ]}
+            />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Language</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {Object.entries(MINI_LOCALE_LABELS).map(([key, label]) => (
+                <Button
+                  key={key}
+                  type="button"
+                  variant={locale === key ? "default" : "secondary"}
+                  onClick={() => setLocale(key as MiniLocale)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </Surface>
+      </Section>
       {sections.map(([title, items]) => (
         <Section key={title} title={title}>
           {items.map(([screen, label, body, Icon]) => (
@@ -3647,6 +3782,11 @@ function NotificationsScreen({
 
 function SecurityScreen({
   wallets,
+  enabled,
+  changing,
+  setChanging,
+  currentPassword,
+  setCurrentPassword,
   password,
   setPassword,
   confirm,
@@ -3656,6 +3796,11 @@ function SecurityScreen({
   onWalletBackup,
 }: {
   wallets: WalletRow[];
+  enabled: boolean;
+  changing: boolean;
+  setChanging: (value: boolean) => void;
+  currentPassword: string;
+  setCurrentPassword: (value: string) => void;
   password: string;
   setPassword: (value: string) => void;
   confirm: string;
@@ -3664,29 +3809,56 @@ function SecurityScreen({
   onSubmit: (event: FormEvent) => void;
   onWalletBackup: (wallet: WalletRow) => void;
 }) {
+  const showForm = !enabled || changing;
   return (
     <Screen title="Security" subtitle="Login, transaction password and wallet backup">
-      <form
-        className="space-y-3 rounded-3xl border border-white/10 bg-white/6 p-4"
-        onSubmit={onSubmit}
-      >
-        <h2 className="font-semibold">Transaction Password</h2>
-        <Input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="Password"
-        />
-        <Input
-          type="password"
-          value={confirm}
-          onChange={(event) => setConfirm(event.target.value)}
-          placeholder="Confirm password"
-        />
-        <Button className="w-full bg-blue-600" disabled={busy}>
-          Save Password
-        </Button>
-      </form>
+      <Surface className="space-y-3 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Transaction Password</h2>
+            <p className="text-sm text-slate-400">{enabled ? "Enabled" : "Not set"}</p>
+          </div>
+          {enabled && !changing ? (
+            <Button type="button" variant="secondary" onClick={() => setChanging(true)}>
+              Change Password
+            </Button>
+          ) : null}
+        </div>
+        {showForm ? (
+          <form className="space-y-3" onSubmit={onSubmit}>
+            {enabled ? (
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                placeholder="Current transaction password"
+              />
+            ) : null}
+            <Input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="New transaction password"
+            />
+            <Input
+              type="password"
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+              placeholder="Confirm new transaction password"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              {enabled ? (
+                <Button type="button" variant="secondary" onClick={() => setChanging(false)}>
+                  Cancel
+                </Button>
+              ) : null}
+              <Button className="bg-blue-600" disabled={busy}>
+                {enabled ? "Update Password" : "Set Password"}
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Surface>
       <Section title="Wallet Backup Status">
         {wallets.length ? (
           wallets.map((wallet) => (
@@ -3826,10 +3998,8 @@ function BankAccountsScreen(props: {
         {props.methods.length ? (
           props.methods.map((method) => (
             <div key={method.id} className="rounded-2xl border border-white/10 bg-white/6 p-4">
-              <p className="font-semibold">
-                {method.label || method.upi_id || method.bank_name || method.kind}
-              </p>
-              <p className="text-sm text-slate-400">
+              <PaymentMethodSummary method={method} />
+              <p className="mt-2 text-xs text-slate-500">
                 {method.kind.toUpperCase()} {method.is_default ? "- Default" : ""}
               </p>
               <div className="mt-3 flex gap-2">
@@ -4087,6 +4257,69 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
       <span className="text-xs font-medium text-slate-500">{label}</span>
       {children}
     </label>
+  );
+}
+function PaymentMethodSummary({ method }: { method: PaymentMethodRow | null | undefined }) {
+  if (!method) return <EmptyLine>No payout method selected.</EmptyLine>;
+  const display = paymentMethodDisplay(method);
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/6 p-3">
+      <p className="text-sm font-semibold">{display.title}</p>
+      <div className="mt-2 space-y-1 text-xs text-slate-400">
+        {display.lines.map((line) => (
+          <p
+            key={line}
+            dir={line.includes("@") || /\d/.test(line) ? technicalTextDirection() : undefined}
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+function PaymentMethodPicker({
+  methods,
+  selectedId,
+  setSelectedId,
+}: {
+  methods: PaymentMethodRow[];
+  selectedId: string;
+  setSelectedId: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {methods.map((method) => {
+        const display = paymentMethodDisplay(method);
+        return (
+          <button
+            key={method.id}
+            type="button"
+            className={`w-full rounded-2xl border p-3 text-left ${
+              selectedId === method.id
+                ? "border-blue-500 bg-blue-600/15"
+                : "border-white/10 bg-white/6"
+            }`}
+            onClick={() => setSelectedId(method.id)}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold">{display.title}</p>
+              {method.is_default ? <span className="text-xs text-blue-300">Default</span> : null}
+            </div>
+            <div className="mt-2 space-y-1 text-xs text-slate-400">
+              {display.lines.map((line) => (
+                <p
+                  key={line}
+                  dir={line.includes("@") || /\d/.test(line) ? technicalTextDirection() : undefined}
+                >
+                  {line}
+                </p>
+              ))}
+            </div>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 function FormCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -4584,6 +4817,7 @@ function VendorCard({ listing, onBuy }: { listing: VendorListingRow; onBuy: () =
 function DirectSellDetailScreen(props: {
   order: DirectSellOrderRow | null;
   items: DirectSellPaymentItemRow[];
+  paymentMethod: PaymentMethodRow | null | undefined;
   qr: string;
   busy: boolean;
   onCopy: (value: string) => void;
@@ -4671,6 +4905,10 @@ function DirectSellDetailScreen(props: {
               </div>
             ) : null}
           </div>
+
+          <Section title="Selected Payout Method">
+            <PaymentMethodSummary method={props.paymentMethod} />
+          </Section>
 
           <Section title="Blockchain Status">
             <div className="grid grid-cols-4 gap-2">
@@ -4943,13 +5181,21 @@ function MiniChart({ rows }: { rows: { date: string; usdt: number }[] }) {
     </div>
   );
 }
-function BottomNav({ tab, setTab }: { tab: PrimaryTab; setTab: (tab: PrimaryTab) => void }) {
+function BottomNav({
+  tab,
+  setTab,
+  t,
+}: {
+  tab: PrimaryTab;
+  setTab: (tab: PrimaryTab) => void;
+  t: MiniT;
+}) {
   const items: Array<[PrimaryTab, string, MiniIcon]> = [
-    ["home", "Home", CircleDollarSign],
+    ["home", t("home"), CircleDollarSign],
     ["p2p", "P2P", MiniIcons.p2p],
-    ["trade", "Trade", MiniIcons.swap],
-    ["wallet", "Wallet", MiniIcons.wallet],
-    ["more", "More", MoreHorizontal],
+    ["trade", t("trade"), MiniIcons.swap],
+    ["wallet", t("wallet"), MiniIcons.wallet],
+    ["more", t("more"), MoreHorizontal],
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 bg-[#05070B]/94 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-xl">

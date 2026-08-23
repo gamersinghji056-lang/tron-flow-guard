@@ -720,7 +720,7 @@ export async function fetchTelegramOverview(initData: string) {
     supabaseAdmin
       .from("direct_sell_orders" as never)
       .select(
-        "id, order_ref, deposit_request_id, expected_usdt, received_usdt, expected_inr, locked_rate_inr, status, assigned_company_address, txid, confirmations, required_confirmations, expires_at, created_at",
+        "id, order_ref, deposit_request_id, payment_method_id, expected_usdt, received_usdt, expected_inr, locked_rate_inr, status, assigned_company_address, txid, confirmations, required_confirmations, expires_at, created_at",
       )
       .eq("user_id", userId as never)
       .order("created_at", { ascending: false })

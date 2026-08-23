@@ -93,6 +93,9 @@ export async function createAndBroadcastPersonalSend(input: {
   const network = wallet.network as ChainNetwork;
   const estimatedNetworkFeeTrx =
     input.asset === "USDT" ? USDT_TRX_REQUIREMENT : TRX_TRANSFER_REQUIREMENT;
+  const { readTransferFee } = await import("@/lib/wallets.server");
+  const platformFee = await readTransferFee();
+  const totalDebit = input.asset === "USDT" ? input.amount + platformFee : input.amount;
 
   const { data: request, error: requestError } = await supabaseAdmin
     .from("wallet_send_requests" as never)
@@ -106,10 +109,14 @@ export async function createAndBroadcastPersonalSend(input: {
       to_address: input.toAddress.trim(),
       amount: input.amount,
       estimated_network_fee_trx: estimatedNetworkFeeTrx,
-      platform_fee: 0,
-      total_debit: input.amount,
+      platform_fee: platformFee,
+      total_debit: totalDebit,
       status: "CREATED",
-      metadata: { memo: input.memo ?? null, signer_boundary: "server_module_v1" },
+      metadata: {
+        memo: input.memo ?? null,
+        signer_boundary: "server_module_v1",
+        platform_fee_currency: "USDT",
+      },
     } as never)
     .select("*")
     .single();
@@ -120,6 +127,20 @@ export async function createAndBroadcastPersonalSend(input: {
     throw new Error(requestError.message);
   }
   const requestId = (request as { id: string }).id;
+
+  await supabaseAdmin.rpc(
+    "record_fee_liability" as never,
+    {
+      _source: "wallet_send_request",
+      _order_id: null,
+      _user_id: input.userId,
+      _vendor_id: null,
+      _fee_type: "wallet_send_platform_fee",
+      _amount: platformFee,
+      _currency: "USDT",
+      _idempotency_key: `wallet-send:${requestId}:platform-fee`,
+    } as never,
+  );
 
   try {
     assertSigningSwitches({
@@ -137,11 +158,14 @@ export async function createAndBroadcastPersonalSend(input: {
     const balances = await refreshPersonalWalletOnChainBalance(input.userId, input.walletId);
     assertSufficientBalance({
       asset: input.asset,
-      amount: input.amount,
+      amount: input.asset === "USDT" ? input.amount + platformFee : input.amount,
       usdtBalance: balances.balance,
       trxBalance: balances.trxBalance,
       estimatedTrxRequired: estimatedNetworkFeeTrx,
     });
+    if (input.asset === "TRX" && platformFee > balances.balance) {
+      throw new Error("Insufficient USDT balance for the WTRON platform fee");
+    }
 
     const { data: secret, error: secretError } = await supabaseAdmin
       .from("personal_wallet_secrets" as never)

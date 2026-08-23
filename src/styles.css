@@ -181,3 +181,49 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+[data-mini-theme="light"] {
+  color-scheme: light;
+}
+
+[data-mini-theme="light"] .bg-\[\#05070B\],
+[data-mini-theme="light"] .bg-\[\#05070B\]\/92,
+[data-mini-theme="light"] .bg-\[\#05070B\]\/94 {
+  background-color: rgb(247 249 252 / 0.94) !important;
+}
+
+[data-mini-theme="light"] .bg-\[\#0D121C\],
+[data-mini-theme="light"] .bg-\[\#0D121C\]\/95,
+[data-mini-theme="light"] .bg-\[\#111A29\],
+[data-mini-theme="light"] .bg-white\/4,
+[data-mini-theme="light"] .bg-white\/5,
+[data-mini-theme="light"] .bg-white\/6,
+[data-mini-theme="light"] .bg-white\/8,
+[data-mini-theme="light"] .bg-black\/20,
+[data-mini-theme="light"] .bg-black\/30,
+[data-mini-theme="light"] .bg-black\/40 {
+  background-color: rgb(255 255 255 / 0.98) !important;
+}
+
+[data-mini-theme="light"] .border-white\/10 {
+  border-color: rgb(226 232 240 / 1) !important;
+}
+
+[data-mini-theme="light"] .text-white,
+[data-mini-theme="light"] .text-slate-100,
+[data-mini-theme="light"] .text-slate-200,
+[data-mini-theme="light"] .text-slate-300 {
+  color: rgb(15 23 42 / 1) !important;
+}
+
+[data-mini-theme="light"] .text-slate-400,
+[data-mini-theme="light"] .text-slate-500 {
+  color: rgb(100 116 139 / 1) !important;
+}
+
+[data-mini-theme="light"] input,
+[data-mini-theme="light"] textarea,
+[data-mini-theme="light"] select {
+  background-color: rgb(255 255 255 / 1) !important;
+  color: rgb(15 23 42 / 1) !important;
+}

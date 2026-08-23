@@ -56,14 +56,18 @@ import {
   importedMnemonicWalletType,
   miniWalletBackScreen,
   miniWalletHistoryMerge,
+  maskBankAccount,
   newestFirstMiniWalletTransactions,
+  paymentMethodDisplay,
   preserveWalletTypeForExplicitCreation,
+  resolveMiniTheme,
   walletGasfreePresentation,
   walletResourceTotals,
   walletAssetBalances,
   walletBottomTab,
   walletHistoryNavigationTarget,
   walletTypeAndGasfreeCapabilityAreIndependent,
+  walletImportOutcome,
 } from "./mini-wallet-ui.ts";
 import {
   createMiniT,
@@ -74,6 +78,7 @@ import {
 import {
   hashTransactionPassword,
   shouldLockTransactionPassword,
+  transactionPasswordHashFormat,
   verifyTransactionPasswordHash,
 } from "./transaction-password.ts";
 import {
@@ -839,6 +844,62 @@ describe("Mini App wallet UX routing and classification", () => {
     assert.equal(preserveWalletTypeForExplicitCreation("gasfree"), "gasfree");
     assert.equal("trc20-mainnet", "trc20-mainnet");
   });
+  it("translates common Mini App shell labels into Chinese", () => {
+    const zh = createMiniT("zh");
+    assert.equal(zh("home"), "首页");
+    assert.equal(zh("trade"), "交易");
+    assert.equal(zh("profile"), "个人资料");
+    assert.equal(zh("notifications"), "通知");
+    assert.equal(zh("orders"), "订单");
+    assert.equal(zh("bankAccounts"), "银行账户");
+    assert.equal(zh("directSell"), "直接出售");
+  });
+
+  it("resolves persisted Mini App theme preferences", () => {
+    assert.equal(resolveMiniTheme("system", true), "dark");
+    assert.equal(resolveMiniTheme("system", false), "light");
+    assert.equal(resolveMiniTheme("light", true), "light");
+    assert.equal(resolveMiniTheme("dark", false), "dark");
+  });
+
+  it("shows full UPI and masked bank payout details", () => {
+    assert.deepEqual(
+      paymentMethodDisplay({
+        kind: "upi",
+        label: "Test",
+        upi_id: "abc@upi",
+        holder_name: "John",
+      }),
+      { title: "Test", lines: ["UPI • abc@upi", "John"] },
+    );
+    assert.equal(maskBankAccount("12345678901234"), "••••1234");
+    assert.deepEqual(
+      paymentMethodDisplay({
+        kind: "bank",
+        label: "Savings",
+        bank_name: "Axis Bank",
+        holder_name: "John",
+        account_number: "12345678901234",
+        ifsc: "UTIB0000001",
+        supported_rails: ["imps", "neft"],
+      }),
+      {
+        title: "Savings",
+        lines: ["Axis Bank", "John", "Account ••••1234", "IFSC UTIB0000001", "IMPS, NEFT"],
+      },
+    );
+  });
+
+  it("keeps duplicate wallet import idempotent and cross-user safe", () => {
+    assert.deepEqual(walletImportOutcome("same-user", true), {
+      action: "open-existing",
+      message: "Wallet already exists. Existing wallet opened.",
+      insert: false,
+    });
+    assert.equal(walletImportOutcome("same-user", true).insert, false);
+    assert.equal(walletImportOutcome("none", true).insert, true);
+    assert.equal(walletImportOutcome("other-user", true).action, "deny-cross-user");
+  });
 });
 
 describe("transaction password primitives", () => {
@@ -853,6 +914,16 @@ describe("transaction password primitives", () => {
       true,
     );
     assert.equal(verifyTransactionPasswordHash("wrong", hashed.salt, hashed.passwordHash), false);
+  });
+
+  it("keeps malformed legacy hashes from validating or crashing", () => {
+    const hashed = hashTransactionPassword("correct horse battery staple");
+    assert.equal(
+      transactionPasswordHashFormat(hashed.salt, hashed.passwordHash),
+      "scrypt-base64url-v1",
+    );
+    assert.equal(transactionPasswordHashFormat("legacy", "hash"), "unsupported");
+    assert.equal(verifyTransactionPasswordHash("password", "legacy", "hash"), false);
   });
 
   it("locks after repeated failed attempts", () => {

@@ -1,5 +1,6 @@
 export type MiniWalletAssetFilter = "ALL" | "USDT" | "TRX";
 export type MiniWalletDirectionFilter = "ALL" | "in" | "out";
+export type MiniThemePreference = "system" | "light" | "dark";
 
 export interface MiniWalletTransactionLike {
   id: string;
@@ -129,4 +130,74 @@ export function walletResourceTotals(resources: {
     energyLimit: Number(resources.energyLimit ?? 0),
     energyUsed: Number(resources.energyUsed ?? 0),
   };
+}
+
+export function resolveMiniTheme(
+  preference: MiniThemePreference,
+  systemDark: boolean,
+): "light" | "dark" {
+  if (preference === "system") return systemDark ? "dark" : "light";
+  return preference;
+}
+
+export function maskBankAccount(account?: string | null) {
+  const digits = String(account ?? "").replace(/\D/g, "");
+  return digits ? `••••${digits.slice(-4)}` : "••••";
+}
+
+export interface MiniPaymentMethodLike {
+  kind?: string | null;
+  label?: string | null;
+  upi_id?: string | null;
+  holder_name?: string | null;
+  bank_name?: string | null;
+  account_number?: string | null;
+  ifsc?: string | null;
+  supported_rails?: string[] | null;
+}
+
+export function paymentMethodDisplay(method: MiniPaymentMethodLike) {
+  const kind = String(method.kind ?? "").toLowerCase();
+  if (kind === "bank") {
+    const rail = (method.supported_rails ?? []).join(", ").toUpperCase();
+    return {
+      title: method.label || method.bank_name || "Bank account",
+      lines: [
+        method.bank_name || "Bank",
+        method.holder_name || "Account holder",
+        `Account ${maskBankAccount(method.account_number)}`,
+        method.ifsc ? `IFSC ${method.ifsc}` : "IFSC not set",
+        rail || "BANK",
+      ],
+    };
+  }
+  return {
+    title: method.label || method.upi_id || "UPI",
+    lines: [
+      method.upi_id ? `UPI • ${method.upi_id}` : "UPI",
+      method.holder_name || "Account holder",
+    ],
+  };
+}
+
+export function walletImportOutcome(
+  owner: "same-user" | "other-user" | "none",
+  derivedMatches: boolean,
+) {
+  if (owner === "same-user" && derivedMatches) {
+    return {
+      action: "open-existing",
+      message: "Wallet already exists. Existing wallet opened.",
+      insert: false,
+    } as const;
+  }
+  if (owner === "other-user") {
+    return {
+      action: "deny-cross-user",
+      message:
+        "This wallet is already linked to another WTRON account. Contact support to recover access.",
+      insert: false,
+    } as const;
+  }
+  return { action: "insert", message: "Wallet imported", insert: true } as const;
 }

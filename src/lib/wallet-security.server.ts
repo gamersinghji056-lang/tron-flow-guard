@@ -29,7 +29,10 @@ export async function setTransactionPassword(input: {
     .maybeSingle();
 
   if (existing) {
-    await verifyTransactionPasswordOrThrow(input.userId, input.currentPassword ?? "");
+    if (!input.currentPassword) {
+      throw new Error("Current transaction password is required to change it.");
+    }
+    await verifyTransactionPasswordOrThrow(input.userId, input.currentPassword);
   }
 
   const { salt, passwordHash } = hashTransactionPassword(input.password);
@@ -53,6 +56,15 @@ export async function setTransactionPassword(input: {
     body: "Your wallet security password was updated.",
     severity: "info",
   });
+}
+
+export async function ensureTransactionPasswordForWalletAction(userId: string, password: string) {
+  if (await hasTransactionPassword(userId)) {
+    await verifyTransactionPasswordOrThrow(userId, password);
+    return { created: false };
+  }
+  await setTransactionPassword({ userId, password });
+  return { created: true };
 }
 
 export async function verifyTransactionPasswordOrThrow(userId: string, password: string) {
