@@ -58,6 +58,8 @@ import {
   miniWalletHistoryMerge,
   newestFirstMiniWalletTransactions,
   preserveWalletTypeForExplicitCreation,
+  walletGasfreePresentation,
+  walletResourceTotals,
   walletAssetBalances,
   walletBottomTab,
   walletHistoryNavigationTarget,
@@ -736,6 +738,31 @@ describe("Mini App wallet UX routing and classification", () => {
 
   it("shows selected wallet asset balances separately", () => {
     assert.deepEqual(walletAssetBalances(15, 7.954209), { USDT: 15, TRX: 7.954209 });
+  });
+
+  it("presents GasFree as capability without creating a second imported wallet", () => {
+    assert.deepEqual(walletGasfreePresentation("standard", "unavailable"), {
+      walletType: "standard",
+      gasfreeCapability: "unavailable",
+      duplicateWalletRequired: false,
+      claimsSponsorship: false,
+    });
+    assert.equal(walletGasfreePresentation("standard", "available").walletType, "standard");
+    assert.equal(walletGasfreePresentation("standard", "available").claimsSponsorship, true);
+  });
+
+  it("keeps read-only resource display separate from balances", () => {
+    assert.deepEqual(
+      walletResourceTotals({
+        freeBandwidthLimit: 600,
+        freeBandwidthUsed: 120,
+        bandwidthLimit: 400,
+        bandwidthUsed: 80,
+        energyLimit: 1000,
+        energyUsed: 250,
+      }),
+      { bandwidthLimit: 1000, bandwidthUsed: 200, energyLimit: 1000, energyUsed: 250 },
+    );
   });
 
   it("switching wallets changes selected-wallet history source", () => {

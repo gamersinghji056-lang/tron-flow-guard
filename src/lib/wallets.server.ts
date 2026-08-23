@@ -168,7 +168,7 @@ export async function provisionPersonalWallet(params: {
       selected_at: params.makeDefault || isFirst ? new Date().toISOString() : null,
     } as never)
     .select(
-      "id, name, address, network, balance, onchain_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+      "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
     )
     .single();
   if (error) throw new Error(error.message);
@@ -250,7 +250,7 @@ export async function importPersonalWallet(params: {
   const { data: duplicate, error: duplicateError } = await supabaseAdmin
     .from("user_wallets" as never)
     .select(
-      "id, name, address, network, balance, onchain_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+      "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
     )
     .eq("user_id", params.userId as never)
     .eq("address", derived.address as never)
@@ -328,7 +328,7 @@ export async function importPersonalWallet(params: {
       selected_at: params.makeDefault || isFirst ? new Date().toISOString() : null,
     } as never)
     .select(
-      "id, name, address, network, balance, onchain_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
+      "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, derivation_path, created_at",
     )
     .single();
   if (error) throw new Error(error.message);
@@ -456,6 +456,7 @@ export async function archiveOwnedWallet(userId: string, walletId: string) {
 export async function refreshPersonalWalletOnChainBalance(userId: string, walletId: string) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const {
+    getAccountResources,
     getIncomingUsdtTransfers,
     getNativeTrxBalance,
     getNativeTrxTransfers,
@@ -473,14 +474,16 @@ export async function refreshPersonalWalletOnChainBalance(userId: string, wallet
     throw new Error("Wallet not found");
 
   const historyOptions = { limit: 200, paginate: true, maxPages: 20 };
-  const [balance, trxBalance, incoming, outgoing, incomingTrx, outgoingTrx] = await Promise.all([
-    readTrc20Balance(wallet.network, wallet.address),
-    getNativeTrxBalance(wallet.network, wallet.address),
-    getIncomingUsdtTransfers(wallet.network, wallet.address, historyOptions),
-    getOutgoingUsdtTransfers(wallet.network, wallet.address, historyOptions),
-    getNativeTrxTransfers(wallet.network, wallet.address, "in", historyOptions),
-    getNativeTrxTransfers(wallet.network, wallet.address, "out", historyOptions),
-  ]);
+  const [balance, trxBalance, resources, incoming, outgoing, incomingTrx, outgoingTrx] =
+    await Promise.all([
+      readTrc20Balance(wallet.network, wallet.address),
+      getNativeTrxBalance(wallet.network, wallet.address),
+      getAccountResources(wallet.network, wallet.address),
+      getIncomingUsdtTransfers(wallet.network, wallet.address, historyOptions),
+      getOutgoingUsdtTransfers(wallet.network, wallet.address, historyOptions),
+      getNativeTrxTransfers(wallet.network, wallet.address, "in", historyOptions),
+      getNativeTrxTransfers(wallet.network, wallet.address, "out", historyOptions),
+    ]);
   if (balance === null || trxBalance === null) {
     throw new Error("Could not refresh on-chain wallet balances");
   }
@@ -616,7 +619,7 @@ export async function refreshPersonalWalletOnChainBalance(userId: string, wallet
     .eq("id", wallet.id);
   if (updateError) throw new Error(updateError.message);
 
-  return { walletId: wallet.id, balance, trxBalance, checkedAt };
+  return { walletId: wallet.id, balance, trxBalance, resources, checkedAt };
 }
 
 export async function executeTransfer(

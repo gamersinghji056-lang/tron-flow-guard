@@ -101,3 +101,32 @@ export function gasfreeUnavailableClaim(status?: string | null) {
 export function walletAssetBalances(usdt: number, trx: number) {
   return { USDT: usdt, TRX: trx };
 }
+
+export function walletGasfreePresentation(
+  walletType: "standard" | "gasfree",
+  gasfreeStatus?: string | null,
+) {
+  return {
+    walletType,
+    gasfreeCapability: gasfreeCapabilityStatus(gasfreeStatus),
+    duplicateWalletRequired: false,
+    claimsSponsorship: gasfreeCapabilityStatus(gasfreeStatus) !== "unavailable",
+  };
+}
+
+export function walletResourceTotals(resources: {
+  freeBandwidthLimit?: number | null;
+  freeBandwidthUsed?: number | null;
+  bandwidthLimit?: number | null;
+  bandwidthUsed?: number | null;
+  energyLimit?: number | null;
+  energyUsed?: number | null;
+}) {
+  return {
+    bandwidthLimit:
+      Number(resources.freeBandwidthLimit ?? 0) + Number(resources.bandwidthLimit ?? 0),
+    bandwidthUsed: Number(resources.freeBandwidthUsed ?? 0) + Number(resources.bandwidthUsed ?? 0),
+    energyLimit: Number(resources.energyLimit ?? 0),
+    energyUsed: Number(resources.energyUsed ?? 0),
+  };
+}

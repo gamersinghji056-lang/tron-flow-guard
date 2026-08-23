@@ -5,13 +5,20 @@ import {
   Bell,
   ChevronLeft,
   ChevronDown,
+  CircleDollarSign,
+  Copy,
   ExternalLink,
+  FileText,
   Loader2,
+  LogOut,
   MoreHorizontal,
   Plus,
+  QrCode,
+  ScanLine,
   ShieldCheck,
   UserRound,
   Wallet,
+  Zap,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { toast } from "sonner";
@@ -290,6 +297,15 @@ interface WalletRow {
   gas_sponsorship_status?: string | null;
 }
 
+interface WalletResourceSnapshot {
+  freeBandwidthLimit: number;
+  freeBandwidthUsed: number;
+  bandwidthLimit: number;
+  bandwidthUsed: number;
+  energyLimit: number;
+  energyUsed: number;
+}
+
 interface PaymentMethodRow {
   id: string;
   kind: "upi" | "bank";
@@ -433,6 +449,38 @@ function gasfreeStatusLabel(status: string | null | undefined, t: MiniT) {
   return t("unavailable");
 }
 
+function screenTitle(screen: MiniScreen, t: MiniT) {
+  const titles: Partial<Record<MiniScreen, string>> = {
+    home: "Home",
+    p2p: "P2P",
+    trade: "Trade",
+    wallet: t("wallet"),
+    more: t("more"),
+    "wallet-create": t("createWallet"),
+    "wallet-import": t("importWallet"),
+    "wallet-detail": t("wallet"),
+    "wallet-history": t("walletHistory"),
+    "wallet-transaction-detail": t("transactionDetail"),
+    "wallet-asset-detail": t("assets"),
+    "wallet-receive": t("receive"),
+    "wallet-backup": t("backup"),
+    "wallet-more": t("walletInformation"),
+    "wallet-gasfree": "GasFree",
+    "platform-deposit": "Deposit",
+    "direct-sell-detail": "Direct Sell",
+    send: t("send"),
+    orders: "Orders",
+    analytics: "Analytics",
+    "bank-accounts": "Payments",
+    history: "History",
+    profile: "Profile",
+    notifications: "Notifications",
+    security: "Security",
+    referral: "Referral",
+  };
+  return titles[screen] ?? "WTRON";
+}
+
 function TelegramMiniApp() {
   const search = Route.useSearch();
   const verifyLaunch = useServerFn(verifyTelegramMiniApp);
@@ -495,6 +543,8 @@ function TelegramMiniApp() {
   const [tradeHistory, setTradeHistory] = useState<unknown[]>([]);
   const [referral, setReferral] = useState<ReferralSummary | null>(null);
   const [walletTransactions, setWalletTransactions] = useState<TransactionRow[]>([]);
+  const [walletResources, setWalletResources] = useState<WalletResourceSnapshot | null>(null);
+  const [walletResourcesCheckedAt, setWalletResourcesCheckedAt] = useState("");
   const [selectedDirectSellId, setSelectedDirectSellId] = useState("");
   const [createdDirectSell, setCreatedDirectSell] = useState<DirectSellOrderCreated | null>(null);
   const [walletTransactionHasMore, setWalletTransactionHasMore] = useState(false);
@@ -862,9 +912,17 @@ function TelegramMiniApp() {
   }, [selectedWallet?.id, hasSession]);
 
   useEffect(() => {
-    if (screen !== "wallet-detail" || !selectedWallet?.id || !hasSession) return;
+    if (!["wallet", "wallet-detail"].includes(screen) || !selectedWallet?.id || !hasSession) return;
     void refreshBalance({ data: { walletId: selectedWallet.id } }).then(
-      () => void refresh("wallet-detail"),
+      (result) => {
+        const snapshot = result as {
+          resources?: WalletResourceSnapshot | null;
+          checkedAt?: string;
+        };
+        setWalletResources(snapshot.resources ?? null);
+        setWalletResourcesCheckedAt(snapshot.checkedAt ?? new Date().toISOString());
+        return void refresh(screen);
+      },
       () => undefined,
     );
   }, [screen, selectedWallet?.id, hasSession]);
@@ -1194,6 +1252,8 @@ function TelegramMiniApp() {
   async function activateWallet(wallet: WalletRow) {
     if (!wallet.id) return;
     setSelectedWalletId(wallet.id);
+    setWalletResources(null);
+    setWalletResourcesCheckedAt("");
     try {
       await setMiniDefaultWallet({ data: { walletId: wallet.id } });
       await refresh("wallet");
@@ -1207,7 +1267,12 @@ function TelegramMiniApp() {
     if (!selectedWallet?.id) return;
     setBusy(true);
     try {
-      await refreshBalance({ data: { walletId: selectedWallet.id } });
+      const result = (await refreshBalance({ data: { walletId: selectedWallet.id } })) as {
+        resources?: WalletResourceSnapshot | null;
+        checkedAt?: string;
+      };
+      setWalletResources(result.resources ?? null);
+      setWalletResourcesCheckedAt(result.checkedAt ?? new Date().toISOString());
       await refresh("wallet-detail");
       await loadSelectedWalletTransactions(selectedWallet.id, true);
       toast.success(t("walletSyncCompleted"));
@@ -1363,15 +1428,16 @@ function TelegramMiniApp() {
           locale={locale}
           setLocale={setLocale}
           t={t}
+          screen={screen}
+          showInAppBack={
+            typeof window !== "undefined" &&
+            !(window as TelegramWindow).Telegram?.WebApp?.BackButton &&
+            !["home", "p2p", "trade", "wallet", "more"].includes(screen)
+          }
+          onBack={() => setScreen(backScreenFor(screen, transactionBackScreen))}
           onNotifications={() => void navigate("notifications")}
           onProfile={() => void navigate("profile")}
         />
-        {!["home", "p2p", "trade", "wallet", "more"].includes(screen) ? (
-          <BackButton
-            label={t("back")}
-            onClick={() => setScreen(backScreenFor(screen, transactionBackScreen))}
-          />
-        ) : null}
         {screen === "home" ? (
           <HomeScreen
             total={totalAssets}
@@ -1379,10 +1445,12 @@ function TelegramMiniApp() {
             orders={overview?.activeOrders ?? []}
             transactions={overview?.transactions ?? []}
             ads={ads}
+            wallet={selectedWallet}
+            t={t}
             onNavigate={navigate}
           />
         ) : null}
-        {screen === "wallet" ? (
+        {screen === "wallet" && !wallets.length ? (
           <WalletScreen
             wallets={wallets}
             selectedWallet={selectedWallet}
@@ -1424,15 +1492,47 @@ function TelegramMiniApp() {
             onSubmit={submitImportWallet}
           />
         ) : null}
+        {screen === "wallet" && wallets.length ? (
+          <WalletDetailScreen
+            wallet={selectedWallet}
+            wallets={wallets}
+            transactions={walletTransactions}
+            resources={walletResources}
+            resourcesCheckedAt={walletResourcesCheckedAt}
+            busy={busy}
+            t={t}
+            onNavigate={navigate}
+            onSelectWallet={(wallet) => void activateWallet(wallet)}
+            onCreateWallet={() => void navigate("wallet-create")}
+            onImportWallet={() => void navigate("wallet-import")}
+            onManageWallets={() => void navigate("wallet-more")}
+            onSelectAsset={(asset) => {
+              setSelectedWalletAsset(asset);
+              void navigate("wallet-asset-detail");
+            }}
+            onSelectTransaction={(transaction, backTo = "wallet") => {
+              setSelectedWalletTransactionId(transaction.id);
+              setTransactionBackScreen(backTo);
+              void navigate("wallet-transaction-detail");
+            }}
+            onRefresh={() => void refreshSelectedWalletBalance()}
+            onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
+          />
+        ) : null}
         {screen === "wallet-detail" ? (
           <WalletDetailScreen
             wallet={selectedWallet}
             wallets={wallets}
             transactions={walletTransactions}
+            resources={walletResources}
+            resourcesCheckedAt={walletResourcesCheckedAt}
             busy={busy}
             t={t}
             onNavigate={navigate}
             onSelectWallet={(wallet) => void activateWallet(wallet)}
+            onCreateWallet={() => void navigate("wallet-create")}
+            onImportWallet={() => void navigate("wallet-import")}
+            onManageWallets={() => void navigate("wallet-more")}
             onSelectAsset={(asset) => {
               setSelectedWalletAsset(asset);
               void navigate("wallet-asset-detail");
@@ -1666,9 +1766,11 @@ function MiniFrame({ children, locale }: { children: React.ReactNode; locale: Mi
     <div
       lang={locale}
       dir={isMiniRtl(locale) ? "rtl" : "ltr"}
-      className="min-h-screen overflow-x-hidden bg-[#05070B] px-4 pt-4 text-white antialiased"
+      className="min-h-screen overflow-x-hidden bg-[#05070B] text-white antialiased"
     >
-      {children}
+      <div className="mx-auto min-h-screen max-w-md px-4 pt-[max(env(safe-area-inset-top),0.75rem)]">
+        {children}
+      </div>
     </div>
   );
 }
@@ -1678,6 +1780,9 @@ function MiniHeader({
   locale,
   setLocale,
   t,
+  screen,
+  showInAppBack,
+  onBack,
   onNotifications,
   onProfile,
 }: {
@@ -1685,35 +1790,57 @@ function MiniHeader({
   locale: MiniLocale;
   setLocale: (locale: MiniLocale) => void;
   t: MiniT;
+  screen: MiniScreen;
+  showInAppBack: boolean;
+  onBack: () => void;
   onNotifications: () => void;
   onProfile: () => void;
 }) {
+  const isRoot = ["home", "p2p", "trade", "wallet", "more"].includes(screen);
   return (
-    <header className="flex items-center justify-between gap-3 pt-[max(env(safe-area-inset-top),0px)]">
-      <div className="flex items-center gap-3">
-        <WtronMark />
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.18em] text-blue-300 uppercase">
-            WTRON
-          </p>
-          <p className="text-sm text-slate-300">
-            {profile?.full_name || profile?.email || "Trader"}
-          </p>
+    <header className="sticky top-0 z-30 -mx-4 mb-3 flex h-12 items-center justify-between gap-3 bg-[#05070B]/92 px-4 backdrop-blur">
+      {isRoot ? (
+        <button className="flex min-w-0 items-center gap-2 text-left" onClick={onProfile}>
+          <WtronMark className="h-9 w-9 rounded-xl" />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold leading-tight">WTRON</span>
+            <span className="block truncate text-xs text-slate-500">
+              {profile?.full_name || profile?.email || "Trader"}
+            </span>
+          </span>
+        </button>
+      ) : (
+        <div className="flex min-w-0 items-center gap-2">
+          {showInAppBack ? (
+            <button
+              aria-label={t("back")}
+              className="grid h-9 w-9 place-items-center rounded-full bg-white/6 text-slate-200"
+              onClick={onBack}
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          ) : null}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{screenTitle(screen, t)}</p>
+            <p className="text-xs text-slate-500">WTRON</p>
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex items-center gap-2">
-        <select
-          aria-label={t("language")}
-          className="h-10 rounded-full border border-white/10 bg-white/6 px-2 text-xs text-slate-200 outline-none"
-          value={locale}
-          onChange={(event) => setLocale(normalizeMiniLocale(event.target.value))}
-        >
-          {Object.entries(MINI_LOCALE_LABELS).map(([value, label]) => (
-            <option key={value} value={value} className="bg-slate-950">
-              {label}
-            </option>
-          ))}
-        </select>
+        {screen === "profile" || screen === "more" ? (
+          <select
+            aria-label={t("language")}
+            className="h-9 rounded-full border border-white/10 bg-white/6 px-2 text-xs text-slate-200 outline-none"
+            value={locale}
+            onChange={(event) => setLocale(normalizeMiniLocale(event.target.value))}
+          >
+            {Object.entries(MINI_LOCALE_LABELS).map(([value, label]) => (
+              <option key={value} value={value} className="bg-slate-950">
+                {label}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <IconButton icon={Bell} label="Notifications" onClick={onNotifications} />
         <IconButton icon={UserRound} label="Profile" onClick={onProfile} />
       </div>
@@ -1802,6 +1929,8 @@ function HomeScreen({
   orders,
   transactions,
   ads,
+  wallet,
+  t,
   onNavigate,
 }: {
   total: number;
@@ -1809,26 +1938,72 @@ function HomeScreen({
   orders: OrderRow[];
   transactions: TransactionRow[];
   ads: AdRow[];
+  wallet: WalletRow | null;
+  t: MiniT;
   onNavigate: (screen: MiniScreen) => Promise<void>;
 }) {
+  const walletUsdt = walletDisplayBalance(wallet);
+  const walletTrx = Number(wallet?.onchain_trx_balance ?? 0);
   return (
-    <Screen title="Home" subtitle="Wallet, P2P and WTRON trading overview">
-      <AssetCard total={total} profile={profile} />
-      <div className="grid grid-cols-5 gap-2">
-        <Action
-          icon={MiniIcons.receive}
-          label="Receive"
-          onClick={() => onNavigate("wallet-receive")}
-        />
-        <Action icon={MiniIcons.send} label="Send" onClick={() => onNavigate("send")} />
-        <Action
-          icon={MiniIcons.upi}
-          label="Deposit"
-          onClick={() => onNavigate("platform-deposit")}
-        />
-        <Action icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
-        <Action icon={MiniIcons.trade} label="Sell" onClick={() => onNavigate("trade")} />
-      </div>
+    <Screen title="Home" subtitle="Wallet, P2P and WTRON trading overview" compact>
+      <section className="space-y-5 pt-1">
+        <div>
+          <p className="text-sm text-slate-500">Good day</p>
+          <h1 className="mt-1 truncate text-2xl font-semibold tracking-normal">
+            {profile?.full_name || "WTRON Trader"}
+          </h1>
+        </div>
+        <Surface className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs text-slate-500">Platform balance</p>
+              <p className="mt-1 text-3xl font-semibold tabular-nums">{money(total)} USDT</p>
+            </div>
+            <StatusPill label="Live" tone="success" />
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <MiniMetric label="Available" value={money(profile?.balance)} />
+            <MiniMetric label="Locked" value={money(profile?.locked_balance)} />
+            <MiniMetric label="Pending" value={money(profile?.pending_balance)} />
+          </div>
+        </Surface>
+        <Surface className="p-4">
+          <div className="flex items-center justify-between">
+            <SectionHeader
+              title="Personal wallet"
+              action="Open"
+              onAction={() => onNavigate("wallet-detail")}
+            />
+          </div>
+          {wallet ? (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold">{wallet.name ?? "Main Wallet"}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {networkLabelForMini(wallet.network, t)} ·{" "}
+                  {(wallet.wallet_type ?? "standard").toUpperCase()}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-semibold tabular-nums">{money(walletUsdt)} USDT</p>
+                <p className="text-xs text-slate-500 tabular-nums">{money(walletTrx, "TRX")} TRX</p>
+              </div>
+            </div>
+          ) : (
+            <CompactEmpty title="No wallet selected" body="Create or import a TRON wallet." />
+          )}
+        </Surface>
+        <div className="grid grid-cols-4 gap-3">
+          <QuickAction icon={MiniIcons.send} label="Send" onClick={() => onNavigate("send")} />
+          <QuickAction
+            icon={MiniIcons.receive}
+            label="Receive"
+            onClick={() => onNavigate("wallet-receive")}
+          />
+          <QuickAction icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
+          <QuickAction icon={MiniIcons.trade} label="Sell" onClick={() => onNavigate("trade")} />
+        </div>
+      </section>
       <Section title="Active Orders" action="View all" onAction={() => onNavigate("orders")}>
         {orders.length ? (
           orders.slice(0, 3).map((order) => <OrderCard key={order.id} order={order} />)
@@ -2091,10 +2266,15 @@ function WalletDetailScreen({
   wallet,
   wallets,
   transactions,
+  resources,
+  resourcesCheckedAt,
   busy,
   t,
   onNavigate,
   onSelectWallet,
+  onCreateWallet,
+  onImportWallet,
+  onManageWallets,
   onSelectAsset,
   onSelectTransaction,
   onRefresh,
@@ -2103,10 +2283,15 @@ function WalletDetailScreen({
   wallet: WalletRow | null;
   wallets: WalletRow[];
   transactions: TransactionRow[];
+  resources: WalletResourceSnapshot | null;
+  resourcesCheckedAt: string;
   busy: boolean;
   t: MiniT;
   onNavigate: (screen: MiniScreen) => Promise<void>;
   onSelectWallet: (wallet: WalletRow) => void;
+  onCreateWallet: () => void;
+  onImportWallet: () => void;
+  onManageWallets: () => void;
   onSelectAsset: (asset: ReceiveAsset) => void;
   onSelectTransaction: (transaction: TransactionRow, backTo?: MiniScreen) => void;
   onRefresh: () => void;
@@ -2122,96 +2307,134 @@ function WalletDetailScreen({
   const balance = walletDisplayBalance(wallet);
   const typeLabel = (wallet.wallet_type ?? "standard").toUpperCase();
   const gasStatus = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
-  const recentRows = transactions.slice(0, 5);
+  const recentRows = transactions.slice(0, 4);
+  const address = safeAddress(wallet.address);
+  const resourceState = walletResourceDisplay(resources);
   return (
     <Screen title={t("wallet")} subtitle={t("selfCustodyWallet")} compact>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+      <section className="space-y-5">
+        <div className="flex items-start justify-between gap-3">
           <button
             className="flex min-w-0 items-center gap-3 text-left"
             onClick={() => setSelectorOpen(true)}
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/8">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-500/14">
               <Wallet className="h-5 w-5 text-blue-300" />
             </span>
             <span className="min-w-0">
-              <span className="flex items-center gap-1 text-lg font-semibold text-white">
+              <span className="flex items-center gap-1 text-lg font-semibold leading-tight">
                 <span className="truncate">{wallet.name ?? t("wallet")}</span>
-                <ChevronDown className="h-4 w-4 text-slate-400" />
+                <ChevronDown className="h-4 w-4 text-slate-500" />
               </span>
-              <span className="mt-1 flex flex-wrap gap-2 text-xs text-slate-400">
-                <span>{networkLabelForMini(wallet.network, t)}</span>
-                <span>{typeLabel}</span>
+              <span className="mt-1 block text-xs text-slate-500">
+                {networkLabelForMini(wallet.network, t)} • {typeLabel}
               </span>
             </span>
           </button>
-          <button
-            className="grid h-10 w-10 place-items-center rounded-full bg-white/8 text-slate-100"
-            onClick={() => onNavigate("wallet-more")}
-          >
-            <MoreHorizontal className="h-5 w-5" />
-          </button>
-        </div>
-        <button
-          className="mono rounded-full bg-white/6 px-3 py-1 text-xs text-slate-300"
-          dir={technicalTextDirection()}
-          onClick={() => copyText(safeAddress(wallet.address), t("addressCopied"))}
-        >
-          {shortenHash(safeAddress(wallet.address), 8)}
-        </button>
-
-        <button
-          className="flex w-full items-center justify-between rounded-2xl bg-white/5 px-4 py-3 text-left"
-          onClick={() => onNavigate("wallet-gasfree")}
-        >
-          <span className="flex items-center gap-3">
-            <GasFreeIcon className="h-8 w-8" />
-            <span>
-              <span className="block text-sm font-semibold">GasFree</span>
-              <span className="block text-xs text-slate-400">{t("gasfreeCapability")}</span>
-            </span>
-          </span>
-          <span className="text-right text-xs text-slate-300">
-            {gasStatus}
-            <ChevronDown className="ml-1 inline h-3 w-3 -rotate-90" />
-          </span>
-        </button>
-
-        <div className="py-4">
-          <p className="text-xs text-slate-500">{t("portfolioBalance")}</p>
-          <div className="mt-2 grid gap-1">
-            <p className="mono text-4xl font-semibold text-white">{money(balance)} USDT</p>
-            <p className="mono text-base text-slate-300">
-              {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
-            </p>
+          <div className="flex items-center gap-2">
+            <IconButton
+              icon={QrCode}
+              label={t("receive")}
+              onClick={() => onNavigate("wallet-receive")}
+            />
+            <IconButton
+              icon={MoreHorizontal}
+              label={t("more")}
+              onClick={() => onNavigate("wallet-more")}
+            />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <ResourcePill label={t("energy")} value={t("resourceUnavailable")} />
-          <ResourcePill label={t("bandwidth")} value={t("resourceUnavailable")} />
+        <div className="flex items-center justify-between gap-3">
+          <button
+            className="flex min-w-0 items-center gap-2 text-sm text-slate-300"
+            dir={technicalTextDirection()}
+            onClick={() => copyText(address, t("addressCopied"))}
+          >
+            <span className="truncate">{shortenHash(address, 9)}</span>
+            <Copy className="h-4 w-4 text-blue-300" />
+          </button>
+          <button
+            className="flex shrink-0 items-center gap-2 text-sm text-slate-300"
+            onClick={() => onNavigate("wallet-gasfree")}
+          >
+            <span>GasFree</span>
+            <StatusPill
+              label={gasStatus}
+              tone={wallet.gas_sponsorship_status === "available" ? "success" : "muted"}
+            />
+            <ChevronDown className="h-3 w-3 -rotate-90 text-slate-500" />
+          </button>
         </div>
-      </div>
 
-      <div className="grid grid-cols-4 gap-3">
-        <Action
-          icon={MiniIcons.receive}
-          label={t("receive")}
-          onClick={() => onNavigate("wallet-receive")}
-        />
-        <Action icon={MiniIcons.send} label={t("send")} onClick={() => onNavigate("send")} />
-        <Action
-          icon={MiniIcons.history}
-          label={t("history")}
-          onClick={() => onNavigate("wallet-history")}
-        />
-        <Action icon={MoreHorizontal} label={t("more")} onClick={() => onNavigate("wallet-more")} />
-      </div>
-      <Section
-        title={t("tokens")}
-        action={busy ? t("refreshing") : t("refresh")}
-        onAction={onRefresh}
-      >
+        <div className="py-2">
+          <p className="text-xs text-slate-500">{t("portfolioBalance")}</p>
+          <div className="mt-2 space-y-1">
+            {busy ? (
+              <SkeletonLine className="h-10 w-44" />
+            ) : (
+              <>
+                <p className="text-4xl font-semibold tracking-normal tabular-nums">
+                  {money(balance)} USDT
+                </p>
+                <p className="text-base text-slate-400 tabular-nums">
+                  {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3">
+          <QuickAction icon={MiniIcons.send} label={t("send")} onClick={() => onNavigate("send")} />
+          <QuickAction
+            icon={MiniIcons.receive}
+            label={t("receive")}
+            onClick={() => onNavigate("wallet-receive")}
+          />
+          <QuickAction icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
+          <QuickAction
+            icon={MiniIcons.history}
+            label={t("history")}
+            onClick={() => onNavigate("wallet-history")}
+          />
+        </div>
+
+        <Surface className="p-4">
+          <SectionHeader
+            title={t("resources")}
+            action={busy ? t("refreshing") : t("refresh")}
+            onAction={onRefresh}
+          />
+          {resources ? (
+            <div className="mt-3 grid gap-3">
+              <ResourceBar
+                label={t("energy")}
+                used={resourceState.energyUsed}
+                limit={resourceState.energyLimit}
+              />
+              <ResourceBar
+                label={t("bandwidth")}
+                used={resourceState.bandwidthUsed}
+                limit={resourceState.bandwidthLimit}
+              />
+              <p className="text-[11px] text-slate-500">
+                {resourcesCheckedAt
+                  ? `${t("lastUpdated")} ${new Date(resourcesCheckedAt).toLocaleTimeString()}`
+                  : ""}
+              </p>
+            </div>
+          ) : (
+            <div className="mt-3 flex items-center justify-between rounded-2xl bg-white/4 px-3 py-2">
+              <span className="text-xs text-slate-500">{t("resourceUnavailable")}</span>
+              <button className="text-xs text-blue-300" onClick={() => onRefresh()}>
+                {t("refresh")}
+              </button>
+            </div>
+          )}
+        </Surface>
+      </section>
+      <Section title={t("tokens")} action="+" onAction={onRefresh}>
         <AssetRow
           icon={<UsdtIcon />}
           symbol="USDT"
@@ -2235,6 +2458,8 @@ function WalletDetailScreen({
         empty={t("noOnchainWalletActivity")}
         t={t}
         onSelect={(transaction) => onSelectTransaction(transaction)}
+        action={t("viewAll")}
+        onAction={() => onNavigate("wallet-history")}
       />
       {busy ? <p className="text-center text-xs text-slate-500">{t("refreshing")}</p> : null}
       {selectorOpen ? (
@@ -2243,6 +2468,18 @@ function WalletDetailScreen({
           selectedWalletId={wallet.id}
           t={t}
           onClose={() => setSelectorOpen(false)}
+          onCreate={() => {
+            setSelectorOpen(false);
+            onCreateWallet();
+          }}
+          onImport={() => {
+            setSelectorOpen(false);
+            onImportWallet();
+          }}
+          onManage={() => {
+            setSelectorOpen(false);
+            onManageWallets();
+          }}
           onSelect={(nextWallet) => {
             onSelectWallet(nextWallet);
             setSelectorOpen(false);
@@ -2299,7 +2536,7 @@ function WalletHistoryScreen({
   return (
     <Screen title={t("walletHistory")} subtitle={wallet?.name ?? t("selectedWalletSubtitle")}>
       {wallet ? (
-        <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
+        <Surface className="p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="font-semibold">{wallet.name ?? "Wallet"}</p>
@@ -2309,7 +2546,7 @@ function WalletHistoryScreen({
             </div>
             <NetworkBadge wallet={wallet} t={t} />
           </div>
-        </div>
+        </Surface>
       ) : null}
       <Tabs
         value={assetFilter}
@@ -2366,22 +2603,20 @@ function WalletAssetDetailScreen({
   const Icon = asset === "USDT" ? UsdtIcon : TronIcon;
   return (
     <Screen title={asset} subtitle={asset === "USDT" ? `${t("tetherUsd")} / TRC20` : "TRON"}>
-      <div className="rounded-3xl border border-white/10 bg-white/6 p-5">
-        <div className="flex items-center gap-3">
-          <Icon className="h-10 w-10" />
-          <div>
-            <p className="font-semibold">{asset === "USDT" ? t("tetherUsd") : "TRON"}</p>
-            <p className="text-xs text-slate-400">{networkLabelForMini(wallet?.network, t)}</p>
-          </div>
-        </div>
-        <p className="mt-6 text-xs text-slate-400">{t("available")}</p>
-        <p className="mono mt-1 text-3xl font-semibold">
+      <Surface className="p-5 text-center">
+        <Icon className="mx-auto h-14 w-14" />
+        <p className="mt-3 text-xl font-semibold">{asset}</p>
+        <p className="text-sm text-slate-500">
+          {asset === "USDT" ? `${t("tetherUsd")} • TRC20` : "TRON"}
+        </p>
+        <p className="mt-5 text-4xl font-semibold tabular-nums">
           {money(balance, asset)} {asset}
         </p>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Action icon={MiniIcons.send} label={t("send")} onClick={onSend} />
-        <Action icon={MiniIcons.receive} label={t("receive")} onClick={onReceive} />
+        <p className="mt-1 text-xs text-slate-500">{networkLabelForMini(wallet?.network, t)}</p>
+      </Surface>
+      <div className="grid grid-cols-2 gap-3">
+        <QuickAction icon={MiniIcons.send} label={t("send")} onClick={onSend} />
+        <QuickAction icon={MiniIcons.receive} label={t("receive")} onClick={onReceive} />
       </div>
       <Section title={`${asset} ${t("transactions")}`}>
         <WalletTransactionRows rows={assetRows} t={t} onSelect={onSelectTransaction} />
@@ -2416,7 +2651,7 @@ function WalletTransactionDetailScreen({
       title={`${direction} ${transaction.currency ?? "USDT"}`}
       subtitle={networkLabelForMini(wallet.network, t)}
     >
-      <div className="rounded-3xl border border-white/10 bg-white/6 p-5 text-center">
+      <Surface className="p-5 text-center">
         {String(transaction.currency ?? "").toUpperCase() === "TRX" ? (
           <TronIcon className="mx-auto h-12 w-12" />
         ) : (
@@ -2428,25 +2663,46 @@ function WalletTransactionDetailScreen({
           {transaction.currency ?? "USDT"}
         </p>
         <StatusBadge status={transaction.status ?? "completed"} />
-      </div>
+      </Surface>
       <MetricGrid
         items={[
+          [t("status"), transaction.status ?? "completed"],
           [t("transactionDetail"), direction],
           [t("network"), networkLabelForMini(wallet.network, t)],
           [t("from"), from ? shortenHash(from, 8) : "-"],
           [t("to"), to ? shortenHash(to, 8) : "-"],
           [t("fee"), money(transaction.fee ?? 0, transaction.currency ?? "USDT")],
+          [t("block"), "-"],
+          [t("confirmations"), transaction.status === "completed" ? "Confirmed" : "-"],
           [
             t("date"),
             transaction.created_at ? new Date(transaction.created_at).toLocaleString() : "-",
           ],
         ]}
       />
-      <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+      <Surface className="p-4">
         <p className="text-xs text-slate-400">{t("txid")}</p>
         <p className="mono mt-1 break-all text-xs" dir={technicalTextDirection()}>
           {transaction.txid ?? "-"}
         </p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Button
+            variant="secondary"
+            disabled={!transaction.txid}
+            onClick={() => transaction.txid && copyText(transaction.txid, t("copied"))}
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            {t("txid")}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={!counterparty}
+            onClick={() => counterparty && copyText(counterparty, t("addressCopied"))}
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            {t("copyAddress")}
+          </Button>
+        </div>
         {transaction.txid ? (
           <Button
             className="mt-3 w-full bg-blue-600"
@@ -2461,7 +2717,7 @@ function WalletTransactionDetailScreen({
             {t("viewOnTronscan")}
           </Button>
         ) : null}
-      </div>
+      </Surface>
     </Screen>
   );
 }
@@ -2488,7 +2744,7 @@ function WalletMoreScreen({
   const address = safeAddress(wallet.address);
   return (
     <Screen title={t("more")} subtitle={wallet.name ?? t("selectedWallet")}>
-      <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
+      <Surface className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="font-semibold">{wallet.name ?? "Wallet"}</p>
@@ -2506,7 +2762,7 @@ function WalletMoreScreen({
             [t("gasSponsorship"), gasfreeStatusLabel(wallet.gas_sponsorship_status, t)],
           ]}
         />
-      </div>
+      </Surface>
       <Section title={t("more")}>
         <SettingRow
           icon={MiniIcons.backup}
@@ -2537,7 +2793,7 @@ function WalletMoreScreen({
       </Section>
       <Section title={t("walletInformation")}>
         <button
-          className="mono w-full rounded-2xl border border-white/10 bg-white/6 p-3 text-left text-xs"
+          className="mono w-full rounded-2xl bg-[#0D121C] p-3 text-left text-xs"
           dir={technicalTextDirection()}
           onClick={() => copyText(address, t("addressCopied"))}
         >
@@ -2557,9 +2813,16 @@ function WalletGasFreeScreen({ wallet, t }: { wallet: WalletRow | null; t: MiniT
     );
   }
   const status = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
+  const rawStatus = String(wallet.gas_sponsorship_status ?? "unavailable");
+  const explanation =
+    rawStatus === "available"
+      ? "WTRON sponsorship is available for supported transfers on this wallet."
+      : rawStatus === "limited"
+        ? "WTRON sponsorship is limited. Some transfers may still require TRX resources."
+        : "GasFree is not configured for this wallet. Standard TRON network fees/resources apply.";
   return (
     <Screen title={t("gasfreeTransactions")} subtitle={wallet.name ?? t("wallet")}>
-      <div className="rounded-3xl bg-white/6 p-4">
+      <Surface className="p-5">
         <div className="flex items-center gap-3">
           <GasFreeIcon className="h-10 w-10" />
           <div>
@@ -2575,8 +2838,14 @@ function WalletGasFreeScreen({ wallet, t }: { wallet: WalletRow | null; t: MiniT
             [t("resourceStatus"), t("resourceUnavailable")],
           ]}
         />
-      </div>
-      <EmptyLine>{t("gasfreeUnavailableMessage")}</EmptyLine>
+      </Surface>
+      <CompactEmpty title={status} body={explanation} />
+      <Section title="Recent GasFree transactions">
+        <CompactEmpty
+          title={t("noTransactionsYet")}
+          body="GasFree transfers will appear here when real sponsorship is configured."
+        />
+      </Section>
     </Screen>
   );
 }
@@ -2597,36 +2866,32 @@ function ReceiveScreen({
   const address = safeAddress(wallet?.address);
   return (
     <Screen title={t("personalWalletReceive")} subtitle={t("receiveSubtitle")}>
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          variant={asset === "USDT" ? "default" : "secondary"}
-          onClick={() => setAsset("USDT")}
-        >
-          <UsdtIcon className="mr-2 h-5 w-5" />
-          USDT
-        </Button>
-        <Button variant={asset === "TRX" ? "default" : "secondary"} onClick={() => setAsset("TRX")}>
-          <TronIcon className="mr-2 h-5 w-5" />
-          TRX
-        </Button>
-      </div>
-      <div className="rounded-3xl border border-white/10 bg-white p-4 text-center text-slate-950">
-        <div className="mx-auto grid h-60 w-60 max-w-full place-items-center rounded-2xl bg-white">
+      <SegmentedControl
+        value={asset}
+        setValue={(value) => setAsset(value as ReceiveAsset)}
+        items={[
+          ["USDT", "USDT"],
+          ["TRX", "TRX"],
+        ]}
+      />
+      <Surface className="p-4 text-center">
+        <div className="mx-auto grid h-64 w-64 max-w-full place-items-center rounded-[1.75rem] bg-white p-3">
           {qr ? (
             <img src={qr} alt="Receive QR" className="h-full w-full" />
           ) : (
             <MiniIcons.upi className="h-10 w-10 text-slate-400" />
           )}
         </div>
-        <p className="mt-4 text-sm font-semibold">
+        <p className="mt-4 text-sm font-semibold text-white">
           {asset === "USDT" ? "USDT / TRC20" : "TRX / TRON Network"}
         </p>
-        <p className="mono mt-2 break-all text-sm" dir={technicalTextDirection()}>
+        <p className="mono mt-2 break-all text-sm text-slate-300" dir={technicalTextDirection()}>
           {address || t("noWalletSelected")}
         </p>
-      </div>
+      </Surface>
       <div className="grid grid-cols-2 gap-2">
         <Button className="bg-blue-600" onClick={() => copyText(address, t("addressCopied"))}>
+          <Copy className="mr-2 h-4 w-4" />
           {t("copyAddress")}
         </Button>
         <Button
@@ -2636,7 +2901,7 @@ function ReceiveScreen({
           {t("share")}
         </Button>
       </div>
-      <p className="rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-100">
+      <p className="rounded-2xl bg-red-500/10 p-3 text-sm text-red-100">
         {asset === "USDT" ? t("receiveUsdtWarning") : t("receiveTrxWarning")}
       </p>
     </Screen>
@@ -2663,7 +2928,7 @@ function BackupScreen({
   const words = revealedPhrase.trim().split(/\s+/).filter(Boolean);
   return (
     <Screen title={t("backup")} subtitle={wallet?.name ?? t("selectedWallet")}>
-      <p className="rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-100">
+      <p className="rounded-2xl bg-red-500/10 p-3 text-sm text-red-100">
         Never share your recovery phrase. Anyone with this phrase can control the wallet.
       </p>
       {!words.length ? (
@@ -2684,7 +2949,7 @@ function BackupScreen({
             {words.map((word, index) => (
               <div
                 key={`${word}-${index}`}
-                className="rounded-xl border border-white/10 bg-white/6 p-2 text-sm"
+                className="rounded-xl bg-[#0D121C] p-2 text-sm"
                 dir={technicalTextDirection()}
               >
                 <span className="mr-2 text-slate-500">{index + 1}</span>
@@ -2738,10 +3003,7 @@ function PlatformDepositScreen({
       title="Deposit to WTRON"
       subtitle="Funds platform/P2P balance through the existing company-controlled listener"
     >
-      <form
-        className="space-y-3 rounded-3xl border border-white/10 bg-white/6 p-4"
-        onSubmit={onSubmit}
-      >
+      <form className="space-y-3 rounded-[1.5rem] bg-[#0D121C] p-4" onSubmit={onSubmit}>
         <Input
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
@@ -2752,7 +3014,7 @@ function PlatformDepositScreen({
         </Button>
       </form>
       {companyAddress ? (
-        <div className="rounded-3xl border border-white/10 bg-white p-4 text-slate-950">
+        <div className="rounded-[1.5rem] bg-white p-4 text-slate-950">
           <div className="mx-auto h-60 w-60 max-w-full">
             {qr ? <img src={qr} alt="Platform deposit QR" /> : null}
           </div>
@@ -2808,42 +3070,64 @@ function SendScreen({
   const mainnetDisabled = wallet?.network === "trc20-mainnet" && !enabled;
   return (
     <Screen title={t("send")} subtitle={t("selfCustodyWallet")}>
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          variant={asset === "USDT" ? "default" : "secondary"}
-          onClick={() => setAsset("USDT")}
-        >
-          USDT
-        </Button>
-        <Button variant={asset === "TRX" ? "default" : "secondary"} onClick={() => setAsset("TRX")}>
-          TRX
-        </Button>
-      </div>
-      <div className="space-y-3 rounded-3xl border border-white/10 bg-white/6 p-4">
-        <Input
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          placeholder={t("recipientAddressPlaceholder")}
+      <Surface className="p-4">
+        <SegmentedControl
+          value={asset}
+          setValue={(value) => setAsset(value as ReceiveAsset)}
+          items={[
+            ["USDT", "USDT"],
+            ["TRX", "TRX"],
+          ]}
         />
-        <Input
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder={t("amount")}
-        />
+        <div className="mt-4 space-y-3">
+          <FormField label={t("available")}>
+            <p className="text-sm font-semibold tabular-nums">
+              {money(available, asset)} {asset}
+            </p>
+          </FormField>
+          <FormField label={t("toAddress")}>
+            <div className="flex items-center gap-2">
+              <Input
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                placeholder={t("recipientAddressPlaceholder")}
+              />
+              <button className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6">
+                <ScanLine className="h-4 w-4 text-slate-300" />
+              </button>
+            </div>
+          </FormField>
+          <FormField label={t("amount")}>
+            <div className="flex items-center gap-2">
+              <Input
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder={t("amount")}
+              />
+              <button
+                type="button"
+                className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-blue-300"
+                onClick={() => setAmount(String(available || ""))}
+              >
+                {t("max")}
+              </button>
+            </div>
+          </FormField>
+        </div>
         <MetricGrid
           items={[
             [t("selectedWallet"), wallet?.name ?? t("noWalletSelected")],
-            [t("available"), `${money(available, asset)} ${asset}`],
             [t("network"), networkLabelForMini(wallet?.network, t)],
+            [t("resources"), t("signerRequired")],
             [t("fees"), t("signerRequired")],
           ]}
         />
-      </div>
-      <p className="rounded-2xl border border-yellow-500/25 bg-yellow-500/10 p-3 text-sm text-yellow-100">
+      </Surface>
+      <p className="rounded-2xl bg-yellow-500/10 p-3 text-sm text-yellow-100">
         {mainnetDisabled ? t("mainnetSendDisabled") : t("sendUnavailable")}
       </p>
       <Button className="w-full" disabled={!enabled}>
-        {t("confirm")}
+        {t("continue")}
       </Button>
     </Screen>
   );
@@ -2873,7 +3157,7 @@ function P2pScreen(props: {
 }) {
   return (
     <Screen title="P2P Market" subtitle="User-to-user USDT trading only">
-      <Tabs
+      <SegmentedControl
         value={props.tab}
         setValue={(value) => props.setTab(value as P2pTab)}
         items={[
@@ -2884,56 +3168,66 @@ function P2pScreen(props: {
         ]}
       />
       {props.tab === "buy" ? (
-        <>
-          <Input
-            value={props.p2pAmount}
-            onChange={(event) => props.setP2pAmount(event.target.value)}
-            placeholder="USDT amount"
-          />
+        <div className="space-y-3">
+          <FormField label="USDT amount">
+            <Input
+              value={props.p2pAmount}
+              onChange={(event) => props.setP2pAmount(event.target.value)}
+              placeholder="USDT amount"
+            />
+          </FormField>
           {props.ads.length ? (
             props.ads.map((ad) => <AdCard key={ad.id} ad={ad} onTake={() => props.onTakeAd(ad)} />)
           ) : (
-            <EmptyLine>No active seller ads. Create a sell ad from the Sell tab.</EmptyLine>
+            <CompactEmpty
+              title="No seller ads"
+              body="Create a sell ad from the Sell tab or check again later."
+            />
           )}
-        </>
+        </div>
       ) : null}
       {props.tab === "sell" ? (
-        <form
-          className="space-y-3 rounded-3xl border border-white/10 bg-white/6 p-4"
-          onSubmit={props.onCreateAd}
-        >
-          {(["amount", "rate", "min", "max"] as const).map((field) => (
-            <Input
-              key={field}
-              value={props.sellAd[field]}
-              onChange={(event) =>
-                props.setSellAd({ ...props.sellAd, [field]: event.target.value })
-              }
-              placeholder={
-                field === "amount"
-                  ? "USDT Amount"
-                  : field === "rate"
-                    ? "Selling Rate"
-                    : field === "min"
-                      ? "Min INR"
-                      : "Max INR"
-              }
-            />
-          ))}
+        <form className="space-y-3 rounded-[1.5rem] bg-white/6 p-4" onSubmit={props.onCreateAd}>
+          {(["amount", "rate", "min", "max"] as const).map((field) => {
+            const label =
+              field === "amount"
+                ? "USDT Amount"
+                : field === "rate"
+                  ? "Selling Rate"
+                  : field === "min"
+                    ? "Min INR"
+                    : "Max INR";
+            return (
+              <FormField key={field} label={label}>
+                <Input
+                  value={props.sellAd[field]}
+                  onChange={(event) =>
+                    props.setSellAd({ ...props.sellAd, [field]: event.target.value })
+                  }
+                  placeholder={label}
+                />
+              </FormField>
+            );
+          })}
           {props.paymentMethods.length ? (
-            <select
-              className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
-              value={props.selectedPaymentMethodId}
-              onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
-            >
-              {props.paymentMethods.map((method) => (
-                <option key={method.id} value={method.id}>
-                  {method.label || method.upi_id || "Saved UPI"}
-                </option>
-              ))}
-            </select>
+            <FormField label="Saved UPI">
+              <select
+                className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
+                value={props.selectedPaymentMethodId}
+                onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
+              >
+                {props.paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.label || method.upi_id || "Saved UPI"}
+                  </option>
+                ))}
+              </select>
+            </FormField>
           ) : (
-            <EmptyLine>Add UPI ID first before creating a sell ad.</EmptyLine>
+            <CompactEmpty
+              title="Add UPI ID first"
+              body="A saved active UPI account is required for sell ads."
+            />
           )}
           <textarea
             className="min-h-20 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white outline-none focus:border-blue-500"
@@ -2950,7 +3244,7 @@ function P2pScreen(props: {
         </form>
       ) : null}
       {props.tab === "myAds" ? (
-        <EmptyLine>Your ads will appear here after creation.</EmptyLine>
+        <CompactEmpty title="No ads yet" body="Your sell ads will appear here after creation." />
       ) : null}
       {props.tab === "myOrders" ? (
         <OrderList orders={props.orders} empty="No P2P orders yet." />
@@ -2979,7 +3273,7 @@ function TradeScreen(props: {
 }) {
   return (
     <Screen title="WTRON Trade" subtitle="Company and verified-vendor trading">
-      <Tabs
+      <SegmentedControl
         value={props.tab}
         setValue={(value) => props.setTab(value as TradeTab)}
         items={[
@@ -2988,36 +3282,45 @@ function TradeScreen(props: {
         ]}
       />
       {props.tab === "sell" ? (
-        <form
-          className="space-y-3 rounded-3xl border border-white/10 bg-white/6 p-4"
-          onSubmit={props.onSell}
-        >
-          <MetricGrid
-            items={[
-              ["WTRON Buy Rate", "Configured by admin"],
-              ["Payout", "Saved UPI or bank"],
-            ]}
-          />
-          <Input
-            value={props.amount}
-            onChange={(event) => props.setAmount(event.target.value)}
-            placeholder="USDT amount"
-          />
-          {props.paymentMethods.length ? (
-            <select
-              className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
-              value={props.selectedPaymentMethodId}
-              onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
-            >
-              {props.paymentMethods.map((method) => (
-                <option key={method.id} value={method.id}>
-                  {method.label || method.upi_id || "Saved UPI"}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <EmptyLine>Add UPI ID first.</EmptyLine>
-          )}
+        <form className="space-y-4" onSubmit={props.onSell}>
+          <Surface className="p-4">
+            <SectionHeader title="Sell USDT to WTRON" />
+            <MetricGrid
+              items={[
+                ["WTRON Buy Rate", "Configured by admin"],
+                ["Payout", "Saved UPI or bank"],
+              ]}
+            />
+            <div className="mt-4 space-y-3">
+              <FormField label="USDT amount">
+                <Input
+                  value={props.amount}
+                  onChange={(event) => props.setAmount(event.target.value)}
+                  placeholder="USDT amount"
+                />
+              </FormField>
+              {props.paymentMethods.length ? (
+                <FormField label="Payout account">
+                  <select
+                    className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm"
+                    value={props.selectedPaymentMethodId}
+                    onChange={(event) => props.setSelectedPaymentMethodId(event.target.value)}
+                  >
+                    {props.paymentMethods.map((method) => (
+                      <option key={method.id} value={method.id}>
+                        {method.label || method.upi_id || "Saved UPI"}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              ) : (
+                <CompactEmpty
+                  title="Add UPI ID first"
+                  body="Direct sell payouts require a saved payment account."
+                />
+              )}
+            </div>
+          </Surface>
           {!props.paymentMethods.length ? (
             <Button
               type="button"
@@ -3038,12 +3341,14 @@ function TradeScreen(props: {
       ) : null}
       {props.tab === "buy" ? (
         <div className="space-y-3">
-          <Input
-            value={props.vendorAmount}
-            onChange={(event) => props.setVendorAmount(event.target.value)}
-            placeholder="USDT amount"
-          />
-          <Tabs
+          <FormField label="USDT amount">
+            <Input
+              value={props.vendorAmount}
+              onChange={(event) => props.setVendorAmount(event.target.value)}
+              placeholder="USDT amount"
+            />
+          </FormField>
+          <SegmentedControl
             value={props.rail}
             setValue={(value) => props.setRail(value as "upi" | "imps" | "neft" | "rtgs")}
             items={[
@@ -3058,7 +3363,10 @@ function TradeScreen(props: {
               <VendorCard key={listing.id} listing={listing} onBuy={() => props.onBuy(listing)} />
             ))
           ) : (
-            <EmptyLine>No verified vendor offers are active.</EmptyLine>
+            <CompactEmpty
+              title="No offers"
+              body="No verified vendor offers are active for this rail."
+            />
           )}
         </div>
       ) : null}
@@ -3067,30 +3375,88 @@ function TradeScreen(props: {
 }
 
 function MoreScreen({ onNavigate }: { onNavigate: (screen: MiniScreen) => Promise<void> }) {
-  const items: Array<[MiniScreen, string, MiniIcon]> = [
-    ["orders", "Orders", MiniIcons.orders],
-    ["analytics", "Analytics", MiniIcons.analytics],
-    ["bank-accounts", "Bank Accounts", MiniIcons.bank],
-    ["history", "History", MiniIcons.history],
-    ["profile", "Profile", MiniIcons.profile],
-    ["notifications", "Notifications", MiniIcons.notifications],
-    ["security", "Security", MiniIcons.security],
-    ["referral", "Referral", MiniIcons.referral],
+  const sections: Array<[string, Array<[MiniScreen, string, string, MiniIcon]>]> = [
+    [
+      "Account",
+      [
+        ["profile", "Profile", "Name, Telegram and account ID", MiniIcons.profile],
+        ["notifications", "Notifications", "Wallet and order alerts", MiniIcons.notifications],
+        ["security", "Security", "Transaction password and backup", MiniIcons.security],
+      ],
+    ],
+    [
+      "Payments",
+      [
+        ["bank-accounts", "Bank Accounts / UPI", "Manage receiving accounts", MiniIcons.bank],
+        ["orders", "Orders", "P2P and WTRON order status", MiniIcons.orders],
+        ["history", "History", "Company and vendor trade history", MiniIcons.history],
+      ],
+    ],
+    [
+      "Wallet",
+      [
+        ["wallet", "Manage Wallets", "Create, import and switch wallets", MiniIcons.wallet],
+        ["wallet-backup", "Backup", "Recovery phrase tools", MiniIcons.backup],
+        ["wallet-gasfree", "GasFree", "Capability and sponsorship status", Zap],
+      ],
+    ],
+    [
+      "App",
+      [
+        ["referral", "Referral", "Invite and rewards", MiniIcons.referral],
+        ["analytics", "Analytics", "Real trading metrics", MiniIcons.analytics],
+      ],
+    ],
   ];
   return (
-    <Screen title="More" subtitle="Account, trading and security tools">
-      <div className="grid grid-cols-2 gap-3">
-        {items.map(([screen, label, Icon]) => (
-          <button
-            key={screen}
-            className="rounded-2xl border border-white/10 bg-white/6 p-4 text-left"
-            onClick={() => onNavigate(screen)}
-          >
-            <Icon className="h-5 w-5 text-blue-300" />
-            <span className="mt-3 block text-sm font-semibold">{label}</span>
-          </button>
-        ))}
-      </div>
+    <Screen title="More" subtitle="Account, trading and security tools" compact>
+      {sections.map(([title, items]) => (
+        <Section key={title} title={title}>
+          {items.map(([screen, label, body, Icon]) => (
+            <ListRow
+              key={screen}
+              icon={Icon}
+              title={label}
+              body={body}
+              onClick={() => onNavigate(screen)}
+            />
+          ))}
+        </Section>
+      ))}
+      <Section title="Legal">
+        <ListRow
+          icon={FileText}
+          title="Privacy Policy"
+          body="Public legal page"
+          onClick={() => {
+            window.open("/privacy", "_blank", "noopener,noreferrer");
+          }}
+        />
+        <ListRow
+          icon={FileText}
+          title="Terms"
+          body="Public legal page"
+          onClick={() => {
+            window.open("/terms", "_blank", "noopener,noreferrer");
+          }}
+        />
+        <ListRow
+          icon={ShieldCheck}
+          title="Risk Disclosure"
+          body="Public legal page"
+          onClick={() => {
+            window.open("/risk-disclosure", "_blank", "noopener,noreferrer");
+          }}
+        />
+      </Section>
+      <ListRow
+        icon={LogOut}
+        title="Logout"
+        body="Close your Mini App session"
+        onClick={() => {
+          toast.info("Use Telegram or web account controls to sign out.");
+        }}
+      />
     </Screen>
   );
 }
@@ -3133,7 +3499,10 @@ function OrdersScreen({
             </button>
           ))
         ) : (
-          <EmptyLine>No WTRON direct sell orders yet.</EmptyLine>
+          <CompactEmpty
+            title="No direct sell orders"
+            body="Sell USDT to WTRON from the Trade tab."
+          />
         )}
       </Section>
       <Section title="P2P Orders">
@@ -3200,34 +3569,39 @@ function ProfileScreen({
 }) {
   return (
     <Screen title="Profile" subtitle="WTRON trader profile">
-      <div className="rounded-3xl border border-white/10 bg-white/6 p-5">
-        <UserRound className="h-10 w-10 text-blue-300" />
+      <Surface className="p-5 text-center">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-blue-500/14">
+          <UserRound className="h-8 w-8 text-blue-300" />
+        </div>
         <h2 className="mt-3 text-xl font-semibold tracking-normal">
           {profile?.full_name || "WTRON Trader"}
         </h2>
         <p className="text-sm text-slate-400">{profile?.email || "Telegram linked account"}</p>
-        <p className="mt-2 text-xs text-blue-200">Telegram linked badge</p>
-      </div>
+        <p className="mt-2 text-xs text-blue-200">Telegram linked</p>
+        <p className="mono mt-2 text-[11px] text-slate-500" dir={technicalTextDirection()}>
+          {profile?.id ? shortenHash(profile.id, 8) : "Account pending"}
+        </p>
+      </Surface>
       <Section title="Sections">
-        <SettingRow
+        <ListRow
           icon={MiniIcons.wallet}
           title="Manage Wallets"
           body="Personal wallet management"
           onClick={() => onNavigate("wallet")}
         />
-        <SettingRow
+        <ListRow
           icon={MiniIcons.bank}
           title="Payments"
           body="Bank accounts and UPI"
           onClick={() => onNavigate("bank-accounts")}
         />
-        <SettingRow
+        <ListRow
           icon={MiniIcons.security}
           title="Security"
           body={hasSession ? "Authenticated session" : "Telegram verified"}
           onClick={() => onNavigate("security")}
         />
-        <SettingRow
+        <ListRow
           icon={MiniIcons.referral}
           title="Refer & Earn"
           body="Referral rewards"
@@ -3488,9 +3862,9 @@ function Screen({
   children: React.ReactNode;
 }) {
   return (
-    <main className="space-y-4">
+    <main className="space-y-5 pb-2">
       <div className={compact ? "sr-only" : undefined}>
-        <h1 className="text-2xl font-semibold tracking-normal">{title}</h1>
+        <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
         <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
       </div>
       {children}
@@ -3517,10 +3891,10 @@ function IconButton({
   return (
     <button
       aria-label={label}
-      className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/6 text-slate-200"
+      className="grid h-9 w-9 place-items-center rounded-full bg-white/6 text-slate-200"
       onClick={onClick}
     >
-      <Icon className="h-5 w-5" />
+      <Icon className="h-4 w-4" />
     </button>
   );
 }
@@ -3539,12 +3913,37 @@ function AssetCard({ total, profile }: { total: number; profile: ProfileSummary 
 }
 function MiniMetric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-black/18 p-3">
-      <p className="text-[11px] text-blue-100/80">{label}</p>
-      <p className="mono mt-1 text-sm font-semibold">{value}</p>
+    <div className="rounded-2xl bg-white/5 p-3">
+      <p className="text-[11px] text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-semibold tabular-nums">{value}</p>
     </div>
   );
 }
+function Surface({ className = "", children }: { className?: string; children: React.ReactNode }) {
+  return <div className={`rounded-[1.5rem] bg-[#0D121C] ${className}`}>{children}</div>;
+}
+
+function SectionHeader({
+  title,
+  action,
+  onAction,
+}: {
+  title: string;
+  action?: string | undefined;
+  onAction?: (() => void | Promise<void>) | undefined;
+}) {
+  return (
+    <div className="flex w-full items-center justify-between gap-3">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      {action ? (
+        <button className="text-xs font-medium text-blue-300" onClick={() => void onAction?.()}>
+          {action}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function Action({
   icon: Icon,
   label,
@@ -3563,6 +3962,24 @@ function Action({
     </button>
   );
 }
+function QuickAction({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: MiniIcon;
+  label: string;
+  onClick: () => void | Promise<void>;
+}) {
+  return (
+    <button className="text-center" onClick={() => void onClick()}>
+      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#111A29] text-blue-300">
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="mt-2 block text-[11px] font-medium text-slate-300">{label}</span>
+    </button>
+  );
+}
 function Section({
   title,
   action,
@@ -3570,29 +3987,28 @@ function Section({
   children,
 }: {
   title: string;
-  action?: string;
-  onAction?: () => void | Promise<void>;
+  action?: string | undefined;
+  onAction?: (() => void | Promise<void>) | undefined;
   children: React.ReactNode;
 }) {
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {action ? (
-          <button className="text-xs text-blue-300" onClick={() => void onAction?.()}>
-            {action}
-          </button>
-        ) : null}
-      </div>
+      <SectionHeader title={title} action={action} onAction={onAction} />
       {children}
     </section>
   );
 }
 function EmptyLine({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-2xl border border-dashed border-white/12 bg-white/4 p-4 text-center text-sm text-slate-400">
-      {children}
-    </p>
+    <p className="rounded-2xl bg-white/4 p-4 text-center text-sm text-slate-400">{children}</p>
+  );
+}
+function CompactEmpty({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-2xl bg-white/4 p-4 text-center">
+      <p className="text-sm font-semibold text-slate-200">{title}</p>
+      <p className="mt-1 text-xs text-slate-500">{body}</p>
+    </div>
   );
 }
 function EmptyState({
@@ -3640,12 +4056,45 @@ function Tabs({
     </div>
   );
 }
+function SegmentedControl({
+  value,
+  setValue,
+  items,
+}: {
+  value: string;
+  setValue: (value: string) => void;
+  items: Array<[string, string]>;
+}) {
+  return (
+    <div className="flex gap-1 overflow-x-auto rounded-full bg-white/6 p-1">
+      {items.map(([key, label]) => (
+        <button
+          key={key}
+          className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold ${
+            value === key ? "bg-blue-600 text-white" : "text-slate-400"
+          }`}
+          onClick={() => setValue(key)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-2">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      {children}
+    </label>
+  );
+}
 function FormCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-3 rounded-3xl border border-white/10 bg-white/6 p-4">
+    <Surface className="space-y-3 p-4">
       <h2 className="text-sm font-semibold">{title}</h2>
       {children}
-    </div>
+    </Surface>
   );
 }
 function NetworkPicker({
@@ -3742,23 +4191,81 @@ function ResourcePill({ label, value }: { label: string; value: string }) {
   );
 }
 
+function walletResourceDisplay(resources: WalletResourceSnapshot | null) {
+  return {
+    energyLimit: resources?.energyLimit ?? 0,
+    energyUsed: resources?.energyUsed ?? 0,
+    bandwidthLimit: (resources?.freeBandwidthLimit ?? 0) + (resources?.bandwidthLimit ?? 0),
+    bandwidthUsed: (resources?.freeBandwidthUsed ?? 0) + (resources?.bandwidthUsed ?? 0),
+  };
+}
+
+function ResourceBar({ label, used, limit }: { label: string; used: number; limit: number }) {
+  const pct = limit > 0 ? Math.min(100, Math.max(0, (used / limit) * 100)) : 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-slate-400">{label}</span>
+        <span className="text-slate-500 tabular-nums">
+          {Number.isFinite(used) ? used : 0} / {Number.isFinite(limit) ? limit : 0}
+        </span>
+      </div>
+      <div className="mt-2 h-1.5 rounded-full bg-white/8">
+        <div className="h-full rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({
+  label,
+  tone = "muted",
+}: {
+  label: string;
+  tone?: "muted" | "success" | "warning" | "danger";
+}) {
+  const toneClass =
+    tone === "success"
+      ? "bg-emerald-500/12 text-emerald-300"
+      : tone === "warning"
+        ? "bg-amber-500/12 text-amber-300"
+        : tone === "danger"
+          ? "bg-red-500/12 text-red-300"
+          : "bg-white/8 text-slate-400";
+  return (
+    <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${toneClass}`}>
+      {label}
+    </span>
+  );
+}
+
+function SkeletonLine({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded-full bg-white/10 ${className}`} />;
+}
+
 function WalletSelectorSheet({
   wallets,
   selectedWalletId,
   t,
   onSelect,
   onClose,
+  onCreate,
+  onImport,
+  onManage,
 }: {
   wallets: WalletRow[];
   selectedWalletId: string;
   t: MiniT;
   onSelect: (wallet: WalletRow) => void;
   onClose: () => void;
+  onCreate?: () => void;
+  onImport?: () => void;
+  onManage?: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/60 p-3" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end bg-black/65 p-3" onClick={onClose}>
       <div
-        className="max-h-[80vh] w-full overflow-y-auto rounded-[1.75rem] bg-[#0D121C] p-4 shadow-2xl"
+        className="mx-auto max-h-[82vh] w-full max-w-md overflow-y-auto rounded-[1.75rem] bg-[#0D121C] p-4 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
@@ -3772,8 +4279,8 @@ function WalletSelectorSheet({
           {wallets.map((wallet) => (
             <button
               key={wallet.id}
-              className={`w-full rounded-2xl p-3 text-left ${
-                wallet.id === selectedWalletId ? "bg-blue-600/20" : "bg-white/5"
+              className={`w-full rounded-[1.25rem] p-3 text-left ${
+                wallet.id === selectedWalletId ? "bg-blue-600/16" : "bg-white/5"
               }`}
               onClick={() => onSelect(wallet)}
             >
@@ -3792,8 +4299,10 @@ function WalletSelectorSheet({
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="mono text-sm">{money(walletDisplayBalance(wallet))} USDT</p>
-                  <p className="mono text-xs text-slate-400">
+                  <p className="text-sm font-semibold tabular-nums">
+                    {money(walletDisplayBalance(wallet))} USDT
+                  </p>
+                  <p className="text-xs text-slate-400 tabular-nums">
                     {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
                   </p>
                   <p className="mt-1 text-[11px] text-slate-500">
@@ -3803,6 +4312,17 @@ function WalletSelectorSheet({
               </div>
             </button>
           ))}
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <Button size="sm" className="bg-blue-600" onClick={onCreate}>
+            {t("createWallet")}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={onImport}>
+            {t("importWallet")}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={onManage}>
+            {t("more")}
+          </Button>
         </div>
       </div>
     </div>
@@ -3939,6 +4459,33 @@ function AssetRow({
     </Element>
   );
 }
+function ListRow({
+  icon: Icon,
+  title,
+  body,
+  onClick,
+}: {
+  icon: MiniIcon;
+  title: string;
+  body: string;
+  onClick: () => void | Promise<void>;
+}) {
+  return (
+    <button
+      className="flex w-full items-center gap-3 rounded-[1.25rem] bg-[#0D121C] p-3 text-left"
+      onClick={() => void onClick()}
+    >
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/6">
+        <Icon className="h-5 w-5 text-blue-300" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{title}</span>
+        <span className="block truncate text-xs text-slate-500">{body}</span>
+      </span>
+      <ChevronDown className="h-4 w-4 -rotate-90 text-slate-600" />
+    </button>
+  );
+}
 function SettingRow({
   icon: Icon,
   title,
@@ -3952,10 +4499,12 @@ function SettingRow({
 }) {
   return (
     <button
-      className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/6 p-3 text-left"
+      className="flex w-full items-center gap-3 rounded-[1.25rem] bg-[#0D121C] p-3 text-left"
       onClick={() => void onClick()}
     >
-      <Icon className="h-5 w-5 text-blue-300" />
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/6">
+        <Icon className="h-5 w-5 text-blue-300" />
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold">{title}</span>
         <span className="block truncate text-xs text-slate-400">{body}</span>
@@ -3974,16 +4523,19 @@ function MetricGrid({ items }: { items: Array<[string, string]> }) {
 }
 function AdCard({ ad, onTake }: { ad: AdRow; onTake: () => void }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
+    <Surface className="p-4">
       <div className="flex justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="font-semibold">{ad.merchants?.display_name ?? "Advertiser"}</p>
           <p className="text-xs text-slate-400">
             {completionRate(ad)} completion /{" "}
             {(ad.payment_methods ?? ["upi"]).join(", ").toUpperCase()}
           </p>
         </div>
-        <p className="mono font-semibold">{money(ad.price_inr, "INR")}</p>
+        <div className="text-right">
+          <p className="text-xs text-slate-500">Rate</p>
+          <p className="font-semibold tabular-nums">{money(ad.price_inr, "INR")}</p>
+        </div>
       </div>
       <MetricGrid
         items={[
@@ -3996,20 +4548,23 @@ function AdCard({ ad, onTake }: { ad: AdRow; onTake: () => void }) {
       <Button className="mt-3 w-full bg-blue-600" onClick={onTake}>
         {ad.side === "sell" ? "Buy USDT" : "Sell USDT"}
       </Button>
-    </div>
+    </Surface>
   );
 }
 function VendorCard({ listing, onBuy }: { listing: VendorListingRow; onBuy: () => void }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/6 p-4">
+    <Surface className="p-4">
       <div className="flex justify-between">
-        <div>
+        <div className="min-w-0">
           <p className="font-semibold">{listing.trading_vendors?.name ?? "Verified Vendor"}</p>
           <p className="text-xs text-slate-400">
             {(listing.payment_rails ?? []).join(", ").toUpperCase()}
           </p>
         </div>
-        <p className="mono font-semibold">{money(listing.rate_inr, "INR")}</p>
+        <div className="text-right">
+          <p className="text-xs text-slate-500">Rate</p>
+          <p className="font-semibold tabular-nums">{money(listing.rate_inr, "INR")}</p>
+        </div>
       </div>
       <MetricGrid
         items={[
@@ -4022,7 +4577,7 @@ function VendorCard({ listing, onBuy }: { listing: VendorListingRow; onBuy: () =
       <Button className="mt-3 w-full bg-blue-600" onClick={onBuy}>
         Buy from Vendor
       </Button>
-    </div>
+    </Surface>
   );
 }
 
@@ -4223,7 +4778,7 @@ function OrderList({ orders, empty }: { orders: OrderRow[]; empty: string }) {
 }
 function OrderCard({ order }: { order: OrderRow }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+    <Surface className="p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="mono text-sm">{order.order_ref ?? shortenHash(order.id)}</p>
         <StatusBadge status={String(order.status ?? "created")} />
@@ -4239,12 +4794,12 @@ function OrderCard({ order }: { order: OrderRow }) {
           ],
         ]}
       />
-    </div>
+    </Surface>
   );
 }
 function DepositCard({ deposit }: { deposit: DepositRow }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/6 p-4">
+    <Surface className="p-4">
       <div className="flex items-center justify-between">
         <p className="mono text-sm">{deposit.order_ref ?? shortenHash(deposit.id)}</p>
         <StatusBadge status={String(deposit.status ?? "waiting")} />
@@ -4253,7 +4808,7 @@ function DepositCard({ deposit }: { deposit: DepositRow }) {
         {money(deposit.received_amount ?? deposit.expected_amount)} / {deposit.confirmations ?? 0}{" "}
         confirmations
       </p>
-    </div>
+    </Surface>
   );
 }
 function TransactionList({
@@ -4262,16 +4817,20 @@ function TransactionList({
   empty,
   t,
   onSelect,
+  action,
+  onAction,
 }: {
   title: string;
   rows: TransactionRow[];
   empty: string;
   t?: MiniT;
   onSelect?: (transaction: TransactionRow) => void;
+  action?: string;
+  onAction?: () => void | Promise<void>;
 }) {
   const filtered = useMemo(() => rows.slice(0, 8), [rows]);
   return (
-    <Section title={title}>
+    <Section title={title} action={action} onAction={onAction}>
       {filtered.length ? (
         <WalletTransactionRows
           rows={filtered}
@@ -4386,22 +4945,27 @@ function MiniChart({ rows }: { rows: { date: string; usdt: number }[] }) {
 }
 function BottomNav({ tab, setTab }: { tab: PrimaryTab; setTab: (tab: PrimaryTab) => void }) {
   const items: Array<[PrimaryTab, string, MiniIcon]> = [
-    ["home", "Home", MiniIcons.wallet],
+    ["home", "Home", CircleDollarSign],
     ["p2p", "P2P", MiniIcons.p2p],
     ["trade", "Trade", MiniIcons.swap],
     ["wallet", "Wallet", MiniIcons.wallet],
     ["more", "More", MoreHorizontal],
   ];
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#05070B]/95 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur">
-      <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+    <nav className="fixed inset-x-0 bottom-0 z-40 bg-[#05070B]/94 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-xl">
+      <div className="mx-auto grid max-w-md grid-cols-5 rounded-[1.35rem] bg-[#0D121C]/95 p-1">
         {items.map(([key, label, Icon]) => (
           <button
             key={key}
-            className={`rounded-2xl px-1 py-2 text-[11px] ${tab === key ? "bg-blue-600 text-white" : "text-slate-500"}`}
+            className={`relative rounded-2xl px-1 py-2 text-[11px] font-medium transition ${
+              tab === key ? "text-blue-300" : "text-slate-500"
+            }`}
             onClick={() => setTab(key)}
           >
-            <Icon className="mx-auto mb-1 h-4 w-4" />
+            {tab === key ? (
+              <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-blue-400" />
+            ) : null}
+            <Icon className="mx-auto mb-1 h-5 w-5" />
             {label}
           </button>
         ))}

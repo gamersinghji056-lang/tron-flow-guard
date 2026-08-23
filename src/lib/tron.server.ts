@@ -372,6 +372,47 @@ export interface OnChainTransactionInfo {
   status: string;
 }
 
+export interface TronAccountResources {
+  freeBandwidthLimit: number;
+  freeBandwidthUsed: number;
+  bandwidthLimit: number;
+  bandwidthUsed: number;
+  energyLimit: number;
+  energyUsed: number;
+}
+
+/** Read-only account resource snapshot for Mini App wallet display. */
+export async function getAccountResources(
+  network: ChainNetwork,
+  address: string,
+): Promise<TronAccountResources | null> {
+  const { apiBase } = networkConfig(network);
+  const { tronAddressToHex } = await import("./tron-address");
+  try {
+    const data = await chainFetch<{
+      freeNetLimit?: number;
+      freeNetUsed?: number;
+      NetLimit?: number;
+      NetUsed?: number;
+      EnergyLimit?: number;
+      EnergyUsed?: number;
+    }>(`${apiBase}/wallet/getaccountresource`, {
+      method: "POST",
+      body: JSON.stringify({ address: tronAddressToHex(address) }),
+    });
+    return {
+      freeBandwidthLimit: Number(data.freeNetLimit ?? 0),
+      freeBandwidthUsed: Number(data.freeNetUsed ?? 0),
+      bandwidthLimit: Number(data.NetLimit ?? 0),
+      bandwidthUsed: Number(data.NetUsed ?? 0),
+      energyLimit: Number(data.EnergyLimit ?? 0),
+      energyUsed: Number(data.EnergyUsed ?? 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Receipt-level status and block height for a specific transaction id. */
 export async function getTransactionInfo(
   network: ChainNetwork,
