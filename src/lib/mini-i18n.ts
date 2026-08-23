@@ -72,6 +72,10 @@ export const miniWalletMessages = {
     available: "Available",
     limited: "Limited",
     enabled: "Enabled",
+    disabled: "Disabled",
+    setupRequired: "Setup required",
+    limitReached: "Limit reached",
+    provider: "Provider",
     amount: "Amount",
     toAddress: "To Address",
     max: "MAX",
@@ -163,6 +167,9 @@ export const miniWalletMessages = {
       "GasFree status is unavailable until WTRON checks this wallet address.",
     gasfreeUnavailableConfirmedMessage:
       "GasFree is not registered for this wallet. Standard TRON network fees/resources apply.",
+    gasfreeWalletReady: "GasFree Wallet Ready",
+    gasfreeTransferSetupRequired:
+      "GasFree wallet is ready, but real GasFree transfers require provider setup.",
     recentGasfreeTransactions: "Recent GasFree transactions",
     gasfreeTransactionsEmpty:
       "GasFree transfers will appear here when real sponsorship is configured.",
@@ -236,6 +243,10 @@ export const miniWalletMessages = {
     available: "可用",
     limited: "受限",
     enabled: "已启用",
+    disabled: "已禁用",
+    setupRequired: "需要设置",
+    limitReached: "已达限额",
+    provider: "服务商",
     amount: "金额",
     toAddress: "收款地址",
     max: "MAX",
@@ -322,6 +333,8 @@ export const miniWalletMessages = {
     gasfreeCheckFailedMessage: "GasFree 状态检查失败。请重试。",
     gasfreeStatusUnavailableMessage: "WTRON 检查此钱包地址前，GasFree 状态不可用。",
     gasfreeUnavailableConfirmedMessage: "此钱包未注册 GasFree。将使用标准 TRON 网络手续费/资源。",
+    gasfreeWalletReady: "GasFree 钱包已就绪",
+    gasfreeTransferSetupRequired: "GasFree 钱包已就绪，但真实 GasFree 转账需要配置服务商。",
     recentGasfreeTransactions: "最近 GasFree 交易",
     gasfreeTransactionsEmpty: "真实赞助配置后，GasFree 转账会显示在这里。",
     personalWalletReceive: "接收至个人钱包",
@@ -393,6 +406,10 @@ export const miniWalletMessages = {
     available: "Доступно",
     limited: "Ограничено",
     enabled: "Включено",
+    disabled: "Отключено",
+    setupRequired: "Требуется настройка",
+    limitReached: "Лимит достигнут",
+    provider: "Провайдер",
     amount: "Сумма",
     toAddress: "Адрес получателя",
     max: "MAX",
@@ -483,6 +500,9 @@ export const miniWalletMessages = {
       "Статус GasFree недоступен, пока WTRON не проверит адрес кошелька.",
     gasfreeUnavailableConfirmedMessage:
       "GasFree не зарегистрирован для этого кошелька. Применяются стандартные комиссии/ресурсы TRON.",
+    gasfreeWalletReady: "GasFree-кошелек готов",
+    gasfreeTransferSetupRequired:
+      "GasFree-кошелек готов, но реальные GasFree-переводы требуют настройки провайдера.",
     recentGasfreeTransactions: "Последние GasFree-транзакции",
     gasfreeTransactionsEmpty:
       "GasFree-переводы появятся здесь после настройки реального спонсирования.",
@@ -556,6 +576,10 @@ export const miniWalletMessages = {
     available: "قابل استفاده",
     limited: "محدود",
     enabled: "فعال شده",
+    disabled: "غیرفعال",
+    setupRequired: "نیازمند تنظیم",
+    limitReached: "رسیدن به سقف",
+    provider: "ارائه‌دهنده",
     amount: "مقدار",
     toAddress: "آدرس مقصد",
     max: "MAX",
@@ -647,6 +671,9 @@ export const miniWalletMessages = {
       "تا زمانی که WTRON آدرس این کیف پول را بررسی نکند، وضعیت GasFree در دسترس نیست.",
     gasfreeUnavailableConfirmedMessage:
       "GasFree برای این کیف پول ثبت نشده است. کارمزد/منابع استاندارد شبکه TRON اعمال می‌شود.",
+    gasfreeWalletReady: "کیف پول GasFree آماده است",
+    gasfreeTransferSetupRequired:
+      "کیف پول GasFree آماده است، اما انتقال واقعی GasFree به تنظیم ارائه‌دهنده نیاز دارد.",
     recentGasfreeTransactions: "تراکنش‌های اخیر GasFree",
     gasfreeTransactionsEmpty:
       "انتقال‌های GasFree پس از پیکربندی اسپانسرینگ واقعی اینجا نمایش داده می‌شوند.",

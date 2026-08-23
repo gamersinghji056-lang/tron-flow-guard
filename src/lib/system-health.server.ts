@@ -9,7 +9,8 @@ export type ServiceName =
   | "SUPABASE"
   | "API"
   | "WEBHOOKS"
-  | "SIGNER";
+  | "SIGNER"
+  | "GASFREE";
 
 export type HealthStatus = "HEALTHY" | "DEGRADED" | "FAILED" | "UNKNOWN" | "DISABLED";
 

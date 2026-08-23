@@ -19,32 +19,50 @@ import {
   WalletCards,
   Zap,
 } from "lucide-react";
+import { WTRON_OFFICIAL_LOGO_PATH } from "@/lib/branding";
 
 export type MiniIcon = ComponentType<SVGProps<SVGSVGElement>>;
 
-export const WTRON_OFFICIAL_LOGO_PATH = "/branding/wtron-logo.svg";
-
-export function WtronMark({ className }: { className?: string }) {
+export function WtronLogo({
+  className,
+  markClassName,
+  textClassName,
+  showText = true,
+}: {
+  className?: string;
+  markClassName?: string;
+  textClassName?: string;
+  showText?: boolean;
+}) {
   return (
-    <div
-      className={`relative grid place-items-center overflow-hidden rounded-xl bg-emerald-500 text-[#03130e] shadow-[0_12px_30px_-20px_rgba(16,185,129,0.8)] ${className ?? "h-11 w-11"}`}
-    >
-      <img
-        src={WTRON_OFFICIAL_LOGO_PATH}
-        alt=""
-        className="absolute inset-0 hidden h-full w-full object-contain p-1.5"
-        onLoad={(event) => {
-          event.currentTarget.classList.remove("hidden");
-          event.currentTarget.nextElementSibling?.classList.add("hidden");
-        }}
-        onError={(event) => {
-          event.currentTarget.classList.add("hidden");
-          event.currentTarget.nextElementSibling?.classList.remove("hidden");
-        }}
-      />
-      <span className="text-sm font-black tracking-normal">WT</span>
+    <div className={`flex items-center gap-2 ${className ?? ""}`}>
+      <span
+        className={`relative grid place-items-center overflow-hidden rounded-xl bg-emerald-500 text-[#03130e] shadow-[0_12px_30px_-20px_rgba(16,185,129,0.8)] ${markClassName ?? "h-9 w-9"}`}
+      >
+        <img
+          src={WTRON_OFFICIAL_LOGO_PATH}
+          alt=""
+          className="absolute inset-0 hidden h-full w-full object-contain p-1.5"
+          onLoad={(event) => {
+            event.currentTarget.classList.remove("hidden");
+            event.currentTarget.nextElementSibling?.classList.add("hidden");
+          }}
+          onError={(event) => {
+            event.currentTarget.classList.add("hidden");
+            event.currentTarget.nextElementSibling?.classList.remove("hidden");
+          }}
+        />
+        <span className="text-sm font-black tracking-normal">WT</span>
+      </span>
+      {showText ? (
+        <span className={textClassName ?? "font-semibold tracking-tight"}>WTRON</span>
+      ) : null}
     </div>
   );
+}
+
+export function WtronMark({ className }: { className?: string }) {
+  return <WtronLogo showText={false} markClassName={className ?? "h-11 w-11"} />;
 }
 
 export function UsdtIcon({ className }: { className?: string }) {

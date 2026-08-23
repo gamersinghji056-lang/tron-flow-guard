@@ -81,6 +81,7 @@ function SystemHealthPage() {
     "API",
     "WEBHOOKS",
     "SIGNER",
+    "GASFREE",
   ];
 
   async function markResolved(id: string) {
@@ -131,6 +132,17 @@ function SystemHealthPage() {
           ).map(([key, value]) => (
             <Metric key={key} label={key.replaceAll("_", " ")} value={String(value)} />
           ))}
+        </div>
+      </div>
+
+      <div className="panel p-4">
+        <h2 className="font-semibold">GasFree</h2>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          {Object.entries(heartbeats.find((row) => row.service === "GASFREE")?.metadata ?? {}).map(
+            ([key, value]) => (
+              <Metric key={key} label={key.replaceAll("_", " ")} value={String(value)} />
+            ),
+          )}
         </div>
       </div>
 

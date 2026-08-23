@@ -30,6 +30,16 @@ const settingsInput = z.object({
   feeSweepEnabled: z.boolean().optional(),
   feeSweepMode: z.enum(["manual", "automatic"]).optional(),
   feeSweepMinimumUsdt: z.number().min(0).max(1_000_000).optional(),
+  gasfreeTransferEnabled: z.boolean().optional(),
+  gasfreeProvider: z.string().trim().min(1).max(80).optional(),
+  gasfreeMainnetEnabled: z.boolean().optional(),
+  gasfreeSupportedAsset: z.enum(["USDT"]).optional(),
+  gasfreePerTxMaxUsdt: z.number().min(0).max(1_000_000).optional(),
+  gasfreeUserDailyMaxUsdt: z.number().min(0).max(10_000_000).optional(),
+  gasfreeGlobalDailyMaxUsdt: z.number().min(0).max(100_000_000).optional(),
+  gasfreeKillSwitch: z.boolean().optional(),
+  gasfreeProviderFeePolicy: z.string().trim().min(1).max(80).optional(),
+  gasfreeWtronFeePolicy: z.string().trim().min(1).max(80).optional(),
 });
 
 const feeSweepInput = z.object({

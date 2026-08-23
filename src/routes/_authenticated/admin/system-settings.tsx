@@ -103,6 +103,17 @@ function SystemSettingsPage() {
           feeSweepEnabled: settings["fee_sweep_enabled"] === "true",
           feeSweepMode: settings["fee_sweep_mode"] === "automatic" ? "automatic" : "manual",
           feeSweepMinimumUsdt: Number(settings["fee_sweep_minimum_usdt"] ?? 25),
+          gasfreeTransferEnabled: settings["gasfree_transfer_enabled"] === "true",
+          gasfreeProvider: settings["gasfree_provider"] || "gasfree_open_api",
+          gasfreeMainnetEnabled: settings["gasfree_mainnet_enabled"] === "true",
+          gasfreeSupportedAsset: "USDT",
+          gasfreePerTxMaxUsdt: Number(settings["gasfree_per_tx_max_usdt"] ?? 0),
+          gasfreeUserDailyMaxUsdt: Number(settings["gasfree_user_daily_max_usdt"] ?? 0),
+          gasfreeGlobalDailyMaxUsdt: Number(settings["gasfree_global_daily_max_usdt"] ?? 0),
+          gasfreeKillSwitch: settings["gasfree_kill_switch"] !== "false",
+          gasfreeProviderFeePolicy: settings["gasfree_provider_fee_policy"] || "provider_quote",
+          gasfreeWtronFeePolicy:
+            settings["gasfree_wtron_fee_policy"] || "standard_wallet_transfer_fee",
         },
       });
       toast.success("Settings saved");
@@ -275,6 +286,71 @@ function SystemSettingsPage() {
             Manual sweep records an auditable request. Actual broadcast remains gated by signer
             health, custody capability, and server-only signing flags.
           </p>
+        </div>
+        <div className="rounded-lg border p-3 md:col-span-2">
+          <p className="font-medium">GasFree</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Address discovery is separate. Real GasFree transfers stay disabled until provider
+            environment, limits and kill switches are deliberately configured.
+          </p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <ToggleInput
+              label="GasFree transfers enabled"
+              checked={settings["gasfree_transfer_enabled"] === "true"}
+              onChange={(checked) =>
+                setSettings({ ...settings, gasfree_transfer_enabled: String(checked) })
+              }
+            />
+            <ToggleInput
+              label="Emergency kill switch"
+              checked={settings["gasfree_kill_switch"] !== "false"}
+              onChange={(checked) =>
+                setSettings({ ...settings, gasfree_kill_switch: String(checked) })
+              }
+            />
+            <ToggleInput
+              label="Mainnet enabled"
+              checked={settings["gasfree_mainnet_enabled"] === "true"}
+              onChange={(checked) =>
+                setSettings({ ...settings, gasfree_mainnet_enabled: String(checked) })
+              }
+            />
+            <SettingInput
+              label="Provider"
+              value={settings["gasfree_provider"] ?? "gasfree_open_api"}
+              onChange={(value) => setSettings({ ...settings, gasfree_provider: value })}
+            />
+            <SettingInput
+              label="Per transaction max USDT"
+              value={settings["gasfree_per_tx_max_usdt"] ?? "0"}
+              onChange={(value) => setSettings({ ...settings, gasfree_per_tx_max_usdt: value })}
+            />
+            <SettingInput
+              label="Per-user daily max USDT"
+              value={settings["gasfree_user_daily_max_usdt"] ?? "0"}
+              onChange={(value) => setSettings({ ...settings, gasfree_user_daily_max_usdt: value })}
+            />
+            <SettingInput
+              label="Global daily max USDT"
+              value={settings["gasfree_global_daily_max_usdt"] ?? "0"}
+              onChange={(value) =>
+                setSettings({ ...settings, gasfree_global_daily_max_usdt: value })
+              }
+            />
+            <SettingInput
+              label="Provider fee policy"
+              value={settings["gasfree_provider_fee_policy"] ?? "provider_quote"}
+              onChange={(value) => setSettings({ ...settings, gasfree_provider_fee_policy: value })}
+            />
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <Metric label="Provider URL" value="GASFREE_PROVIDER_BASE_URL: Configured/Missing" />
+            <Metric
+              label="Service Provider"
+              value="GASFREE_SERVICE_PROVIDER_ADDRESS: Configured/Missing"
+            />
+            <Metric label="Secrets" value="GASFREE_API_KEY / GASFREE_API_SECRET: server env only" />
+          </div>
         </div>
         <Button className="md:col-span-2" disabled={pending}>
           Save Settings

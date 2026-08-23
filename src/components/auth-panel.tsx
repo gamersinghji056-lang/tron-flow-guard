@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Loader2, Radio, ShieldCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,7 @@ import { registerAdmin, registerTrader } from "@/lib/accounts.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { WtronLogo } from "@/components/mini-app/crypto-icons";
 
 export type Audience = "trader" | "admin";
 export type AuthMode = "login" | "register";
@@ -170,14 +171,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
     <div className="grid min-h-screen place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
         <Link to="/" className="mb-6 flex items-center justify-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-            {audience === "admin" ? (
-              <ShieldCheck className="h-4 w-4" />
-            ) : (
-              <Radio className="h-4 w-4" />
-            )}
-          </span>
-          <span className="font-semibold tracking-tight">TRONDESK</span>
+          <WtronLogo markClassName="h-9 w-9" textClassName="font-semibold tracking-tight" />
         </Link>
 
         <div className="panel p-6">

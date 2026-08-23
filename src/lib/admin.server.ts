@@ -114,6 +114,16 @@ export async function writeSettings(input: {
   feeSweepEnabled?: boolean | undefined;
   feeSweepMode?: "manual" | "automatic" | undefined;
   feeSweepMinimumUsdt?: number | undefined;
+  gasfreeTransferEnabled?: boolean | undefined;
+  gasfreeProvider?: string | undefined;
+  gasfreeMainnetEnabled?: boolean | undefined;
+  gasfreeSupportedAsset?: string | undefined;
+  gasfreePerTxMaxUsdt?: number | undefined;
+  gasfreeUserDailyMaxUsdt?: number | undefined;
+  gasfreeGlobalDailyMaxUsdt?: number | undefined;
+  gasfreeKillSwitch?: boolean | undefined;
+  gasfreeProviderFeePolicy?: string | undefined;
+  gasfreeWtronFeePolicy?: string | undefined;
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -159,6 +169,36 @@ export async function writeSettings(input: {
   }
   if (input.feeSweepMinimumUsdt !== undefined) {
     rows.push({ key: "fee_sweep_minimum_usdt", value: input.feeSweepMinimumUsdt });
+  }
+  if (input.gasfreeTransferEnabled !== undefined) {
+    rows.push({ key: "gasfree_transfer_enabled", value: input.gasfreeTransferEnabled });
+  }
+  if (input.gasfreeProvider !== undefined) {
+    rows.push({ key: "gasfree_provider", value: input.gasfreeProvider });
+  }
+  if (input.gasfreeMainnetEnabled !== undefined) {
+    rows.push({ key: "gasfree_mainnet_enabled", value: input.gasfreeMainnetEnabled });
+  }
+  if (input.gasfreeSupportedAsset !== undefined) {
+    rows.push({ key: "gasfree_supported_asset", value: input.gasfreeSupportedAsset });
+  }
+  if (input.gasfreePerTxMaxUsdt !== undefined) {
+    rows.push({ key: "gasfree_per_tx_max_usdt", value: input.gasfreePerTxMaxUsdt });
+  }
+  if (input.gasfreeUserDailyMaxUsdt !== undefined) {
+    rows.push({ key: "gasfree_user_daily_max_usdt", value: input.gasfreeUserDailyMaxUsdt });
+  }
+  if (input.gasfreeGlobalDailyMaxUsdt !== undefined) {
+    rows.push({ key: "gasfree_global_daily_max_usdt", value: input.gasfreeGlobalDailyMaxUsdt });
+  }
+  if (input.gasfreeKillSwitch !== undefined) {
+    rows.push({ key: "gasfree_kill_switch", value: input.gasfreeKillSwitch });
+  }
+  if (input.gasfreeProviderFeePolicy !== undefined) {
+    rows.push({ key: "gasfree_provider_fee_policy", value: input.gasfreeProviderFeePolicy });
+  }
+  if (input.gasfreeWtronFeePolicy !== undefined) {
+    rows.push({ key: "gasfree_wtron_fee_policy", value: input.gasfreeWtronFeePolicy });
   }
 
   for (const row of rows) {

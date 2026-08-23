@@ -30,12 +30,21 @@ import {
   validateTelegramInitData,
 } from "./telegram-auth.ts";
 import { createMiniAppClientId, miniAppErrorHomeHref } from "./mini-app-runtime.ts";
+import { WTRON_OFFICIAL_LOGO_PATH } from "./branding.ts";
 import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
 } from "./tron-personal-wallet.ts";
 import { isTronAddress, parseTokenBalanceHex } from "./chain.ts";
 import { deriveGasFreeAddressFromGeneralAddress } from "./gasfree-address.ts";
+import {
+  GASFREE_ENV_NAMES,
+  GASFREE_PROVIDER_NAME,
+  gasFreeRequiresTransactionPassword,
+  gasFreeServiceReadiness,
+  isGasFreeTransferExecutable,
+  validateGasFreeReplay,
+} from "./gasfree-transfer-policy.ts";
 import { decryptMnemonic, encryptMnemonic } from "./wallet-crypto.ts";
 import {
   addressesAreSeparated,
@@ -1240,5 +1249,164 @@ describe("Telegram Mini App runtime safety", () => {
     } finally {
       if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
     }
+  });
+});
+
+describe("GasFree transfer service safety", () => {
+  it("keeps GasFree transfers disabled by default even when the wallet address is discovered", () => {
+    const readiness = gasFreeServiceReadiness({
+      settings: {
+        enabled: false,
+        mainnetEnabled: false,
+        killSwitch: true,
+        supportedAsset: "USDT",
+        perTxMaxUsdt: 0,
+      },
+      provider: {
+        providerBaseUrl: null,
+        serviceProviderAddress: null,
+        apiKeyConfigured: false,
+        apiSecretConfigured: false,
+      },
+      network: "trc20-mainnet",
+      asset: "USDT",
+      amount: 1,
+    });
+
+    assert.equal(readiness.status, "DISABLED");
+    assert.equal(isGasFreeTransferExecutable(readiness.status), false);
+  });
+
+  it("requires real provider configuration before reporting GasFree transfers available", () => {
+    const missing = gasFreeServiceReadiness({
+      settings: {
+        enabled: true,
+        mainnetEnabled: true,
+        killSwitch: false,
+        supportedAsset: "USDT",
+        perTxMaxUsdt: 100,
+      },
+      provider: {
+        providerBaseUrl: null,
+        serviceProviderAddress: null,
+        apiKeyConfigured: false,
+        apiSecretConfigured: false,
+      },
+      network: "trc20-mainnet",
+      asset: "USDT",
+      amount: 10,
+    });
+    assert.equal(missing.status, "NOT_CONFIGURED");
+
+    const configured = gasFreeServiceReadiness({
+      settings: {
+        enabled: true,
+        mainnetEnabled: true,
+        killSwitch: false,
+        supportedAsset: "USDT",
+        perTxMaxUsdt: 100,
+      },
+      provider: {
+        providerBaseUrl: "https://provider.example",
+        serviceProviderAddress: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
+        apiKeyConfigured: true,
+        apiSecretConfigured: true,
+      },
+      network: "trc20-mainnet",
+      asset: "USDT",
+      amount: 10,
+    });
+    assert.equal(configured.status, "AVAILABLE");
+    assert.equal(isGasFreeTransferExecutable(configured.status), true);
+  });
+
+  it("rejects unsupported GasFree networks, tokens and limit breaches", () => {
+    const base = {
+      settings: {
+        enabled: true,
+        mainnetEnabled: true,
+        killSwitch: false,
+        supportedAsset: "USDT",
+        perTxMaxUsdt: 100,
+      },
+      provider: {
+        providerBaseUrl: "https://provider.example",
+        serviceProviderAddress: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
+        apiKeyConfigured: true,
+        apiSecretConfigured: true,
+      },
+    };
+    assert.equal(
+      gasFreeServiceReadiness({
+        ...base,
+        network: "trc20-nile",
+        asset: "USDT",
+        amount: 10,
+      }).status,
+      "TEMPORARILY_UNAVAILABLE",
+    );
+    assert.equal(
+      gasFreeServiceReadiness({
+        ...base,
+        network: "trc20-mainnet",
+        asset: "TRX",
+        amount: 10,
+      }).status,
+      "TEMPORARILY_UNAVAILABLE",
+    );
+    assert.equal(
+      gasFreeServiceReadiness({
+        ...base,
+        network: "trc20-mainnet",
+        asset: "USDT",
+        amount: 101,
+      }).status,
+      "LIMIT_REACHED",
+    );
+  });
+
+  it("requires transaction password only when service can execute or activate", () => {
+    assert.equal(gasFreeRequiresTransactionPassword("AVAILABLE"), true);
+    assert.equal(gasFreeRequiresTransactionPassword("ACTIVATION_REQUIRED"), true);
+    assert.equal(gasFreeRequiresTransactionPassword("DISABLED"), false);
+    assert.equal(gasFreeRequiresTransactionPassword("NOT_CONFIGURED"), false);
+  });
+
+  it("protects GasFree authorization from replay and stale deadlines", () => {
+    assert.equal(
+      validateGasFreeReplay({
+        idempotencyKey: "gasfree-key-1",
+        nowMs: 1_000,
+        deadlineMs: 2_000,
+      }),
+      true,
+    );
+    assert.throws(
+      () =>
+        validateGasFreeReplay({
+          idempotencyKey: "short",
+          nowMs: 1_000,
+          deadlineMs: 2_000,
+        }),
+      /IDEMPOTENCY_KEY_REQUIRED/,
+    );
+    assert.throws(
+      () =>
+        validateGasFreeReplay({
+          idempotencyKey: "gasfree-key-1",
+          nowMs: 2_000,
+          deadlineMs: 1_000,
+        }),
+      /EXPIRED/,
+    );
+  });
+
+  it("documents provider and logo integration points without exposing secrets", () => {
+    assert.equal(GASFREE_PROVIDER_NAME, "gasfree_open_api");
+    assert.deepEqual(
+      GASFREE_ENV_NAMES.filter((name) => name.includes("SECRET") || name.includes("KEY")),
+      ["GASFREE_API_KEY", "GASFREE_API_SECRET"],
+    );
+    assert.equal(WTRON_OFFICIAL_LOGO_PATH, "/branding/wtron-logo.svg");
   });
 });

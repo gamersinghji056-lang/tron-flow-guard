@@ -55,6 +55,7 @@ import {
   createWallet,
   checkWalletGasFreeCapability,
   discoverWalletGasFreeAddress,
+  getGasFreeSendReadiness,
   importWallet,
   getWalletSecurityStatus,
   refreshWalletBalance,
@@ -325,6 +326,18 @@ interface WalletResourceSnapshot {
   energyUsed: number;
 }
 
+interface GasFreeReadiness {
+  provider: string;
+  status: string;
+  reason: string;
+  network: ChainNetwork;
+  asset: string;
+  configured: boolean;
+  serviceProviderConfigured: boolean;
+  apiKeyConfigured: boolean;
+  apiSecretConfigured: boolean;
+}
+
 interface PaymentMethodRow {
   id: string;
   kind: "upi" | "bank";
@@ -551,6 +564,7 @@ function TelegramMiniApp() {
   const refreshBalance = useServerFn(refreshWalletBalance);
   const checkGasfreeCapability = useServerFn(checkWalletGasFreeCapability);
   const discoverGasfreeWallet = useServerFn(discoverWalletGasFreeAddress);
+  const loadGasfreeReadiness = useServerFn(getGasFreeSendReadiness);
   const loadPaymentMethods = useServerFn(listPaymentMethods);
   const saveUpi = useServerFn(saveUpiMethod);
   const saveBank = useServerFn(saveBankMethod);
@@ -597,6 +611,7 @@ function TelegramMiniApp() {
   const [referral, setReferral] = useState<ReferralSummary | null>(null);
   const [walletTransactions, setWalletTransactions] = useState<TransactionRow[]>([]);
   const [walletResources, setWalletResources] = useState<WalletResourceSnapshot | null>(null);
+  const [gasfreeReadiness, setGasfreeReadiness] = useState<GasFreeReadiness | null>(null);
   const [walletResourcesCheckedAt, setWalletResourcesCheckedAt] = useState("");
   const [selectedDirectSellId, setSelectedDirectSellId] = useState("");
   const [createdDirectSell, setCreatedDirectSell] = useState<DirectSellOrderCreated | null>(null);
@@ -928,6 +943,28 @@ function TelegramMiniApp() {
   useEffect(() => {
     if (!selectedWalletId && selectedWallet?.id) setSelectedWalletId(selectedWallet.id);
   }, [selectedWallet?.id, selectedWalletId]);
+
+  useEffect(() => {
+    if (screen !== "wallet-gasfree" || !selectedGasfreeWallet?.id) {
+      setGasfreeReadiness(null);
+      return;
+    }
+    void loadGasfreeReadiness({ data: { walletId: selectedGasfreeWallet.id } })
+      .then((value) => setGasfreeReadiness(value as unknown as GasFreeReadiness))
+      .catch(() =>
+        setGasfreeReadiness({
+          provider: "gasfree_open_api",
+          status: "PROVIDER_ERROR",
+          reason: t("gasfreeCheckFailedMessage"),
+          network: selectedGasfreeWallet.network ?? "trc20-mainnet",
+          asset: "USDT",
+          configured: false,
+          serviceProviderConfigured: false,
+          apiKeyConfigured: false,
+          apiSecretConfigured: false,
+        }),
+      );
+  }, [loadGasfreeReadiness, screen, selectedGasfreeWallet?.id, selectedGasfreeWallet?.network, t]);
 
   useEffect(() => {
     if (!selectedAddress) {
@@ -1743,6 +1780,7 @@ function TelegramMiniApp() {
           <WalletGasFreeScreen
             wallet={selectedWallet}
             gasfreeWallet={selectedGasfreeWallet ?? null}
+            readiness={gasfreeReadiness}
             busy={busy}
             t={t}
             onCheck={() => void checkSelectedWalletGasfree()}
@@ -2992,6 +3030,7 @@ function WalletMoreScreen({
 function WalletGasFreeScreen({
   wallet,
   gasfreeWallet,
+  readiness,
   busy,
   t,
   onCheck,
@@ -2999,6 +3038,7 @@ function WalletGasFreeScreen({
 }: {
   wallet: WalletRow | null;
   gasfreeWallet: WalletRow | null;
+  readiness: GasFreeReadiness | null;
   busy: boolean;
   t: MiniT;
   onCheck: () => void;
@@ -3014,6 +3054,17 @@ function WalletGasFreeScreen({
   const discovered = Boolean(gasfreeWallet?.address);
   const walletAddress = safeAddress(gasfreeWallet?.address);
   const status = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
+  const transferStatus = readiness?.status ?? (discovered ? "NOT_CONFIGURED" : "DISABLED");
+  const transferLabel =
+    transferStatus === "AVAILABLE"
+      ? t("available")
+      : transferStatus === "NOT_CONFIGURED"
+        ? t("setupRequired")
+        : transferStatus === "PROVIDER_ERROR"
+          ? t("checkFailed")
+          : transferStatus === "LIMIT_REACHED"
+            ? t("limitReached")
+            : t("disabled");
   const rawStatus = gasfreeCapabilityStatus(wallet.gas_sponsorship_status);
   const needsCheck = gasfreeCapabilityNeedsCheck(
     wallet.gas_sponsorship_status,
@@ -3028,16 +3079,15 @@ function WalletGasFreeScreen({
       : rawStatus === "check_failed" || rawStatus === "unknown" || needsCheck
         ? "warning"
         : "muted";
+  const transferTone =
+    transferStatus === "AVAILABLE"
+      ? "success"
+      : transferStatus === "NOT_CONFIGURED" || transferStatus === "PROVIDER_ERROR"
+        ? "warning"
+        : "muted";
   const explanation =
-    rawStatus === "available"
-      ? t("gasfreeAvailableMessage")
-      : rawStatus === "limited"
-        ? t("gasfreeLimitedMessage")
-        : rawStatus === "check_failed"
-          ? t("gasfreeCheckFailedMessage")
-          : needsCheck
-            ? t("gasfreeStatusUnavailableMessage")
-            : t("gasfreeUnavailableConfirmedMessage");
+    readiness?.reason ??
+    (discovered ? t("gasfreeTransferSetupRequired") : t("gasfreeUnavailableConfirmedMessage"));
   return (
     <Screen title={t("gasfreeTransactions")} subtitle={wallet.name ?? t("wallet")}>
       <Surface className="p-4">
@@ -3054,11 +3104,19 @@ function WalletGasFreeScreen({
         <MetricGrid
           items={[
             [t("gasfreeWallet"), discovered ? t("discovered") : t("notDiscovered")],
-            [t("gasfreeTransfers"), status],
-            [t("supportedAssets"), "USDT / TRX"],
+            [t("gasfreeTransfers"), transferLabel],
+            [t("supportedAssets"), "USDT"],
             [t("lastChecked"), checkedAt],
+            [t("provider"), readiness?.provider ?? "gasfree_open_api"],
           ]}
         />
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <StatusPill
+            label={discovered ? t("gasfreeWalletReady") : t("notDiscovered")}
+            tone={discovered ? "success" : "warning"}
+          />
+          <StatusPill label={transferLabel} tone={transferTone} />
+        </div>
         {discovered ? (
           <button
             type="button"
@@ -3099,7 +3157,7 @@ function WalletGasFreeScreen({
               : t("checkAvailability")}
         </button>
       </Surface>
-      <CompactEmpty title={status} body={explanation} />
+      <CompactEmpty title={transferLabel} body={explanation} />
       <Section title={t("recentGasfreeTransactions")}>
         <CompactEmpty title={t("noTransactionsYet")} body={t("gasfreeTransactionsEmpty")} />
       </Section>

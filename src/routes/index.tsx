@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Menu, ShieldCheck, Wallet2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { WtronLogo } from "@/components/mini-app/crypto-icons";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -35,8 +36,11 @@ function Landing() {
     <main className="min-h-screen bg-[#05070B] text-white">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-black/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center px-4">
-          <Link to="/" className="text-xl font-semibold tracking-tight">
-            WTRON
+          <Link to="/" className="flex items-center gap-2">
+            <WtronLogo
+              markClassName="h-8 w-8"
+              textClassName="text-xl font-semibold tracking-tight"
+            />
           </Link>
           <nav className="ml-8 hidden items-center gap-5 text-sm text-slate-300 lg:flex">
             {sections.map((section) => (
@@ -104,7 +108,11 @@ function Landing() {
           <p className="text-sm font-semibold uppercase tracking-wide text-red-400">
             TRON / TRC20 USDT trading platform
           </p>
-          <h1 className="mt-4 text-5xl font-semibold leading-tight md:text-7xl">WTRON</h1>
+          <WtronLogo
+            className="mt-4"
+            markClassName="h-14 w-14"
+            textClassName="text-4xl font-semibold leading-tight md:text-6xl"
+          />
           <p className="mt-5 max-w-2xl text-lg text-slate-300">
             Personal TRON wallets, P2P USDT trades, direct sell orders to WTRON and an
             approved-vendor network in one operations-backed platform.

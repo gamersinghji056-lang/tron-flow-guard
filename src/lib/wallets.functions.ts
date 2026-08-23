@@ -44,6 +44,21 @@ const transferInput = z.object({
   idempotencyKey: z.string().trim().min(8).max(120),
 });
 
+const gasfreeReadinessInput = z.object({
+  walletId: z.string().uuid(),
+});
+
+const gasfreeTransferInput = z.object({
+  walletId: z.string().uuid(),
+  recipient: z
+    .string()
+    .trim()
+    .regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "Enter a valid TRON address"),
+  amount: z.number().positive("Amount must be greater than zero").max(1_000_000),
+  transactionPassword: z.string().min(6).max(128),
+  idempotencyKey: z.string().trim().min(8).max(120),
+});
+
 const transactionPasswordInput = z.object({
   password: z.string().min(6).max(128),
   currentPassword: z.string().min(6).max(128).optional(),
@@ -178,6 +193,43 @@ export const discoverWalletGasFreeAddress = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { ensureGasFreeChildWalletForGeneral } = await import("@/lib/wallets.server");
     return (await ensureGasFreeChildWalletForGeneral(context.userId, data.walletId)) as never;
+  });
+
+export const getGasFreeSendReadiness = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => gasfreeReadinessInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { getGasFreeTransferReadiness } = await import("@/lib/gasfree-provider.server");
+    const { data: wallet, error } = await supabaseAdmin
+      .from("user_wallets" as never)
+      .select("id, user_id, network, is_archived")
+      .eq("id", data.walletId as never)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const row = wallet as {
+      user_id?: string | null;
+      network?: "trc20-mainnet" | "trc20-nile" | null;
+      is_archived?: boolean | null;
+    } | null;
+    if (!row || row.user_id !== context.userId || row.is_archived)
+      throw new Error("Wallet not found");
+    return getGasFreeTransferReadiness({ network: row.network ?? "trc20-mainnet", asset: "USDT" });
+  });
+
+export const createGasFreeTransfer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => gasfreeTransferInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { createGasFreeTransferRequest } = await import("@/lib/gasfree-provider.server");
+    return createGasFreeTransferRequest({
+      userId: context.userId,
+      walletId: data.walletId,
+      recipient: data.recipient,
+      amount: data.amount,
+      transactionPassword: data.transactionPassword,
+      idempotencyKey: data.idempotencyKey,
+    }) as never;
   });
 
 export const sendTransfer = createServerFn({ method: "POST" })
