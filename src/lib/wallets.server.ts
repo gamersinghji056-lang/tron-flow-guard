@@ -843,19 +843,50 @@ export async function refreshPersonalWalletOnChainBalance(
     throw new Error("Wallet not found");
 
   const historyOptions = { limit: 200, paginate: true, maxPages: 20 };
-  const [balance, trxBalance, resources, incoming, outgoing, incomingTrx, outgoingTrx] =
-    await Promise.all([
-      readTrc20Balance(wallet.network, wallet.address),
-      getNativeTrxBalance(wallet.network, wallet.address),
-      getAccountResources(wallet.network, wallet.address),
+  const [balance, trxBalance, resources] = await Promise.all([
+    readTrc20Balance(wallet.network, wallet.address),
+    getNativeTrxBalance(wallet.network, wallet.address),
+    getAccountResources(wallet.network, wallet.address),
+  ]);
+  if (balance === null || trxBalance === null) {
+    throw new Error("Could not refresh on-chain wallet balances");
+  }
+
+  const checkedAt = new Date().toISOString();
+  const { error: updateError } = await supabaseAdmin
+    .from("user_wallets")
+    .update({
+      onchain_balance: balance,
+      onchain_trx_balance: trxBalance,
+      onchain_checked_at: checkedAt,
+      onchain_trx_checked_at: checkedAt,
+      last_synced_at: checkedAt,
+    } as never)
+    .eq("id", wallet.id);
+  if (updateError) throw new Error(updateError.message);
+
+  let historySyncError: string | null = null;
+  const [incomingResult, outgoingResult, incomingTrxResult, outgoingTrxResult] =
+    await Promise.allSettled([
       getIncomingUsdtTransfers(wallet.network, wallet.address, historyOptions),
       getOutgoingUsdtTransfers(wallet.network, wallet.address, historyOptions),
       getNativeTrxTransfers(wallet.network, wallet.address, "in", historyOptions),
       getNativeTrxTransfers(wallet.network, wallet.address, "out", historyOptions),
     ]);
-  if (balance === null || trxBalance === null) {
-    throw new Error("Could not refresh on-chain wallet balances");
+  const historyError = [incomingResult, outgoingResult, incomingTrxResult, outgoingTrxResult].find(
+    (result) => result.status === "rejected",
+  );
+  if (historyError?.status === "rejected") {
+    historySyncError =
+      historyError.reason instanceof Error
+        ? historyError.reason.message
+        : "Could not read wallet history";
   }
+
+  const incoming = incomingResult.status === "fulfilled" ? incomingResult.value : [];
+  const outgoing = outgoingResult.status === "fulfilled" ? outgoingResult.value : [];
+  const incomingTrx = incomingTrxResult.status === "fulfilled" ? incomingTrxResult.value : [];
+  const outgoingTrx = outgoingTrxResult.status === "fulfilled" ? outgoingTrxResult.value : [];
 
   const transactions = [
     ...incoming.map((transfer) => ({
@@ -943,56 +974,54 @@ export async function refreshPersonalWalletOnChainBalance(
       .select("txid, currency, direction, network")
       .eq("wallet_id", wallet.id)
       .in("txid", txids);
-    if (existingError) throw new Error(`Could not read wallet history: ${existingError.message}`);
+    if (existingError) {
+      historySyncError = `Could not read wallet history: ${existingError.message}`;
+    } else {
+      const existingKeys = new Set(
+        (existingRows ?? [])
+          .map((row) =>
+            row.txid
+              ? historyKey({
+                  network: row.network,
+                  txid: row.txid,
+                  currency: row.currency,
+                  direction: row.direction,
+                })
+              : null,
+          )
+          .filter((key): key is string => Boolean(key)),
+      );
+      const seenKeys = new Set<string>();
+      const missingTransactions = transactions.filter((transaction) => {
+        const key = historyKey(transaction);
+        if (existingKeys.has(key) || seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      });
 
-    const existingKeys = new Set(
-      (existingRows ?? [])
-        .map((row) =>
-          row.txid
-            ? historyKey({
-                network: row.network,
-                txid: row.txid,
-                currency: row.currency,
-                direction: row.direction,
-              })
-            : null,
-        )
-        .filter((key): key is string => Boolean(key)),
-    );
-    const seenKeys = new Set<string>();
-    const missingTransactions = transactions.filter((transaction) => {
-      const key = historyKey(transaction);
-      if (existingKeys.has(key) || seenKeys.has(key)) return false;
-      seenKeys.add(key);
-      return true;
-    });
-
-    const { error: historyError } = missingTransactions.length
-      ? await supabaseAdmin
-          .from("wallet_transactions" as never)
-          .insert(missingTransactions as never)
-      : { error: null };
-    if (historyError) throw new Error(`Could not sync wallet history: ${historyError.message}`);
+      const { error: insertHistoryError } = missingTransactions.length
+        ? await supabaseAdmin
+            .from("wallet_transactions" as never)
+            .insert(missingTransactions as never)
+        : { error: null };
+      if (insertHistoryError)
+        historySyncError = `Could not sync wallet history: ${insertHistoryError.message}`;
+    }
   }
-
-  const checkedAt = new Date().toISOString();
-  const { error: updateError } = await supabaseAdmin
-    .from("user_wallets")
-    .update({
-      onchain_balance: balance,
-      onchain_trx_balance: trxBalance,
-      onchain_checked_at: checkedAt,
-      onchain_trx_checked_at: checkedAt,
-      last_synced_at: checkedAt,
-    } as never)
-    .eq("id", wallet.id);
-  if (updateError) throw new Error(updateError.message);
 
   const gasfree = await refreshWalletGasfreeCapability(userId, wallet.id, {
     force: options.forceGasfreeCheck === true,
   });
 
-  return { walletId: wallet.id, balance, trxBalance, resources, checkedAt, gasfree };
+  return {
+    walletId: wallet.id,
+    balance,
+    trxBalance,
+    resources,
+    checkedAt,
+    gasfree,
+    historySyncError,
+  };
 }
 
 export async function executeTransfer(
