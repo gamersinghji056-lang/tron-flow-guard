@@ -38,13 +38,19 @@ import {
 import { isTronAddress, parseTokenBalanceHex } from "./chain.ts";
 import { deriveGasFreeAddressFromGeneralAddress } from "./gasfree-address.ts";
 import {
+  GASFREE_MAINNET_PROVIDER_BASE_URL,
+  GASFREE_NILE_PROVIDER_BASE_URL,
   GASFREE_ENV_NAMES,
   GASFREE_PROVIDER_NAME,
+  gasFreeApiCredentialsState,
+  gasFreeApiSigningPath,
+  gasFreeProviderBaseUrl,
   gasFreeRequiresTransactionPassword,
   gasFreeServiceReadiness,
   isGasFreeTransferExecutable,
   validateGasFreeReplay,
 } from "./gasfree-transfer-policy.ts";
+import GasFreeSdk from "@gasfree/gasfree-sdk";
 import { decryptMnemonic, encryptMnemonic } from "./wallet-crypto.ts";
 import {
   addressesAreSeparated,
@@ -80,6 +86,8 @@ import {
   walletTypeAndGasfreeCapabilityAreIndependent,
   walletImportOutcome,
 } from "./mini-wallet-ui.ts";
+
+const { TronGasFree } = GasFreeSdk as typeof import("@gasfree/gasfree-sdk");
 import {
   createMiniT,
   isMiniRtl,
@@ -1253,6 +1261,65 @@ describe("Telegram Mini App runtime safety", () => {
 });
 
 describe("GasFree transfer service safety", () => {
+  it("uses official GasFree OpenAPI endpoints for Mainnet and Nile", () => {
+    assert.equal(gasFreeProviderBaseUrl("trc20-mainnet"), GASFREE_MAINNET_PROVIDER_BASE_URL);
+    assert.equal(gasFreeProviderBaseUrl("trc20-nile"), GASFREE_NILE_PROVIDER_BASE_URL);
+    assert.equal(
+      gasFreeApiSigningPath(GASFREE_NILE_PROVIDER_BASE_URL, "/api/v1/config/provider/all"),
+      "/nile/api/v1/config/provider/all",
+    );
+    assert.equal(
+      gasFreeApiSigningPath(GASFREE_MAINNET_PROVIDER_BASE_URL, "/api/v1/gasfree/submit"),
+      "/tron/api/v1/gasfree/submit",
+    );
+  });
+
+  it("treats GasFree API credentials as optional unless configured incompletely", () => {
+    assert.equal(gasFreeApiCredentialsState({}), "not_configured");
+    assert.equal(gasFreeApiCredentialsState({ apiKey: "key", apiSecret: "secret" }), "configured");
+    assert.equal(gasFreeApiCredentialsState({ apiKey: "key" }), "incomplete");
+    assert.equal(gasFreeApiCredentialsState({ apiSecret: "secret" }), "incomplete");
+  });
+
+  it("matches official SDK CREATE2 GasFree address generation", () => {
+    const mnemonic =
+      "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const general = deriveTronWalletFromMnemonic(mnemonic);
+    const mainnetSdk = new TronGasFree({ chainId: Number("0x2b6653dc") });
+    const nileSdk = new TronGasFree({ chainId: Number("0xcd8690dc") });
+
+    assert.equal(
+      deriveGasFreeAddressFromGeneralAddress(general.address, "trc20-mainnet"),
+      mainnetSdk.generateGasFreeAddress(general.address),
+    );
+    assert.equal(
+      deriveGasFreeAddressFromGeneralAddress(general.address, "trc20-nile"),
+      nileSdk.generateGasFreeAddress(general.address),
+    );
+  });
+
+  it("constructs SDK PermitTransfer with user set to General EOA, not GasFree address", () => {
+    const general = "TKtWbdzEq5ss9vTS9kwRhBp5mXmBfBns3E";
+    const gasfree = deriveGasFreeAddressFromGeneralAddress(general, "trc20-nile");
+    const sdk = new TronGasFree({ chainId: Number("0xcd8690dc") });
+    const typedData = sdk.assembleGasFreeTransactionJson({
+      token: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+      serviceProvider: "TQ6qStrS2ZJ96gieZJC8AurTxwqJETmjfp",
+      user: general,
+      receiver: "TEkj3ndMVEmFLYaFrATMwMjBRZ1EAZkucT",
+      value: "1000000",
+      maxFee: "10000000",
+      deadline: "1787513600",
+      version: "1",
+      nonce: "9",
+    });
+
+    assert.equal(typedData.message.user, general);
+    assert.notEqual(typedData.message.user, gasfree);
+    assert.equal(typedData.domain.verifyingContract, "THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdc");
+    assert.equal(typedData.message.serviceProvider, "TQ6qStrS2ZJ96gieZJC8AurTxwqJETmjfp");
+  });
+
   it("keeps GasFree transfers disabled by default even when the wallet address is discovered", () => {
     const readiness = gasFreeServiceReadiness({
       settings: {
@@ -1298,6 +1365,26 @@ describe("GasFree transfer service safety", () => {
     });
     assert.equal(missing.status, "NOT_CONFIGURED");
 
+    const missingCredentials = gasFreeServiceReadiness({
+      settings: {
+        enabled: true,
+        mainnetEnabled: true,
+        killSwitch: false,
+        supportedAsset: "USDT",
+        perTxMaxUsdt: 100,
+      },
+      provider: {
+        providerBaseUrl: GASFREE_MAINNET_PROVIDER_BASE_URL,
+        serviceProviderAddress: null,
+        apiKeyConfigured: false,
+        apiSecretConfigured: false,
+      },
+      network: "trc20-mainnet",
+      asset: "USDT",
+      amount: 10,
+    });
+    assert.equal(missingCredentials.status, "NOT_CONFIGURED");
+
     const configured = gasFreeServiceReadiness({
       settings: {
         enabled: true,
@@ -1308,7 +1395,7 @@ describe("GasFree transfer service safety", () => {
       },
       provider: {
         providerBaseUrl: "https://provider.example",
-        serviceProviderAddress: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
+        serviceProviderAddress: null,
         apiKeyConfigured: true,
         apiSecretConfigured: true,
       },

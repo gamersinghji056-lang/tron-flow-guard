@@ -2,6 +2,8 @@ import type { ChainNetwork } from "@/lib/chain";
 
 export const GASFREE_PROVIDER_NAME = "gasfree_open_api";
 export const GASFREE_SUPPORTED_ASSET = "USDT";
+export const GASFREE_MAINNET_PROVIDER_BASE_URL = "https://open.gasfree.io/tron";
+export const GASFREE_NILE_PROVIDER_BASE_URL = "https://open-test.gasfree.io/nile";
 
 export const GASFREE_ENV_NAMES = [
   "GASFREE_PROVIDER_BASE_URL",
@@ -50,6 +52,28 @@ export interface GasFreeProviderConfigLike {
   apiSecretConfigured?: boolean;
 }
 
+export function gasFreeProviderBaseUrl(network: ChainNetwork, override?: string | null) {
+  if (override?.trim()) return override.trim().replace(/\/+$/, "");
+  return network === "trc20-mainnet"
+    ? GASFREE_MAINNET_PROVIDER_BASE_URL
+    : GASFREE_NILE_PROVIDER_BASE_URL;
+}
+
+export function gasFreeApiSigningPath(baseUrl: string, endpoint: string) {
+  const base = new URL(baseUrl);
+  const basePath = base.pathname.replace(/\/+$/, "");
+  return `${basePath}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+}
+
+export function gasFreeApiCredentialsState(input: {
+  apiKey?: string | null;
+  apiSecret?: string | null;
+}) {
+  if (!input.apiKey && !input.apiSecret) return "not_configured" as const;
+  if (input.apiKey && input.apiSecret) return "configured" as const;
+  return "incomplete" as const;
+}
+
 export function gasFreeServiceReadiness(input: {
   settings: GasFreeSettingsLike;
   provider: GasFreeProviderConfigLike;
@@ -76,10 +100,22 @@ export function gasFreeServiceReadiness(input: {
   if (asset !== (input.settings.supportedAsset ?? GASFREE_SUPPORTED_ASSET).toUpperCase()) {
     return { status: "TEMPORARILY_UNAVAILABLE" as const, reason: "Unsupported GasFree asset." };
   }
-  if (!input.provider.providerBaseUrl || !input.provider.serviceProviderAddress) {
+  if (!input.provider.providerBaseUrl) {
     return {
       status: "NOT_CONFIGURED" as const,
       reason: "GasFree provider configuration is missing.",
+    };
+  }
+  if (input.provider.apiKeyConfigured !== input.provider.apiSecretConfigured) {
+    return {
+      status: "NOT_CONFIGURED" as const,
+      reason: "GasFree API key and secret must be configured together.",
+    };
+  }
+  if (!input.provider.apiKeyConfigured || !input.provider.apiSecretConfigured) {
+    return {
+      status: "NOT_CONFIGURED" as const,
+      reason: "GasFree API credentials are required by the provider.",
     };
   }
   const max = Number(input.settings.perTxMaxUsdt ?? 0);

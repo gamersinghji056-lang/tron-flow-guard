@@ -17,6 +17,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@gasfree/gasfree-sdk": "^1.1.2",
     "@hookform/resolvers": "^5.2.2",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
