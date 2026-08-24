@@ -1128,26 +1128,33 @@ function TelegramMiniApp() {
     }
     setBusy(true);
     try {
-      if (authMode === "login")
-        await loginTelegram({ data: { initData, email, password, accountType } });
-      else
-        await registerTelegram({
-          data: {
-            initData,
-            email,
-            password,
-            accountType,
-            businessName:
-              accountType === "vendor" ? email.split("@")[0] || "WTRON Vendor" : undefined,
-          },
-        });
+      const authResult =
+        authMode === "login"
+          ? await loginTelegram({ data: { initData, email, password, accountType } })
+          : await registerTelegram({
+              data: {
+                initData,
+                email,
+                password,
+                accountType,
+                businessName:
+                  accountType === "vendor" ? email.split("@")[0] || "WTRON Vendor" : undefined,
+              },
+            });
+      const resolvedAccountType =
+        (authResult.accountType as WtronAccountType | "admin" | null | undefined) ?? accountType;
+      const resolvedVendorStatus =
+        (authResult.vendorStatus as VendorApprovalStatus | null | undefined) ??
+        (resolvedAccountType === "vendor" ? "pending" : null);
       setLinked(true);
-      setLinkedAccountType(accountType);
-      setVendorStatus(accountType === "vendor" ? "pending" : null);
-      if (authMode === "register" && accountType === "vendor") {
+      setLinkedAccountType(resolvedAccountType);
+      setVendorStatus(resolvedVendorStatus);
+      if (resolvedAccountType === "vendor" && resolvedVendorStatus !== "approved") {
         setHasSession(false);
         setScreen("home");
-        toast.success("Vendor application submitted");
+        toast.success(
+          authMode === "register" ? "Vendor application submitted" : "Vendor approval required",
+        );
         await refresh("home");
         return;
       }

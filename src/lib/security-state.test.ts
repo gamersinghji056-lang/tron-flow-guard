@@ -114,7 +114,12 @@ import {
   telegramAuthPasswordPrompt,
   telegramAuthSuccessMessage,
 } from "./telegram-bot-flow.ts";
-import { miniAppEntryState, telegramStartMenuLabels } from "./role-auth-policy.ts";
+import {
+  miniAppEntryState,
+  resolveTelegramStateKind,
+  telegramLinkDecision,
+  telegramStartMenuLabels,
+} from "./role-auth-policy.ts";
 import {
   canResumeListing,
   ensureReservedLiquidityPreserved,
@@ -1302,16 +1307,16 @@ describe("Telegram bot auth flow", () => {
       "REGISTER VENDOR",
       "OPEN MINI APP",
       "HELP",
-      "ABOUT WTRON",
-      "HOW TO USE WTRON",
+      "ABOUT",
+      "HOW TO USE",
     ]);
     assert.deepEqual(
       telegramStartMenuLabels({ linked: true, authorized: false, accountType: "trader" }),
-      ["LOGIN TRADER", "OPEN MINI APP", "HELP", "ABOUT WTRON", "HOW TO USE WTRON"],
+      ["LOGIN TRADER", "OPEN MINI APP", "HELP", "ABOUT", "HOW TO USE"],
     );
     assert.deepEqual(
       telegramStartMenuLabels({ linked: true, authorized: false, accountType: "vendor" }),
-      ["LOGIN VENDOR", "OPEN MINI APP", "HELP", "ABOUT WTRON", "HOW TO USE WTRON"],
+      ["LOGIN VENDOR", "OPEN MINI APP", "HELP", "ABOUT", "HOW TO USE"],
     );
     assert.deepEqual(
       telegramStartMenuLabels({
@@ -1320,7 +1325,7 @@ describe("Telegram bot auth flow", () => {
         accountType: "vendor",
         vendorStatus: "pending",
       }),
-      ["APPLICATION PENDING", "OPEN MINI APP", "HELP", "ABOUT WTRON", "HOW TO USE WTRON"],
+      ["APPLICATION PENDING", "OPEN MINI APP", "HELP", "ABOUT", "HOW TO USE"],
     );
     assert.deepEqual(
       telegramStartMenuLabels({ linked: true, authorized: true, accountType: "trader" }),
@@ -1334,6 +1339,73 @@ describe("Telegram bot auth flow", () => {
         vendorStatus: "approved",
       }),
       ["OPEN MINI APP"],
+    );
+  });
+
+  it("classifies authoritative Telegram role states", () => {
+    assert.equal(resolveTelegramStateKind({ linked: false, authenticated: false }), "UNKNOWN");
+    assert.equal(
+      resolveTelegramStateKind({ linked: true, authenticated: false, accountType: "trader" }),
+      "REGISTERED_TRADER_LOGGED_OUT",
+    );
+    assert.equal(
+      resolveTelegramStateKind({ linked: true, authenticated: false, accountType: "vendor" }),
+      "REGISTERED_VENDOR_LOGGED_OUT",
+    );
+    assert.equal(
+      resolveTelegramStateKind({
+        linked: true,
+        authenticated: false,
+        accountType: "vendor",
+        vendorStatus: "pending",
+      }),
+      "PENDING_VENDOR",
+    );
+    assert.equal(
+      resolveTelegramStateKind({ linked: true, authenticated: true, accountType: "trader" }),
+      "AUTHENTICATED_TRADER",
+    );
+    assert.equal(
+      resolveTelegramStateKind({
+        linked: true,
+        authenticated: true,
+        accountType: "vendor",
+        vendorStatus: "approved",
+      }),
+      "AUTHENTICATED_VENDOR",
+    );
+  });
+
+  it("keeps Telegram linking idempotent for the same account and rejects collisions", () => {
+    assert.equal(
+      telegramLinkDecision({
+        existingTelegramUserId: 1001,
+        existingTelegramLinkedUserId: "user-a",
+        existingPlatformTelegramUserId: 1001,
+        targetUserId: "user-a",
+        telegramUserId: 1001,
+      }),
+      "idempotent_same_account",
+    );
+    assert.equal(
+      telegramLinkDecision({
+        existingTelegramUserId: 1001,
+        existingTelegramLinkedUserId: "user-a",
+        existingPlatformTelegramUserId: null,
+        targetUserId: "user-b",
+        telegramUserId: 1001,
+      }),
+      "telegram_linked_to_different_account",
+    );
+    assert.equal(
+      telegramLinkDecision({
+        existingTelegramUserId: null,
+        existingTelegramLinkedUserId: null,
+        existingPlatformTelegramUserId: 2002,
+        targetUserId: "user-a",
+        telegramUserId: 1001,
+      }),
+      "platform_linked_to_different_telegram",
     );
   });
 });

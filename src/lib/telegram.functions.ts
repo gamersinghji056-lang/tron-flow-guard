@@ -41,24 +41,16 @@ const adminStatusInput = z.object({
 export const verifyTelegramMiniApp = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => initDataInput.parse(input))
   .handler(async ({ data }) => {
-    const { readTelegramAccount } = await import("@/lib/telegram.server");
+    const { readTelegramAccount, resolveTelegramRoleState } = await import("@/lib/telegram.server");
     const result = await readTelegramAccount(data.initData);
-    const { hasActiveTelegramSession } = await import("@/lib/telegram.server");
-    const authorized =
-      result.account?.status === "active"
-        ? await hasActiveTelegramSession(result.verified.telegramUser.id)
-        : false;
-    const roleState = result.account?.user_id
-      ? await import("@/lib/telegram.server").then(({ readPlatformRoleState }) =>
-          readPlatformRoleState(result.account!.user_id),
-        )
-      : { accountType: null, vendorStatus: null };
+    const roleState = await resolveTelegramRoleState(result.verified.telegramUser.id);
     return {
       linked: result.account?.status === "active",
-      authorized,
+      authorized: roleState.authorized,
       disabled: result.account?.status === "disabled",
       accountType: roleState.accountType,
       vendorStatus: roleState.vendorStatus,
+      state: roleState.state,
       telegramUser: {
         id: result.verified.telegramUser.id,
         username: result.verified.telegramUser.username ?? null,
@@ -81,11 +73,15 @@ export const loginTelegramMiniApp = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { authenticateAndLinkTelegramMiniApp } = await import("@/lib/telegram.server");
     const account = await authenticateAndLinkTelegramMiniApp(data);
+    const { readPlatformRoleState } = await import("@/lib/telegram.server");
+    const roleState = await readPlatformRoleState(account.user_id);
     return {
       ok: true,
       userId: account.user_id,
       telegramUserId: account.telegram_user_id,
       status: account.status,
+      accountType: roleState.accountType,
+      vendorStatus: roleState.vendorStatus,
     };
   });
 
@@ -94,6 +90,8 @@ export const registerTelegramMiniApp = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { registerAndLinkTelegramMiniApp } = await import("@/lib/telegram.server");
     const result = await registerAndLinkTelegramMiniApp(compactMiniAuthInput(data));
+    const { readPlatformRoleState } = await import("@/lib/telegram.server");
+    const roleState = await readPlatformRoleState(result.account.user_id);
     return {
       ok: true,
       userId: result.account.user_id,
@@ -101,6 +99,8 @@ export const registerTelegramMiniApp = createServerFn({ method: "POST" })
       status: result.account.status,
       canSignInNow: result.registration.canSignInNow,
       emailVerificationRequired: result.registration.emailVerificationRequired,
+      accountType: roleState.accountType,
+      vendorStatus: roleState.vendorStatus,
     };
   });
 

@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchVendorApplication } from "@/lib/vendor.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -13,6 +15,7 @@ export const Route = createFileRoute("/vendor/login")({
 
 function VendorLoginPage() {
   const navigate = useNavigate();
+  const getVendorApplication = useServerFn(fetchVendorApplication);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
@@ -23,6 +26,11 @@ function VendorLoginPage() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      const application = await getVendorApplication();
+      if (!application) {
+        await supabase.auth.signOut();
+        throw new Error("This account is not a Vendor account. Use Trader Login instead.");
+      }
       navigate({ to: "/vendor", replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not sign in");

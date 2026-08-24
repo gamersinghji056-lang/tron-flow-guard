@@ -16,6 +16,8 @@ import {
   telegramAuthSuccessMessage,
 } from "@/lib/telegram-bot-flow";
 import {
+  resolveTelegramStateKind,
+  telegramLinkDecision,
   telegramStartMenuLabels,
   type VendorApprovalStatus,
   type WtronAccountType,
@@ -495,11 +497,31 @@ async function beginBotAuthFlow(input: {
   flow: "login" | "register";
   accountType: WtronAccountType;
 }) {
+  const linkedState = await readLinkedState(input.user.id);
+  if (input.flow === "register" && linkedState.linked) {
+    await clearBotAuthState(input.user.id);
+    return {
+      text: "This Telegram account is already linked. Continue with the linked account.",
+      replyMarkup: await menuKeyboardForLinkedState(linkedState),
+    };
+  }
+  if (
+    input.flow === "login" &&
+    input.accountType === "vendor" &&
+    linkedState.accountType === "vendor" &&
+    linkedState.vendorStatus === "pending"
+  ) {
+    await clearBotAuthState(input.user.id);
+    return {
+      text: "Your Vendor application is pending admin approval. Vendor login unlocks after approval.",
+      replyMarkup: await menuKeyboardForLinkedState(linkedState),
+    };
+  }
   const existing = await readBotAuthState(input.user.id);
   if (existing?.locked_until && new Date(existing.locked_until).getTime() > Date.now()) {
     return {
       text: "Too many failed attempts. Try again later.",
-      replyMarkup: unknownTelegramMenu(),
+      replyMarkup: await menuKeyboardForLinkedState(linkedState),
     };
   }
 
@@ -530,6 +552,7 @@ async function clearBotAuthState(telegramUserId: number) {
     .from("telegram_bot_auth_states" as never)
     .delete()
     .eq("telegram_user_id", telegramUserId as never);
+  pendingRegistrationPasswords.delete(telegramUserId);
 }
 
 async function recordBotAuthFailure(input: {
@@ -632,20 +655,27 @@ async function completeBotLogin(input: {
       text: telegramAuthSuccessMessage("login"),
       replyMarkup: openMiniAppKeyboard("/mini-app", handoff.token),
     };
-  } catch {
+  } catch (error) {
     const locked = await recordBotAuthFailure({
       user: input.user,
       chatId: input.chatId,
       flow: "login",
       attempts: input.state.attempts,
-      reason: "invalid_credentials",
+      reason:
+        error instanceof TelegramAuthError
+          ? error.code
+          : error instanceof Error
+            ? error.message
+            : "invalid_credentials",
       email: input.email,
     });
     return {
       text: locked
         ? "Too many failed attempts. Try again later."
-        : "Invalid email or password. Tap LOGIN to try again.",
-      replyMarkup: unknownTelegramMenu(),
+        : error instanceof Error
+          ? error.message
+          : "Invalid email or password. Tap LOGIN to try again.",
+      replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
     };
   }
 }
@@ -696,10 +726,7 @@ async function completeBotRegistration(input: {
       userId: result.userId,
       reason: "bot_register",
     });
-    await createTelegramAppSession(account, "bot_register");
-    const handoff = await createTelegramAppHandoff(account, "bot_register");
     await clearBotAuthState(input.user.id);
-    pendingRegistrationPasswords.delete(input.user.id);
     await supabaseAdmin.from("telegram_link_audit").insert({
       user_id: result.userId,
       telegram_account_id: account.id,
@@ -712,14 +739,34 @@ async function completeBotRegistration(input: {
         email_verification_required: result.emailVerificationRequired ?? false,
       } as never,
     } as never);
+    if (accountType === "vendor") {
+      return {
+        text: "Registration submitted. Your Vendor account is waiting for approval.",
+        replyMarkup: keyboardFromLabels(
+          telegramStartMenuLabels({
+            linked: true,
+            authenticated: false,
+            accountType: "vendor",
+            vendorStatus: "pending",
+          }),
+        ),
+      };
+    }
+    await createTelegramAppSession(account, "bot_register");
+    const handoff = await createTelegramAppHandoff(account, "bot_register");
     return {
-      text:
-        accountType === "vendor"
-          ? "Registration submitted. Your Vendor account is waiting for approval."
-          : telegramAuthSuccessMessage("register"),
+      text: telegramAuthSuccessMessage("register"),
       replyMarkup: openMiniAppKeyboard("/mini-app", handoff.token),
     };
   } catch (error) {
+    await clearBotAuthState(input.user.id);
+    if (error instanceof TelegramAuthError && error.code === "telegram_already_linked") {
+      const linkedState = await readLinkedState(input.user.id);
+      return {
+        text: "This Telegram account is already linked. Continue with the linked account.",
+        replyMarkup: await menuKeyboardForLinkedState(linkedState),
+      };
+    }
     const locked = await recordBotAuthFailure({
       user: input.user,
       chatId: input.chatId,
@@ -728,11 +775,10 @@ async function completeBotRegistration(input: {
       reason: "registration_failed",
       email: input.email,
     });
-    pendingRegistrationPasswords.delete(input.user.id);
     const message = error instanceof Error ? error.message : "Could not create the account";
     return {
       text: locked ? "Too many failed attempts. Try again later." : message,
-      replyMarkup: unknownTelegramMenu(),
+      replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
     };
   }
 }
@@ -749,20 +795,26 @@ export async function linkTelegramIdentity(input: {
     .eq("telegram_user_id", tg.id as never)
     .maybeSingle();
   const telegramRow = existingTelegram as { id: string; user_id: string; status: string } | null;
-  if (telegramRow && telegramRow.user_id !== input.userId) {
-    throw new TelegramAuthError(
-      "telegram_already_linked",
-      "This Telegram account is already linked.",
-    );
-  }
-
   const { data: existingUser } = await supabaseAdmin
     .from("telegram_accounts")
     .select("id, telegram_user_id")
     .eq("user_id", input.userId as never)
     .maybeSingle();
   const userRow = existingUser as { id: string; telegram_user_id: number } | null;
-  if (userRow && userRow.telegram_user_id !== tg.id) {
+  const linkDecision = telegramLinkDecision({
+    existingTelegramUserId: telegramRow ? tg.id : null,
+    existingTelegramLinkedUserId: telegramRow?.user_id ?? null,
+    existingPlatformTelegramUserId: userRow?.telegram_user_id ?? null,
+    targetUserId: input.userId,
+    telegramUserId: tg.id,
+  });
+  if (linkDecision === "telegram_linked_to_different_account") {
+    throw new TelegramAuthError(
+      "telegram_already_linked",
+      "This Telegram account is already linked.",
+    );
+  }
+  if (linkDecision === "platform_linked_to_different_telegram") {
     throw new TelegramAuthError(
       "platform_already_linked",
       "This platform account is already linked to another Telegram account",
@@ -1089,8 +1141,12 @@ function keyboardFromLabels(labels: string[], handoffToken?: string) {
     if (label === "LOGIN TRADER") return { text: label, callback_data: "auth:trader:login" };
     if (label === "LOGIN VENDOR") return { text: label, callback_data: "auth:vendor:login" };
     if (label === "HELP") return { text: label, callback_data: "help" };
-    if (label === "ABOUT WTRON") return { text: label, callback_data: "about" };
-    if (label === "HOW TO USE WTRON") return { text: label, callback_data: "howto" };
+    if (label === "ABOUT" || label === "ABOUT WTRON")
+      return { text: label, callback_data: "about" };
+    if (label === "HOW TO USE" || label === "HOW TO USE WTRON")
+      return { text: label, callback_data: "howto" };
+    if (label === "TRADER GUIDE") return { text: label, callback_data: "guide:trader" };
+    if (label === "VENDOR GUIDE") return { text: label, callback_data: "guide:vendor" };
     if (label === "APPLICATION PENDING") return { text: label, callback_data: "vendor:pending" };
     return createTelegramWebAppButton(label, miniAppUrl("/mini-app", handoffToken));
   });
@@ -1113,20 +1169,53 @@ function helpText() {
   return [
     "WTRON Help",
     "",
-    "Trader: register or login, then open the Mini App for Wallet, P2P, WTRON Trade and orders.",
-    "Vendor: register, wait for approval, then login to manage listings, accounts and orders.",
-    "Wallet: create/import TRON wallets, receive USDT and review wallet-specific history.",
-    "P2P: buy or sell USDT with saved payment methods and dispute-aware order state.",
-    "WTRON Trade: follow the exact amount, network and deposit address shown in the order.",
+    "Use the Mini App for wallet, P2P, WTRON Trade, deposits and order tracking.",
+    "Traders can register and start immediately.",
+    "Vendors register first, then wait for admin approval before tools unlock.",
     "",
-    "Security: Never share your password, seed phrase, private key or OTP with another person.",
+    "Security: never share your password, seed phrase, private key or OTP.",
   ].join("\n");
 }
 
-async function readLinkedState(telegramUserId: number) {
+function aboutText() {
+  return [
+    "About WTRON",
+    "",
+    "WTRON is a TRON-focused USDT wallet and trading platform for traders, approved vendors and operations teams.",
+    "It combines wallet visibility, P2P orders, WTRON Trade, vendor payments and blockchain verification in one flow.",
+  ].join("\n");
+}
+
+function traderGuideText() {
+  return [
+    "Trader Guide",
+    "",
+    "1. Register or login as Trader.",
+    "2. Open the Mini App.",
+    "3. Create or import a TRON wallet.",
+    "4. Use P2P or WTRON Trade and follow the order instructions.",
+    "5. Track deposits, orders and history inside the Mini App.",
+  ].join("\n");
+}
+
+function vendorGuideText() {
+  return [
+    "Vendor Guide",
+    "",
+    "1. Register as Vendor.",
+    "2. Wait for admin approval.",
+    "3. Login after approval.",
+    "4. Add payment accounts and listings.",
+    "5. Manage orders, proof review, wallet and history in the Vendor Mini App.",
+  ].join("\n");
+}
+
+export async function resolveTelegramRoleState(telegramUserId: number) {
   const { data: account } = await supabaseAdmin
     .from("telegram_accounts")
-    .select("id, user_id, telegram_user_id, status")
+    .select(
+      "id, user_id, telegram_user_id, chat_id, username, first_name, last_name, status, linked_at",
+    )
     .eq("telegram_user_id", telegramUserId as never)
     .maybeSingle();
   const row = account as TelegramAccountRow | null;
@@ -1135,7 +1224,12 @@ async function readLinkedState(telegramUserId: number) {
   const roleState = row?.user_id
     ? await readPlatformRoleState(row.user_id)
     : ({ accountType: null, vendorStatus: null } as const);
-  return { account: row, linked, authorized, ...roleState };
+  const resolved = { account: row, linked, authorized, authenticated: authorized, ...roleState };
+  return { ...resolved, state: resolveTelegramStateKind(resolved) };
+}
+
+async function readLinkedState(telegramUserId: number) {
+  return resolveTelegramRoleState(telegramUserId);
 }
 
 async function menuKeyboardForLinkedState(state: {
@@ -1190,7 +1284,7 @@ export async function handleTelegramCommand(user: TelegramWebAppUser, text: stri
   if (!state.authorized && command !== "/start") {
     return {
       text: "Welcome to WTRON. Login or register to access wallet, P2P, orders and deposits.",
-      replyMarkup: unknownTelegramMenu(),
+      replyMarkup: await menuKeyboardForLinkedState(state),
     };
   }
 
@@ -1264,9 +1358,10 @@ export async function handleTelegramCallback(input: {
       actor_id: account?.user_id ?? null,
       actor_type: "telegram",
     } as never);
+    const loggedOutState = await readLinkedState(input.user.id);
     return {
       text: "Logged out from Telegram. Your platform account was not deleted.",
-      replyMarkup: unknownTelegramMenu(),
+      replyMarkup: await menuKeyboardForLinkedState(loggedOutState),
     };
   }
   if (input.data === "help") {
@@ -1276,14 +1371,32 @@ export async function handleTelegramCallback(input: {
   if (input.data === "about") {
     const state = await readLinkedState(input.user.id);
     return {
-      text: "WTRON is a TRON-focused wallet and USDT trading platform combining wallet visibility, P2P trading, WTRON Trade, approved vendors and blockchain verification.",
+      text: aboutText(),
       replyMarkup: await menuKeyboardForLinkedState(state),
     };
   }
   if (input.data === "howto") {
     const state = await readLinkedState(input.user.id);
     return {
-      text: "Trader Guide: register, link Telegram, open Mini App, create/import wallet, add payment method, trade and track confirmations.\n\nVendor Guide: register, wait for approval, configure accounts/listings, manage orders, review proof and track history.",
+      text: "Choose a guide.",
+      replyMarkup: keyboardFromLabels([
+        "TRADER GUIDE",
+        "VENDOR GUIDE",
+        ...telegramStartMenuLabels(state),
+      ]),
+    };
+  }
+  if (input.data === "guide:trader") {
+    const state = await readLinkedState(input.user.id);
+    return {
+      text: traderGuideText(),
+      replyMarkup: await menuKeyboardForLinkedState(state),
+    };
+  }
+  if (input.data === "guide:vendor") {
+    const state = await readLinkedState(input.user.id);
+    return {
+      text: vendorGuideText(),
       replyMarkup: await menuKeyboardForLinkedState(state),
     };
   }
@@ -1311,7 +1424,7 @@ export async function handleTelegramAuthMessage(input: {
     return {
       handled: true,
       text: "Too many failed attempts. Try again later.",
-      replyMarkup: unknownTelegramMenu(),
+      replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
     };
   }
 
@@ -1343,7 +1456,7 @@ export async function handleTelegramAuthMessage(input: {
       return {
         handled: true,
         text: "Session expired. Tap LOGIN or REGISTER to start again.",
-        replyMarkup: unknownTelegramMenu(),
+        replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
       };
     }
     if (state.flow === "login") {
@@ -1383,7 +1496,7 @@ export async function handleTelegramAuthMessage(input: {
     return {
       handled: true,
       text: "Session expired. Tap REGISTER to start again.",
-      replyMarkup: unknownTelegramMenu(),
+      replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
     };
   }
   if (pending.password !== input.text) {
@@ -1399,7 +1512,7 @@ export async function handleTelegramAuthMessage(input: {
     return {
       handled: true,
       text: locked ? "Too many failed attempts. Try again later." : "Passwords do not match.",
-      replyMarkup: unknownTelegramMenu(),
+      replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
     };
   }
 
