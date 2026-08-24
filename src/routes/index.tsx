@@ -38,7 +38,7 @@ const nav = [
   ["WTRON Trade", "trade"],
   ["Vendors", "vendors"],
   ["Security", "security"],
-  ["How It Works", "how"],
+  ["How to Use", "how"],
   ["About", "about"],
   ["FAQ", "faq"],
 ] as const;
@@ -240,7 +240,7 @@ function Landing() {
         <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.8fr_1fr]">
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.12em] text-violet-300">
-              How it works
+              How to Use WTRON
             </p>
             <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
               Clear workflows for traders and approved vendors.
