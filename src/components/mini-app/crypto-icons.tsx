@@ -53,12 +53,12 @@ export function WtronLogo({
             event.currentTarget.nextElementSibling?.classList.add("grid");
           }}
         />
-        <span className="hidden h-full w-full place-items-center rounded-xl bg-emerald-500 text-sm font-semibold tracking-normal">
+        <span className="hidden h-full w-full place-items-center rounded-xl bg-emerald-500 text-sm font-medium tracking-normal">
           WT
         </span>
       </span>
       {showText ? (
-        <span className={textClassName ?? "font-semibold tracking-tight"}>WTRON</span>
+        <span className={textClassName ?? "font-medium tracking-tight"}>WTRON</span>
       ) : null}
     </div>
   );

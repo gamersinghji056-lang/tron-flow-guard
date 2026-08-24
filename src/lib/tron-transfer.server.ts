@@ -10,6 +10,8 @@ import { networkConfig, parseTokenBalanceHex, type ChainNetwork } from "@/lib/ch
 import { tronAddressToHex } from "@/lib/tron-address";
 import { deriveWallet, signTxHash } from "@/lib/wallet-keys.server";
 
+const READ_TIMEOUT_MS = 30_000;
+
 function pad32(hex: string): string {
   return hex.replace(/^0x/, "").padStart(64, "0");
 }
@@ -185,25 +187,33 @@ export async function readTrc20Balance(
 ): Promise<number | null> {
   const config = networkConfig(network);
 
-  try {
-    const res = await fetch(`${config.apiBase}/wallet/triggerconstantcontract`, {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify({
-        owner_address: tronAddressToHex(address),
-        contract_address: tronAddressToHex(config.usdtContract),
-        function_selector: "balanceOf(address)",
-        parameter: pad32(tronAddressToHex(address).slice(2)),
-      }),
-    });
-    if (!res.ok) return null;
-    const body = (await res.json()) as {
-      result?: { result?: boolean };
-      constant_result?: string[];
-    };
-    if (body.result?.result === false) return null;
-    return parseTokenBalanceHex(body.constant_result?.[0], config.tokenDecimals);
-  } catch {
-    return null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${config.apiBase}/wallet/triggerconstantcontract`, {
+        method: "POST",
+        headers: headers(),
+        signal: controller.signal,
+        body: JSON.stringify({
+          owner_address: tronAddressToHex(address),
+          contract_address: tronAddressToHex(config.usdtContract),
+          function_selector: "balanceOf(address)",
+          parameter: pad32(tronAddressToHex(address).slice(2)),
+        }),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as {
+        result?: { result?: boolean };
+        constant_result?: string[];
+      };
+      if (body.result?.result === false) return null;
+      return parseTokenBalanceHex(body.constant_result?.[0], config.tokenDecimals);
+    } catch {
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 350));
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return null;
 }

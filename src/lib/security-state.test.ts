@@ -1322,7 +1322,7 @@ describe("GasFree transfer service safety", () => {
     assert.equal(typedData.message.serviceProvider, "TQ6qStrS2ZJ96gieZJC8AurTxwqJETmjfp");
   });
 
-  it("keeps GasFree transfers disabled by default even when the wallet address is discovered", () => {
+  it("keeps GasFree transfers not configured by default even when the wallet address is discovered", () => {
     const readiness = gasFreeServiceReadiness({
       settings: {
         enabled: false,
@@ -1342,8 +1342,28 @@ describe("GasFree transfer service safety", () => {
       amount: 1,
     });
 
-    assert.equal(readiness.status, "DISABLED");
+    assert.equal(readiness.status, "NOT_CONFIGURED");
     assert.equal(isGasFreeTransferExecutable(readiness.status), false);
+
+    const disabledWithCredentials = gasFreeServiceReadiness({
+      settings: {
+        enabled: false,
+        mainnetEnabled: false,
+        killSwitch: true,
+        supportedAsset: "USDT",
+        perTxMaxUsdt: 0,
+      },
+      provider: {
+        providerBaseUrl: GASFREE_MAINNET_PROVIDER_BASE_URL,
+        serviceProviderAddress: null,
+        apiKeyConfigured: true,
+        apiSecretConfigured: true,
+      },
+      network: "trc20-mainnet",
+      asset: "USDT",
+      amount: 1,
+    });
+    assert.equal(disabledWithCredentials.status, "DISABLED");
   });
 
   it("requires real provider configuration before reporting GasFree transfers available", () => {
@@ -1500,6 +1520,31 @@ describe("GasFree transfer service safety", () => {
     assert.equal(WTRON_OFFICIAL_MARK_PATH, "/branding/wtron-mark.svg");
   });
 
+  it("keeps large GasFree history pagination bounded and duplicate-safe", async () => {
+    const pages = [
+      {
+        rows: Array.from({ length: 200 }, (_, index) => ({ id: `tx-${index}` })),
+        fingerprint: "page-2",
+      },
+      {
+        rows: Array.from({ length: 200 }, (_, index) => ({ id: `tx-${index + 200}` })),
+        fingerprint: "page-3",
+      },
+      {
+        rows: Array.from({ length: 197 }, (_, index) => ({ id: `tx-${index + 400}` })),
+        fingerprint: null,
+      },
+    ];
+    let page = 0;
+    const rows = await collectPaginatedTronGridRows(
+      async () => pages[page++]!,
+      (row) => row.id,
+      { maxPages: 20 },
+    );
+    assert.equal(rows.length, 597);
+    assert.equal(new Set(rows.map((row) => row.id)).size, 597);
+  });
+
   it("ships valid original WTRON SVG brand assets", () => {
     for (const asset of [
       "public/branding/wtron-logo.svg",
@@ -1511,6 +1556,7 @@ describe("GasFree transfer service safety", () => {
       const svg = readFileSync(absolute, "utf8");
       assert.match(svg, /^<svg[\s>]/);
       assert.match(svg, /<title[^>]*>WTRON/);
+      assert.doesNotMatch(svg, />WT</);
       assert.doesNotMatch(svg, /TronLink|Binance|Tether|Telegram/);
     }
   });
@@ -1522,9 +1568,13 @@ describe("GasFree transfer service safety", () => {
     const fa = createMiniT("fa");
     assert.equal(en("gasfreeWalletReady"), "GasFree Wallet Ready");
     assert.equal(en("walletStatus"), "Wallet status");
+    assert.equal(en("serviceStatus"), "Service status");
     assert.notEqual(zh("walletStatus"), "Wallet status");
+    assert.notEqual(zh("serviceStatus"), "Service status");
     assert.notEqual(ru("walletStatus"), "Wallet status");
+    assert.notEqual(ru("serviceStatus"), "Service status");
     assert.notEqual(fa("walletStatus"), "Wallet status");
+    assert.notEqual(fa("serviceStatus"), "Service status");
     assert.match(en("gasfreeTransferSetupRequired"), /provider setup/);
   });
 });

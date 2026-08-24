@@ -82,21 +82,6 @@ export function gasFreeServiceReadiness(input: {
   amount?: number;
 }) {
   const asset = input.asset.toUpperCase();
-  if (input.settings.killSwitch !== false) {
-    return { status: "DISABLED" as const, reason: "Emergency kill switch is enabled." };
-  }
-  if (input.settings.enabled !== true) {
-    return { status: "DISABLED" as const, reason: "GasFree transfer service is disabled." };
-  }
-  if (input.network !== "trc20-mainnet") {
-    return {
-      status: "TEMPORARILY_UNAVAILABLE" as const,
-      reason: "Only TRON Mainnet USDT is supported.",
-    };
-  }
-  if (input.settings.mainnetEnabled !== true) {
-    return { status: "DISABLED" as const, reason: "GasFree Mainnet transfers are disabled." };
-  }
   if (asset !== (input.settings.supportedAsset ?? GASFREE_SUPPORTED_ASSET).toUpperCase()) {
     return { status: "TEMPORARILY_UNAVAILABLE" as const, reason: "Unsupported GasFree asset." };
   }
@@ -117,6 +102,21 @@ export function gasFreeServiceReadiness(input: {
       status: "NOT_CONFIGURED" as const,
       reason: "GasFree API credentials are required by the provider.",
     };
+  }
+  if (input.settings.killSwitch !== false) {
+    return { status: "DISABLED" as const, reason: "Emergency kill switch is enabled." };
+  }
+  if (input.settings.enabled !== true) {
+    return { status: "DISABLED" as const, reason: "GasFree transfer service is disabled." };
+  }
+  if (input.network !== "trc20-mainnet") {
+    return {
+      status: "TEMPORARILY_UNAVAILABLE" as const,
+      reason: "Only TRON Mainnet USDT is supported.",
+    };
+  }
+  if (input.settings.mainnetEnabled !== true) {
+    return { status: "DISABLED" as const, reason: "GasFree Mainnet transfers are disabled." };
   }
   const max = Number(input.settings.perTxMaxUsdt ?? 0);
   if (!Number.isFinite(max) || max <= 0) {

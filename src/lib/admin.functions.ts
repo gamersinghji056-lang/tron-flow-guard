@@ -123,6 +123,17 @@ export const createManualFeeSweep = createServerFn({ method: "POST" })
     return sweep;
   });
 
+export const testGasFreeProviderConnection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.SETTINGS_MANAGE);
+    const { testGasFreeProviderConnection: runProviderTest } =
+      await import("@/lib/gasfree-provider.server");
+    return runProviderTest("trc20-mainnet");
+  });
+
 export const getAdminDashboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

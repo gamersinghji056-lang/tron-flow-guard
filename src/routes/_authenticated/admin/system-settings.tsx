@@ -3,7 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { createManualFeeSweep, updatePlatformSettings } from "@/lib/admin.functions";
+import {
+  createManualFeeSweep,
+  testGasFreeProviderConnection,
+  updatePlatformSettings,
+} from "@/lib/admin.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
@@ -29,6 +33,19 @@ interface WalletOption {
   onchain_trx_balance?: number | string | null;
 }
 
+interface GasFreeProviderTestResult {
+  connected: boolean;
+  status: string;
+  provider: string;
+  providerAddress: string | null;
+  network: string;
+  asset: string;
+  tokenAddress: string | null;
+  credentialState: "CONFIGURED" | "INCOMPLETE" | "MISSING";
+  serviceProvider: string;
+  message: string;
+}
+
 const SETTINGS_LINKS: Array<[string, string]> = [
   ["PROFILE", "/admin"],
   ["SECURITY", "/admin/risk-security"],
@@ -45,11 +62,14 @@ const SETTINGS_LINKS: Array<[string, string]> = [
 function SystemSettingsPage() {
   const saveSettings = useServerFn(updatePlatformSettings);
   const requestSweep = useServerFn(createManualFeeSweep);
+  const runGasFreeProviderTest = useServerFn(testGasFreeProviderConnection);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [wallets, setWallets] = useState<WalletOption[]>([]);
   const [pendingFees, setPendingFees] = useState(0);
   const [sweepAmount, setSweepAmount] = useState("");
+  const [gasfreeTest, setGasfreeTest] = useState<GasFreeProviderTestResult | null>(null);
   const [pending, setPending] = useState(false);
+  const [gasfreeTestPending, setGasfreeTestPending] = useState(false);
 
   const load = useCallback(async () => {
     const [settingRes, walletRes, feeRes] = await Promise.all([
@@ -151,6 +171,20 @@ function SystemSettingsPage() {
       toast.error(error instanceof Error ? error.message : "Could not request fee sweep");
     } finally {
       setPending(false);
+    }
+  }
+
+  async function testGasFreeConnection() {
+    setGasfreeTestPending(true);
+    try {
+      const result = (await runGasFreeProviderTest()) as unknown as GasFreeProviderTestResult;
+      setGasfreeTest(result);
+      if (result.connected) toast.success("GasFree provider connected");
+      else toast.warning(result.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not test GasFree provider");
+    } finally {
+      setGasfreeTestPending(false);
     }
   }
 
@@ -288,11 +322,23 @@ function SystemSettingsPage() {
           </p>
         </div>
         <div className="rounded-lg border p-3 md:col-span-2">
-          <p className="font-medium">GasFree</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Address discovery is separate. Real GasFree transfers stay disabled until provider
-            environment, limits and kill switches are deliberately configured.
-          </p>
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="font-medium">GasFree</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Address discovery is separate. Real GasFree transfers stay disabled until provider
+                environment, limits and kill switches are deliberately configured.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={gasfreeTestPending}
+              onClick={testGasFreeConnection}
+            >
+              {gasfreeTestPending ? "Testing..." : "Test Connection"}
+            </Button>
+          </div>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <ToggleInput
               label="GasFree transfers enabled"
@@ -344,12 +390,32 @@ function SystemSettingsPage() {
             />
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <Metric label="Provider" value="GasFree OpenAPI" />
+            <Metric label="Provider Status" value={gasfreeTest?.message ?? "Not tested"} />
+            <Metric label="API Credentials" value={gasfreeTest?.credentialState ?? "Missing"} />
             <Metric label="Provider URL" value="GASFREE_PROVIDER_BASE_URL: Configured/Missing" />
             <Metric
               label="Service Provider"
-              value="GASFREE_SERVICE_PROVIDER_ADDRESS: Configured/Missing"
+              value={gasfreeTest?.serviceProvider ?? "Auto-discovered / pinned"}
+            />
+            <Metric label="Supported Network" value="TRON Mainnet" />
+            <Metric label="Supported Asset" value="USDT TRC20" />
+            <Metric
+              label="GasFree Transfer"
+              value={
+                settings["gasfree_transfer_enabled"] === "true" &&
+                settings["gasfree_kill_switch"] === "false"
+                  ? "Enabled"
+                  : "Disabled"
+              }
             />
             <Metric label="Secrets" value="GASFREE_API_KEY / GASFREE_API_SECRET: server env only" />
+            {gasfreeTest?.providerAddress ? (
+              <Metric label="Provider Address" value={gasfreeTest.providerAddress} />
+            ) : null}
+            {gasfreeTest?.tokenAddress ? (
+              <Metric label="Token Contract" value={gasfreeTest.tokenAddress} />
+            ) : null}
           </div>
         </div>
         <Button className="md:col-span-2" disabled={pending}>

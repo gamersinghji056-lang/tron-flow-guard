@@ -8,7 +8,7 @@
 import { networkConfig, type ChainNetwork } from "./chain";
 import { collectPaginatedTronGridRows } from "./tron-pagination";
 
-const REQUEST_TIMEOUT_MS = 12_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export class ChainError extends Error {
   constructor(message: string, cause?: unknown) {
@@ -19,29 +19,34 @@ export class ChainError extends Error {
 }
 
 async function chainFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const apiKey = process.env["TRONGRID_API_KEY"];
-  const headers = new Headers(init?.headers);
-  headers.set("content-type", "application/json");
-  if (apiKey) headers.set("TRON-PRO-API-KEY", apiKey);
-
-  try {
-    const response = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      headers,
-    });
-    if (!response.ok) {
-      throw new ChainError(`Blockchain node responded with ${response.status}`);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const apiKey = process.env["TRONGRID_API_KEY"];
+    const headers = new Headers(init?.headers);
+    if (init?.body) headers.set("content-type", "application/json");
+    headers.set("accept", "application/json");
+    if (apiKey) headers.set("TRON-PRO-API-KEY", apiKey);
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+        headers,
+      });
+      if (!response.ok) {
+        throw new ChainError(`Blockchain node responded with ${response.status}`);
+      }
+      return (await response.json()) as T;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ChainError) throw error;
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 350));
+    } finally {
+      clearTimeout(timer);
     }
-    return (await response.json()) as T;
-  } catch (error) {
-    if (error instanceof ChainError) throw error;
-    throw new ChainError("Blockchain node unreachable or timed out", error);
-  } finally {
-    clearTimeout(timer);
   }
+  throw new ChainError("Blockchain node unreachable or timed out", lastError);
 }
 
 /** Retry wrapper with linear backoff — the listener must survive flaky nodes. */

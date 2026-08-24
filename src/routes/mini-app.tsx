@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -3199,24 +3199,22 @@ function WalletGasFreeScreen({
           />
         </div>
 
-        <Surface className="p-3">
-          <MetricGrid
-            items={[
-              [t("walletStatus"), discovered ? t("discovered") : t("notDiscovered")],
-              [t("gasfreeTransfers"), transferLabel],
-              [t("supportedAssets"), "USDT"],
-              [t("lastChecked"), checkedAt],
-              [t("provider"), providerName],
-            ]}
-          />
-          <div className="mt-3 flex flex-wrap gap-2">
-            <StatusPill
-              label={discovered ? t("gasfreeWalletReady") : t("notDiscovered")}
-              tone={discovered ? "success" : "warning"}
+        <section className="space-y-2">
+          <SectionTitle>{t("serviceStatus")}</SectionTitle>
+          <div className="divide-y divide-white/10 border-y border-white/10 text-sm">
+            <StatusRow
+              label={t("walletStatus")}
+              value={discovered ? t("discovered") : t("notDiscovered")}
             />
-            <StatusPill label={transferLabel} tone={transferTone} />
+            <StatusRow
+              label={t("gasfreeTransfers")}
+              value={<StatusPill label={transferLabel} tone={transferTone} />}
+            />
+            <StatusRow label={t("supportedAssets")} value="USDT" />
+            <StatusRow label={t("provider")} value={providerName} />
+            <StatusRow label={t("lastChecked")} value={checkedAt} mono />
           </div>
-        </Surface>
+        </section>
 
         {discovered ? (
           <Section title={t("assets")}>
@@ -5113,6 +5111,22 @@ function SettingRow({
     </button>
   );
 }
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <p className="text-sm font-medium text-slate-200">{children}</p>;
+}
+function StatusRow({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <span className="text-xs text-slate-500">{label}</span>
+      <span
+        className={`min-w-0 text-right text-sm text-slate-200 ${mono ? "mono truncate" : ""}`}
+        dir={mono ? technicalTextDirection() : undefined}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
 function MetricGrid({ items }: { items: Array<[string, string]> }) {
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -5246,7 +5260,7 @@ function DirectSellDetailScreen(props: {
           <div className="space-y-3 rounded-2xl border border-red-500/25 bg-red-500/10 p-3">
             <div>
               <p className="text-xs uppercase tracking-wide text-red-100">Send exactly</p>
-              <p className="mono mt-1 text-2xl font-bold text-white">
+              <p className="mono mt-1 text-2xl font-semibold text-white">
                 {money(order.expected_usdt)} USDT
               </p>
             </div>

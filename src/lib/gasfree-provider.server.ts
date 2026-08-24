@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
-import GasFreeSdk from "@gasfree/gasfree-sdk";
+import * as GasFreeSdk from "@gasfree/gasfree-sdk";
 import { TronWeb } from "tronweb";
 import type { ChainNetwork } from "@/lib/chain";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -19,7 +19,11 @@ import {
 } from "@/lib/gasfree-transfer-policy";
 import { safeErrorMessage, writeServiceHeartbeat } from "@/lib/system-health.server";
 
-const { TronGasFree } = GasFreeSdk as typeof import("@gasfree/gasfree-sdk");
+const gasfreeSdkModule =
+  "default" in GasFreeSdk && GasFreeSdk.default
+    ? (GasFreeSdk.default as typeof import("@gasfree/gasfree-sdk"))
+    : (GasFreeSdk as typeof import("@gasfree/gasfree-sdk"));
+const { TronGasFree } = gasfreeSdkModule;
 
 type SettingValue = string | number | boolean | null;
 type GasFreeApiEnvelope<T> = {
@@ -524,6 +528,65 @@ export async function checkGasFreeProviderHealth(network: ChainNetwork = "trc20-
     },
   });
   return readiness;
+}
+
+export async function testGasFreeProviderConnection(network: ChainNetwork = "trc20-mainnet") {
+  let readiness: GasFreeTransferReadiness;
+  try {
+    readiness = await checkGasFreeProviderHealth(network);
+  } catch (error) {
+    const message = safeErrorMessage(error);
+    await writeServiceHeartbeat({
+      service: "GASFREE",
+      status: "DEGRADED",
+      message: "GasFree provider test failed.",
+      errorCode: "PROVIDER_ERROR",
+      metadata: { network, error: message, env_names: GASFREE_ENV_NAMES },
+    }).catch(() => undefined);
+    return {
+      connected: false,
+      status: "PROVIDER_ERROR" as const,
+      provider: "GasFree",
+      providerAddress: null,
+      network,
+      asset: GASFREE_SUPPORTED_ASSET,
+      tokenAddress: null,
+      baseUrlConfigured: false,
+      credentialState: "MISSING" as const,
+      serviceProvider: "Auto-discovery pending",
+      message: "Provider authentication or health check failed.",
+    };
+  }
+  const connected = readiness.status === "AVAILABLE";
+  const credentialState =
+    readiness.apiKeyConfigured && readiness.apiSecretConfigured
+      ? "CONFIGURED"
+      : readiness.apiKeyConfigured || readiness.apiSecretConfigured
+        ? "INCOMPLETE"
+        : "MISSING";
+  return {
+    connected,
+    status: readiness.status,
+    provider: readiness.provider || "GasFree",
+    providerAddress: readiness.providerAddress ?? null,
+    network: readiness.network,
+    asset: readiness.asset,
+    tokenAddress: readiness.tokenAddress ?? null,
+    baseUrlConfigured: readiness.configured,
+    credentialState,
+    serviceProvider: readiness.providerAddress
+      ? "Auto-discovered"
+      : readiness.serviceProviderConfigured
+        ? "Pinned"
+        : "Auto-discovery pending",
+    message: connected
+      ? "Connected"
+      : readiness.status === "PROVIDER_ERROR"
+        ? "Provider authentication or health check failed."
+        : readiness.status === "NOT_CONFIGURED"
+          ? "GasFree provider environment is not configured."
+          : readiness.reason,
+  };
 }
 
 async function loadGeneralSecret(input: {

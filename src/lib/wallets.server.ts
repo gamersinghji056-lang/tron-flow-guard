@@ -969,13 +969,28 @@ export async function refreshPersonalWalletOnChainBalance(
     }) =>
       `${transaction.network}:${transaction.txid}:${transaction.currency}:${transaction.direction}`;
 
-    const { data: existingRows, error: existingError } = await supabaseAdmin
-      .from("wallet_transactions")
-      .select("txid, currency, direction, network")
-      .eq("wallet_id", wallet.id)
-      .in("txid", txids);
-    if (existingError) {
-      historySyncError = `Could not read wallet history: ${existingError.message}`;
+    const existingRows: Array<{
+      txid: string | null;
+      currency: string;
+      direction: string;
+      network: string;
+    }> = [];
+    let existingErrorMessage: string | null = null;
+    for (let index = 0; index < txids.length; index += 100) {
+      const chunk = txids.slice(index, index + 100);
+      const { data: chunkRows, error: existingError } = await supabaseAdmin
+        .from("wallet_transactions")
+        .select("txid, currency, direction, network")
+        .eq("wallet_id", wallet.id)
+        .in("txid", chunk);
+      if (existingError) {
+        existingErrorMessage = existingError.message;
+        break;
+      }
+      existingRows.push(...((chunkRows ?? []) as typeof existingRows));
+    }
+    if (existingErrorMessage) {
+      historySyncError = `Could not read wallet history: ${existingErrorMessage}`;
     } else {
       const existingKeys = new Set(
         (existingRows ?? [])
@@ -999,19 +1014,30 @@ export async function refreshPersonalWalletOnChainBalance(
         return true;
       });
 
-      const { error: insertHistoryError } = missingTransactions.length
-        ? await supabaseAdmin
-            .from("wallet_transactions" as never)
-            .insert(missingTransactions as never)
-        : { error: null };
-      if (insertHistoryError)
-        historySyncError = `Could not sync wallet history: ${insertHistoryError.message}`;
+      for (let index = 0; index < missingTransactions.length; index += 100) {
+        const chunk = missingTransactions.slice(index, index + 100);
+        const { error: insertHistoryError } = chunk.length
+          ? await supabaseAdmin.from("wallet_transactions" as never).insert(chunk as never)
+          : { error: null };
+        if (insertHistoryError) {
+          historySyncError = `Could not sync wallet history: ${insertHistoryError.message}`;
+          break;
+        }
+      }
     }
   }
 
   const gasfree = await refreshWalletGasfreeCapability(userId, wallet.id, {
     force: options.forceGasfreeCheck === true,
-  });
+  }).catch((error: unknown) => ({
+    walletId: wallet.id,
+    status: "check_failed" as const,
+    checkedAt: new Date().toISOString(),
+    error: error instanceof Error ? error.message : "GasFree capability check failed",
+    metadata: {},
+    cached: false,
+    persisted: false,
+  }));
 
   return {
     walletId: wallet.id,
