@@ -154,3 +154,19 @@ export function grants(role: AppRole | null, held: string[], permission: Permiss
   if (role === "super_admin") return true;
   return held.includes(permission);
 }
+
+export function isKnownPermission(value: string): value is Permission {
+  return (ALL_PERMISSIONS as string[]).includes(value);
+}
+
+export function canGrantPermissions(input: {
+  actorRole: AppRole | null;
+  actorPermissions: string[];
+  requestedPermissions: string[];
+}) {
+  if (!input.requestedPermissions.every(isKnownPermission)) return false;
+  if (input.actorRole === "super_admin") return true;
+  return input.requestedPermissions.every((permission) =>
+    input.actorPermissions.includes(permission),
+  );
+}

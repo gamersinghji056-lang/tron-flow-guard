@@ -114,6 +114,7 @@ import {
   telegramAuthPasswordPrompt,
   telegramAuthSuccessMessage,
 } from "./telegram-bot-flow.ts";
+import { miniAppEntryState, telegramStartMenuLabels } from "./role-auth-policy.ts";
 import {
   canResumeListing,
   ensureReservedLiquidityPreserved,
@@ -122,7 +123,7 @@ import {
   validatePaymentIdentity,
   validateVendorAccountLimits,
 } from "./vendor-policy.ts";
-import { PERMISSIONS, grants } from "./rbac.ts";
+import { PERMISSIONS, canGrantPermissions, grants } from "./rbac.ts";
 import { safeErrorMessage } from "./system-health-policy.ts";
 import {
   assertSendAmount,
@@ -1078,6 +1079,33 @@ describe("RBAC and system error safety", () => {
     );
   });
 
+  it("prevents employees from granting unknown or higher permissions", () => {
+    assert.equal(
+      canGrantPermissions({
+        actorRole: "super_admin",
+        actorPermissions: [],
+        requestedPermissions: [PERMISSIONS.USERS_MANAGE, PERMISSIONS.VENDORS_MANAGE],
+      }),
+      true,
+    );
+    assert.equal(
+      canGrantPermissions({
+        actorRole: "employee",
+        actorPermissions: [PERMISSIONS.USERS_READ],
+        requestedPermissions: [PERMISSIONS.USERS_MANAGE],
+      }),
+      false,
+    );
+    assert.equal(
+      canGrantPermissions({
+        actorRole: "employee",
+        actorPermissions: [PERMISSIONS.USERS_READ],
+        requestedPermissions: [PERMISSIONS.USERS_READ, "not.real"],
+      }),
+      false,
+    );
+  });
+
   it("redacts secrets before writing system errors", () => {
     const message = safeErrorMessage(
       "TRONGRID_API_KEY=secret-value private_key=abc123 mnemonic=seed words token=abc.def.ghi",
@@ -1100,6 +1128,35 @@ describe("admin registration hardening", () => {
     assert.throws(() => assertAdminRegistrationCode(undefined, "server-only"), /Invalid/);
     assert.throws(() => assertAdminRegistrationCode("wrong", "server-only"), /Invalid/);
     assert.doesNotThrow(() => assertAdminRegistrationCode("server-only", "server-only"));
+  });
+});
+
+describe("public website auth surface", () => {
+  it("keeps the landing page trader-first without public admin links", () => {
+    const landing = readFileSync(resolve(process.cwd(), "src/routes/index.tsx"), "utf8");
+    assert.match(landing, /Trader Login/);
+    assert.match(landing, /Create Trader Account/);
+    assert.match(landing, /Vendor Login/);
+    assert.match(landing, /Register Vendor/);
+    assert.match(landing, /About WTRON/);
+    assert.match(landing, /Trader flow/);
+    assert.match(landing, /Vendor flow/);
+    assert.match(landing, /bg-red-600 text-white/);
+    assert.doesNotMatch(landing, /to="\/admin\/login"|to='\/admin\/login'/);
+    assert.doesNotMatch(landing, /to="\/admin\/register"|to='\/admin\/register'/);
+    const faqQuestions = (landing.match(/"[^"]+\?"/g) ?? []).length;
+    assert.ok(faqQuestions >= 12 && faqQuestions <= 16, `FAQ count was ${faqQuestions}`);
+  });
+
+  it("keeps direct admin login available while blocking admin registration", () => {
+    const adminLogin = readFileSync(resolve(process.cwd(), "src/routes/admin.login.tsx"), "utf8");
+    const adminRegister = readFileSync(
+      resolve(process.cwd(), "src/routes/admin.register.tsx"),
+      "utf8",
+    );
+    assert.match(adminLogin, /createFileRoute\("\/admin\/login"\)/);
+    assert.match(adminRegister, /Admin registration is closed/);
+    assert.doesNotMatch(adminRegister, /mode="register"/);
   });
 });
 
@@ -1237,6 +1294,47 @@ describe("Telegram bot auth flow", () => {
     );
     assert.equal("url" in button, false);
   });
+
+  it("renders role-aware Telegram start menus", () => {
+    assert.deepEqual(telegramStartMenuLabels({ linked: false, authorized: false }), [
+      "REGISTER TRADER",
+      "REGISTER VENDOR",
+      "OPEN MINI APP",
+      "HELP",
+      "ABOUT WTRON",
+      "HOW TO USE WTRON",
+    ]);
+    assert.deepEqual(
+      telegramStartMenuLabels({ linked: true, authorized: false, accountType: "trader" }),
+      ["LOGIN TRADER", "OPEN MINI APP", "HELP", "ABOUT WTRON", "HOW TO USE WTRON"],
+    );
+    assert.deepEqual(
+      telegramStartMenuLabels({ linked: true, authorized: false, accountType: "vendor" }),
+      ["LOGIN VENDOR", "OPEN MINI APP", "HELP", "ABOUT WTRON", "HOW TO USE WTRON"],
+    );
+    assert.deepEqual(
+      telegramStartMenuLabels({
+        linked: true,
+        authorized: false,
+        accountType: "vendor",
+        vendorStatus: "pending",
+      }),
+      ["APPLICATION PENDING", "OPEN MINI APP", "HELP", "ABOUT WTRON", "HOW TO USE WTRON"],
+    );
+    assert.deepEqual(
+      telegramStartMenuLabels({ linked: true, authorized: true, accountType: "trader" }),
+      ["OPEN MINI APP"],
+    );
+    assert.deepEqual(
+      telegramStartMenuLabels({
+        linked: true,
+        authorized: true,
+        accountType: "vendor",
+        vendorStatus: "approved",
+      }),
+      ["OPEN MINI APP"],
+    );
+  });
 });
 
 describe("Telegram Mini App runtime safety", () => {
@@ -1259,6 +1357,20 @@ describe("Telegram Mini App runtime safety", () => {
     } finally {
       if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
     }
+  });
+
+  it("routes Mini App entry by role and vendor approval status", () => {
+    assert.equal(miniAppEntryState({ linked: false }), "role_chooser");
+    assert.equal(
+      miniAppEntryState({ linked: true, accountType: "vendor", vendorStatus: "pending" }),
+      "vendor_pending",
+    );
+    assert.equal(
+      miniAppEntryState({ linked: true, accountType: "vendor", vendorStatus: "approved" }),
+      "vendor_app",
+    );
+    assert.equal(miniAppEntryState({ linked: true, accountType: "trader" }), "trader_app");
+    assert.equal(miniAppEntryState({ linked: true, accountType: "admin" }), "blocked_admin");
   });
 });
 

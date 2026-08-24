@@ -123,9 +123,27 @@ export const triggerListenerTick = createServerFn({ method: "POST" })
       .object({ mode: z.enum(["fast", "manual", "reconcile"]).default("manual") })
       .parse(input ?? {}),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.SYSTEM_HEALTH_MANAGE);
     const { runListenerTick } = await import("@/lib/listener.server");
     const result = await runListenerTick(data.mode === "manual" ? "manual" : data.mode);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("audit_logs").insert({
+      actor_id: context.userId,
+      actor_type: "admin",
+      action: "listener.triggered",
+      entity_type: "listener",
+      metadata: {
+        mode: data.mode,
+        ok: result.ok,
+        latestBlock: result.latestBlock,
+        depositsUpdated: result.depositsUpdated,
+        newEvents: result.newEvents,
+        errors: result.errors,
+      } as never,
+    });
     return {
       ok: result.ok,
       latestBlock: result.latestBlock,

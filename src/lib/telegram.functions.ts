@@ -13,7 +13,20 @@ const sessionInput = initDataInput.extend({
 const miniAuthInput = initDataInput.extend({
   email: z.string().trim().email().max(255),
   password: z.string().min(8).max(72),
+  accountType: z.enum(["trader", "vendor"]).default("trader"),
+  businessName: z.string().trim().min(2).max(120).optional(),
 });
+
+function compactMiniAuthInput(data: z.infer<typeof miniAuthInput>) {
+  return data.businessName
+    ? { ...data, businessName: data.businessName }
+    : {
+        initData: data.initData,
+        email: data.email,
+        password: data.password,
+        accountType: data.accountType,
+      };
+}
 
 const depositInput = initDataInput.extend({
   amount: z.number().positive().max(1_000_000),
@@ -35,10 +48,17 @@ export const verifyTelegramMiniApp = createServerFn({ method: "POST" })
       result.account?.status === "active"
         ? await hasActiveTelegramSession(result.verified.telegramUser.id)
         : false;
+    const roleState = result.account?.user_id
+      ? await import("@/lib/telegram.server").then(({ readPlatformRoleState }) =>
+          readPlatformRoleState(result.account!.user_id),
+        )
+      : { accountType: null, vendorStatus: null };
     return {
       linked: result.account?.status === "active",
       authorized,
       disabled: result.account?.status === "disabled",
+      accountType: roleState.accountType,
+      vendorStatus: roleState.vendorStatus,
       telegramUser: {
         id: result.verified.telegramUser.id,
         username: result.verified.telegramUser.username ?? null,
@@ -73,7 +93,7 @@ export const registerTelegramMiniApp = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => miniAuthInput.parse(input))
   .handler(async ({ data }) => {
     const { registerAndLinkTelegramMiniApp } = await import("@/lib/telegram.server");
-    const result = await registerAndLinkTelegramMiniApp(data);
+    const result = await registerAndLinkTelegramMiniApp(compactMiniAuthInput(data));
     return {
       ok: true,
       userId: result.account.user_id,

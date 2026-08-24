@@ -38,6 +38,9 @@ const nav = [
   ["WTRON Trade", "trade"],
   ["Vendors", "vendors"],
   ["Security", "security"],
+  ["How It Works", "how"],
+  ["About", "about"],
+  ["FAQ", "faq"],
 ] as const;
 
 function Landing() {
@@ -58,10 +61,10 @@ function Landing() {
           </nav>
           <div className="ml-auto hidden items-center gap-2 md:flex">
             <Button asChild variant="ghost" size="sm">
-              <Link to="/trader/login">Login</Link>
+              <Link to="/trader/login">Trader Login</Link>
             </Button>
-            <Button asChild size="sm" className="bg-emerald-600 text-white hover:bg-emerald-500">
-              <Link to="/trader/register">Create account</Link>
+            <Button asChild size="sm" className="bg-red-600 text-white hover:bg-red-500">
+              <Link to="/trader/register">Create Account</Link>
             </Button>
           </div>
           <button
@@ -88,10 +91,10 @@ function Landing() {
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button asChild variant="secondary">
-                <Link to="/trader/login">Login</Link>
+                <Link to="/trader/login">Trader Login</Link>
               </Button>
-              <Button asChild className="bg-emerald-600 text-white hover:bg-emerald-500">
-                <Link to="/trader/register">Create account</Link>
+              <Button asChild className="bg-red-600 text-white hover:bg-red-500">
+                <Link to="/trader/register">Create Account</Link>
               </Button>
             </div>
           </div>
@@ -100,32 +103,45 @@ function Landing() {
 
       <section className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:py-20 lg:grid-cols-[1fr_0.9fr] lg:items-center">
         <div>
-          <p className="text-sm font-medium uppercase tracking-[0.12em] text-emerald-700">
+          <p className="text-sm font-medium uppercase tracking-[0.12em] text-red-600">
             TRON wallet + USDT trading
           </p>
           <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-            WTRON
+            TRON Wallet. USDT Trading. One WTRON Platform.
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
             A focused TRON wallet and USDT trading product for users who need on-chain visibility,
             P2P settlement, direct company trades and approved vendor workflows in one place.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button asChild size="lg" className="bg-emerald-600 text-white hover:bg-emerald-500">
+            <Button asChild size="lg" className="bg-red-600 text-white hover:bg-red-500">
               <Link to="/trader/register">
-                Create account <ArrowRight className="ml-2 h-4 w-4" />
+                Create Trader Account <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link to="/trader/login">Open WTRON</Link>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="border-slate-300 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            >
+              <Link to="/trader/login">Trader Login</Link>
             </Button>
           </div>
-          <Link
-            to="/vendor/register"
-            className="mt-4 inline-flex items-center text-sm font-medium text-slate-600 hover:text-slate-950"
-          >
-            Vendor access <ArrowRight className="ml-1 h-4 w-4" />
-          </Link>
+          <div className="mt-4 flex flex-wrap gap-4 text-sm font-medium">
+            <Link
+              to="/vendor/login"
+              className="inline-flex items-center text-violet-700 hover:text-violet-900"
+            >
+              Vendor Login <ArrowRight className="ml-1 h-4 w-4" />
+            </Link>
+            <Link
+              to="/vendor/register"
+              className="inline-flex items-center text-slate-600 hover:text-slate-950"
+            >
+              Register Vendor <ArrowRight className="ml-1 h-4 w-4" />
+            </Link>
+          </div>
         </div>
         <ProductPreview />
       </section>
@@ -182,17 +198,89 @@ function Landing() {
         items={["Transaction password", "Replay protection", "RBAC", "On-chain checks"]}
       />
 
-      <section className="bg-[#07110e] px-4 py-16 text-white sm:px-6">
+      <section id="about" className="border-y border-slate-200 bg-white px-4 py-16 sm:px-6">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1fr] lg:items-start">
+          <SectionTitle
+            eyebrow="About WTRON"
+            title="A TRON-focused wallet and USDT trading platform."
+          />
+          <div className="space-y-5 text-base leading-7 text-slate-600">
+            <p>
+              WTRON combines self-custody TRON wallets, General and GasFree wallet visibility,
+              structured P2P USDT trading, direct WTRON company trading, approved vendor operations,
+              blockchain verification, transaction history and payment-method management.
+            </p>
+            <p>
+              The product separates public chain visibility from transfer capability. Users can
+              inspect wallet balances and histories without WTRON claiming unsupported guarantees,
+              fake confirmations or unavailable sponsorship.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                "Self-custody TRON wallet views",
+                "General + GasFree wallet relationship",
+                "P2P and direct company trading",
+                "Vendor marketplace with approval",
+                "On-chain confirmation tracking",
+                "Payment method and order history",
+              ].map((item) => (
+                <div
+                  key={item}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how" className="bg-[#07110e] px-4 py-16 text-white sm:px-6">
         <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.8fr_1fr]">
           <div>
-            <p className="text-sm font-medium uppercase tracking-[0.12em] text-emerald-300">
+            <p className="text-sm font-medium uppercase tracking-[0.12em] text-violet-300">
               How it works
             </p>
             <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
-              Clear steps from wallet setup to settlement.
+              Clear workflows for traders and approved vendors.
             </h2>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <HowList
+              title="Trader flow"
+              steps={[
+                "Register Trader",
+                "Link Telegram",
+                "Open Mini App",
+                "Create or import wallet",
+                "Add UPI or bank account",
+                "Use P2P or WTRON Trade",
+                "Follow exact deposit/payment instructions",
+                "Track order and blockchain confirmation",
+                "Review wallet and trade history",
+                "Manage security and settings",
+              ]}
+            />
+            <HowList
+              title="Vendor flow"
+              steps={[
+                "Register Vendor",
+                "Telegram identity linked",
+                "Wait for admin approval",
+                "Login after approval",
+                "Configure wallet",
+                "Add receiving bank/UPI accounts",
+                "Set min/max limits",
+                "Create USDT listing",
+                "Manage reservations and orders",
+                "Review payment proof",
+                "Confirm or dispute",
+                "Track history and settings",
+              ]}
+            />
+          </div>
+          <div className="hidden">
             {[
               "Create or import a TRON wallet.",
               "Choose Wallet, P2P, WTRON Trade or Vendor flow.",
@@ -213,20 +301,68 @@ function Landing() {
         <div className="mt-8 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
           {[
             [
+              "What is WTRON?",
+              "WTRON is a TRON-focused wallet and USDT trading platform for wallet visibility, P2P orders, direct company trades and vendor operations.",
+            ],
+            [
+              "What is TRC20 USDT?",
+              "TRC20 USDT is Tether issued on the TRON network. WTRON displays and tracks official TRON USDT flows.",
+            ],
+            [
               "Does WTRON support TRC20 USDT?",
               "Yes. WTRON is designed around TRON/TRC20 USDT wallet and trading workflows.",
             ],
             [
-              "Is GasFree the same as a normal wallet?",
-              "No. WTRON presents the deterministic GasFree wallet separately from provider transfer readiness.",
+              "What is the difference between General and GasFree Wallet?",
+              "The General wallet is the normal TRON wallet. The GasFree wallet is a deterministic related wallet view; transfer readiness depends on provider setup.",
             ],
             [
-              "Can vendors access WTRON directly?",
-              "Vendors can register, but trading tools require approval before operational access.",
+              "Can I use the same recovery phrase elsewhere?",
+              "Yes. WTRON uses standard TRON derivation for the General wallet; protect the phrase because it controls funds.",
             ],
             [
-              "Where are legal documents?",
-              "Privacy, terms and risk disclosure remain available from the footer.",
+              "How does WTRON P2P work?",
+              "Users trade against offers with clear limits, proof collection, order state and dispute-aware settlement.",
+            ],
+            [
+              "How does Sell to WTRON work?",
+              "WTRON assigns a company deposit address and shows exact USDT, network, QR and payout details.",
+            ],
+            [
+              "How are blockchain deposits confirmed?",
+              "Existing listeners detect real TRON transfers and wait for required confirmations before status advances.",
+            ],
+            [
+              "What happens during a dispute?",
+              "The order is held for review and authorized operators can resolve it according to recorded evidence.",
+            ],
+            [
+              "What is a Vendor?",
+              "A Vendor is an approved operator that can publish USDT listings and manage reservations through controlled tools.",
+            ],
+            [
+              "Why does Vendor registration require approval?",
+              "Vendor tools affect marketplace liquidity and payment operations, so WTRON requires admin review first.",
+            ],
+            [
+              "How are transaction fees displayed?",
+              "Applicable WTRON and provider fees are shown before protected transfer actions and recorded server-side.",
+            ],
+            [
+              "What if the GasFree provider is unavailable?",
+              "The GasFree wallet can still show public chain assets/history, but GasFree Send stays disabled until provider readiness returns.",
+            ],
+            [
+              "How do I protect my wallet?",
+              "Never share your recovery phrase, private key, transaction password or Telegram login messages.",
+            ],
+            [
+              "Where can I see history?",
+              "Wallet, P2P, Direct Sell and vendor histories are available in the relevant app sections.",
+            ],
+            [
+              "How do I contact support?",
+              "Use Telegram @laura_luxee for WTRON support and vendor inquiries.",
             ],
           ].map(([question, answer]) => (
             <details key={question} className="group p-5">
@@ -266,9 +402,6 @@ function Landing() {
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
             <Link to="/risk-disclosure">Risk Disclosure</Link>
-            <Link to="/admin/login" className="text-slate-500">
-              Admin
-            </Link>
           </div>
         </div>
       </footer>
@@ -337,10 +470,28 @@ function Proof({ label, value }: { label: string; value: string }) {
   );
 }
 
+function HowList({ title, steps }: { title: string; steps: string[] }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+      <h3 className="text-lg font-semibold">{title}</h3>
+      <ol className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
+        {steps.map((step, index) => (
+          <li key={step} className="flex gap-3">
+            <span className="text-violet-300 tabular-nums">
+              {String(index + 1).padStart(2, "0")}
+            </span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
     <div>
-      <p className="text-sm font-medium uppercase tracking-[0.12em] text-emerald-700">{eyebrow}</p>
+      <p className="text-sm font-medium uppercase tracking-[0.12em] text-red-600">{eyebrow}</p>
       <h2 className="mt-3 text-3xl font-semibold leading-tight text-slate-950 sm:text-4xl">
         {title}
       </h2>

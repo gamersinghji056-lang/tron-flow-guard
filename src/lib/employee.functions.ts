@@ -14,13 +14,30 @@ const permissionInput = z.object({
   permissions: z.array(z.string().trim().min(3).max(80)),
 });
 
+const employeeIdInput = z.object({
+  userId: z.string().uuid(),
+});
+
 export const createEmployeeAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => employeeInput.parse(input))
   .handler(async ({ data, context }) => {
     const { requirePermission } = await import("@/lib/access.server");
-    const { PERMISSIONS } = await import("@/lib/rbac");
-    await requirePermission(context.supabase, context.userId, PERMISSIONS.EMPLOYEES_MANAGE);
+    const { PERMISSIONS, canGrantPermissions } = await import("@/lib/rbac");
+    const access = await requirePermission(
+      context.supabase,
+      context.userId,
+      PERMISSIONS.EMPLOYEES_MANAGE,
+    );
+    if (
+      !canGrantPermissions({
+        actorRole: access.role,
+        actorPermissions: access.permissions,
+        requestedPermissions: data.permissions,
+      })
+    ) {
+      throw new Error("Forbidden: employees can only grant permissions they already hold");
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: created, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: data.email,
@@ -89,10 +106,23 @@ export const updateEmployeePermissions = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => permissionInput.parse(input))
   .handler(async ({ data, context }) => {
     const { requirePermission } = await import("@/lib/access.server");
-    const { PERMISSIONS } = await import("@/lib/rbac");
+    const { PERMISSIONS, canGrantPermissions } = await import("@/lib/rbac");
     if (data.userId === context.userId)
       throw new Error("Employees cannot change their own permissions");
-    await requirePermission(context.supabase, context.userId, PERMISSIONS.EMPLOYEES_MANAGE);
+    const access = await requirePermission(
+      context.supabase,
+      context.userId,
+      PERMISSIONS.EMPLOYEES_MANAGE,
+    );
+    if (
+      !canGrantPermissions({
+        actorRole: access.role,
+        actorPermissions: access.permissions,
+        requestedPermissions: data.permissions,
+      })
+    ) {
+      throw new Error("Forbidden: employees can only grant permissions they already hold");
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await supabaseAdmin.from("admin_permissions").delete().eq("user_id", data.userId);
     if (data.permissions.length) {
@@ -101,5 +131,30 @@ export const updateEmployeePermissions = createServerFn({ method: "POST" })
         .insert(data.permissions.map((permission) => ({ user_id: data.userId, permission })));
       if (error) throw new Error(error.message);
     }
+    return { ok: true };
+  });
+
+export const disableEmployeeAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => employeeIdInput.parse(input))
+  .handler(async ({ data, context }) => {
+    if (data.userId === context.userId) throw new Error("Employees cannot disable themselves");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.EMPLOYEES_MANAGE);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("admin_permissions").delete().eq("user_id", data.userId);
+    await supabaseAdmin
+      .from("user_roles" as never)
+      .delete()
+      .eq("user_id", data.userId as never)
+      .eq("role", "employee" as never);
+    await supabaseAdmin.from("audit_logs").insert({
+      actor_id: context.userId,
+      actor_type: "admin",
+      action: "employee_disabled",
+      entity_type: "user",
+      entity_id: data.userId,
+    });
     return { ok: true };
   });

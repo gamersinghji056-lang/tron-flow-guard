@@ -90,6 +90,11 @@ import {
 } from "@/lib/mini-i18n";
 import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
 import {
+  miniAppEntryState,
+  type VendorApprovalStatus,
+  type WtronAccountType,
+} from "@/lib/role-auth-policy";
+import {
   gasfreeCapabilityNeedsCheck,
   gasfreeCapabilityStatus,
   paymentMethodDisplay,
@@ -590,10 +595,15 @@ function TelegramMiniApp() {
   const [authMode, setAuthMode] = useState<"login" | "register">(
     search.auth as "login" | "register",
   );
+  const [accountType, setAccountType] = useState<"trader" | "vendor">("trader");
   const [initData, setInitData] = useState("");
   const [handoffToken, setHandoffToken] = useState(search.handoff ?? "");
   const [launchChecked, setLaunchChecked] = useState(false);
   const [linked, setLinked] = useState(false);
+  const [linkedAccountType, setLinkedAccountType] = useState<WtronAccountType | "admin" | null>(
+    null,
+  );
+  const [vendorStatus, setVendorStatus] = useState<VendorApprovalStatus | null>(null);
   const [hasSession, setHasSession] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -805,7 +815,18 @@ function TelegramMiniApp() {
       const verified = await verifyLaunch({ data: { initData: launch } });
       setBootstrapError("");
       setLinked(Boolean(verified.linked));
+      setLinkedAccountType((verified.accountType ?? null) as WtronAccountType | "admin" | null);
+      setVendorStatus((verified.vendorStatus ?? null) as VendorApprovalStatus | null);
+      const entryState = miniAppEntryState({
+        linked: Boolean(verified.linked),
+        accountType: (verified.accountType ?? null) as WtronAccountType | "admin" | null,
+        vendorStatus: (verified.vendorStatus ?? null) as VendorApprovalStatus | null,
+      });
       const { data: sessionData } = await supabase.auth.getSession();
+      if (entryState === "vendor_pending") {
+        setHasSession(false);
+        return;
+      }
       if (verified.linked && (handoff || !sessionData.session || !verified.authorized)) {
         const session = await createTelegramSession({
           data: { initData: launch, handoff: handoff || undefined },
@@ -836,6 +857,8 @@ function TelegramMiniApp() {
       if (isMiniAppSessionError(message)) {
         setBootstrapError("Session expired");
         setLinked(false);
+        setLinkedAccountType(null);
+        setVendorStatus(null);
         setHasSession(false);
       } else {
         toast.error(message);
@@ -894,6 +917,7 @@ function TelegramMiniApp() {
 
   useEffect(() => {
     if (!initData || !linked) return;
+    if (linkedAccountType === "vendor" && vendorStatus !== "approved") return;
     const renew = async () => {
       const { error } = await supabase.auth.refreshSession();
       if (!error) {
@@ -914,10 +938,11 @@ function TelegramMiniApp() {
     };
     const timer = window.setInterval(() => void renew(), 5 * 60 * 1000);
     return () => window.clearInterval(timer);
-  }, [createTelegramSession, initData, linked]);
+  }, [createTelegramSession, initData, linked, linkedAccountType, vendorStatus]);
 
   useEffect(() => {
     if (!linked || !initData) return;
+    if (linkedAccountType === "vendor" && vendorStatus !== "approved") return;
     const channel = supabase
       .channel(createMiniAppClientId("telegram-mini"))
       .on(
@@ -939,7 +964,7 @@ function TelegramMiniApp() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [linked, initData, screen]);
+  }, [linked, initData, linkedAccountType, screen, vendorStatus]);
 
   useEffect(() => {
     if (!selectedWalletId && selectedWallet?.id) setSelectedWalletId(selectedWallet.id);
@@ -1103,14 +1128,34 @@ function TelegramMiniApp() {
     }
     setBusy(true);
     try {
-      if (authMode === "login") await loginTelegram({ data: { initData, email, password } });
-      else await registerTelegram({ data: { initData, email, password } });
+      if (authMode === "login")
+        await loginTelegram({ data: { initData, email, password, accountType } });
+      else
+        await registerTelegram({
+          data: {
+            initData,
+            email,
+            password,
+            accountType,
+            businessName:
+              accountType === "vendor" ? email.split("@")[0] || "WTRON Vendor" : undefined,
+          },
+        });
+      setLinked(true);
+      setLinkedAccountType(accountType);
+      setVendorStatus(accountType === "vendor" ? "pending" : null);
+      if (authMode === "register" && accountType === "vendor") {
+        setHasSession(false);
+        setScreen("home");
+        toast.success("Vendor application submitted");
+        await refresh("home");
+        return;
+      }
       const session = await createTelegramSession({ data: { initData } });
       await supabase.auth.setSession({
         access_token: session.accessToken,
         refresh_token: session.refreshToken,
       });
-      setLinked(true);
       setHasSession(true);
       setScreen("home");
       toast.success("Telegram account linked");
@@ -1604,6 +1649,8 @@ function TelegramMiniApp() {
         <AuthScreen
           authMode={authMode}
           setAuthMode={setAuthMode}
+          accountType={accountType}
+          setAccountType={setAccountType}
           email={email}
           setEmail={setEmail}
           password={password}
@@ -1612,6 +1659,24 @@ function TelegramMiniApp() {
           setConfirmPassword={setConfirmPassword}
           busy={busy}
           onSubmit={submitAuth}
+        />
+      </MiniFrame>
+    );
+  }
+
+  const entryState = miniAppEntryState({
+    linked,
+    accountType: linkedAccountType,
+    vendorStatus,
+  });
+
+  if (entryState === "vendor_pending") {
+    return (
+      <MiniFrame locale={locale} theme={appliedTheme}>
+        <PendingVendorScreen
+          status={vendorStatus ?? "pending"}
+          onRefresh={() => void refresh("home")}
+          busy={loading || busy}
         />
       </MiniFrame>
     );
@@ -1995,7 +2060,11 @@ function TelegramMiniApp() {
         ) : null}
         {screen === "referral" ? <ReferralScreen summary={referral} /> : null}
       </div>
-      <BottomNav tab={primaryTab} setTab={(next) => void navigate(next)} t={t} />
+      {entryState === "vendor_app" ? (
+        <VendorBottomNav screen={screen} setScreen={(next) => void navigate(next)} />
+      ) : (
+        <BottomNav tab={primaryTab} setTab={(next) => void navigate(next)} t={t} />
+      )}
     </MiniFrame>
   );
 }
@@ -2101,6 +2170,8 @@ function MiniHeader({
 function AuthScreen(props: {
   authMode: "login" | "register";
   setAuthMode: (mode: "login" | "register") => void;
+  accountType: "trader" | "vendor";
+  setAccountType: (mode: "trader" | "vendor") => void;
   email: string;
   setEmail: (value: string) => void;
   password: string;
@@ -2118,12 +2189,29 @@ function AuthScreen(props: {
           Telegram secure access
         </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-normal">
-          {props.authMode === "login" ? "Login to WTRON" : "Create trader account"}
+          {props.authMode === "login"
+            ? `Login ${props.accountType === "vendor" ? "Vendor" : "Trader"}`
+            : `Register ${props.accountType === "vendor" ? "Vendor" : "Trader"}`}
         </h1>
         <p className="mt-2 text-sm text-slate-400">
-          Your Telegram identity is verified server-side, then linked to the same WTRON account used
-          on web.
+          Choose Trader for wallet/P2P/WTRON Trade, or Vendor for approved marketplace operations.
         </p>
+      </div>
+      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/6 p-1">
+        <button
+          type="button"
+          className={`rounded-xl px-3 py-2 text-sm ${props.accountType === "trader" ? "bg-red-500 text-white hover:bg-red-400" : "text-slate-400"}`}
+          onClick={() => props.setAccountType("trader")}
+        >
+          Trader
+        </button>
+        <button
+          type="button"
+          className={`rounded-xl px-3 py-2 text-sm ${props.accountType === "vendor" ? "bg-violet-500 text-white hover:bg-violet-400" : "text-slate-400"}`}
+          onClick={() => props.setAccountType("vendor")}
+        >
+          Vendor
+        </button>
       </div>
       <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/6 p-1">
         <button
@@ -2169,9 +2257,19 @@ function AuthScreen(props: {
           ) : (
             <ShieldCheck className="mr-2 h-4 w-4" />
           )}
-          {props.authMode === "login" ? "Login and link" : "Register and link"}
+          {props.authMode === "login"
+            ? "Login and link"
+            : props.accountType === "vendor"
+              ? "Submit vendor application"
+              : "Register and link"}
         </Button>
       </form>
+      {props.accountType === "vendor" ? (
+        <p className="text-xs leading-5 text-slate-400">
+          Vendor registration is submitted for approval. Vendor financial tools remain blocked until
+          an admin approves the application.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -5569,6 +5667,80 @@ function MiniChart({ rows }: { rows: { date: string; usdt: number }[] }) {
     </div>
   );
 }
+
+function PendingVendorScreen({
+  status,
+  busy,
+  onRefresh,
+}: {
+  status: VendorApprovalStatus;
+  busy: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="grid min-h-[80vh] place-items-center pb-10 text-center">
+      <div className="w-full rounded-3xl border border-white/10 bg-white/6 p-6">
+        <WtronMark className="mx-auto h-14 w-14" />
+        <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-violet-300">
+          Vendor application
+        </p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-normal">
+          {status === "rejected"
+            ? "Application Rejected"
+            : status === "disabled" || status === "suspended"
+              ? "Vendor Access Disabled"
+              : "Pending Review"}
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-slate-400">
+          Vendor financial tools remain blocked until WTRON approves the application. You can
+          refresh this status after admin review.
+        </p>
+        <Button className="mt-6 w-full bg-red-500 text-white hover:bg-red-400" onClick={onRefresh}>
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Refresh Status
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function VendorBottomNav({
+  screen,
+  setScreen,
+}: {
+  screen: MiniScreen;
+  setScreen: (screen: MiniScreen) => void;
+}) {
+  const items: Array<[MiniScreen, string, MiniIcon]> = [
+    ["home", "Home", CircleDollarSign],
+    ["trade", "Trade", MiniIcons.swap],
+    ["orders", "Orders", FileText],
+    ["history", "Transactions", MiniIcons.history],
+    ["more", "More", MoreHorizontal],
+  ];
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 bg-[#05070B]/94 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-xl">
+      <div className="mx-auto grid max-w-md grid-cols-5 rounded-2xl bg-[#0D121C]/95 p-1">
+        {items.map(([key, label, Icon]) => (
+          <button
+            key={key}
+            className={`relative rounded-2xl px-1 py-2 text-[11px] font-medium transition ${
+              screen === key ? "text-violet-300" : "text-slate-500"
+            }`}
+            onClick={() => setScreen(key)}
+          >
+            {screen === key ? (
+              <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-violet-400" />
+            ) : null}
+            <Icon className="mx-auto mb-1 h-5 w-5" />
+            {label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 function BottomNav({
   tab,
   setTab,

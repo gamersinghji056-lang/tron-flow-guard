@@ -20,11 +20,23 @@ export interface AccessProfile {
 }
 
 export async function readAccess(client: Client, userId: string): Promise<AccessProfile> {
-  const [{ data: roles, error: roleError }, { data: perms }] = await Promise.all([
+  const [{ data: initialRoles, error: roleError }, { data: initialPerms }] = await Promise.all([
     client.from("user_roles").select("role").eq("user_id", userId),
     client.from("admin_permissions").select("permission").eq("user_id", userId),
   ]);
-  if (roleError) throw new Error("Could not read your account role");
+  let roles = initialRoles ?? [];
+  let perms = initialPerms ?? [];
+  if (roleError || roles.length === 0) {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [{ data: serviceRoles, error: serviceRoleError }, { data: servicePerms }] =
+      await Promise.all([
+        supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
+        supabaseAdmin.from("admin_permissions").select("permission").eq("user_id", userId),
+      ]);
+    if (serviceRoleError) throw new Error("Could not read your account role");
+    roles = serviceRoles ?? [];
+    perms = servicePerms ?? [];
+  }
 
   const held = (roles ?? []).map((row) => row.role as AppRole);
   const role: AppRole = held.includes("super_admin")

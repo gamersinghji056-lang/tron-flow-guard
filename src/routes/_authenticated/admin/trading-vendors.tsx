@@ -31,7 +31,9 @@ function AdminTradingVendorsPage() {
   const fetchVendors = useServerFn(listAdminVendors);
   const updateVendor = useServerFn(adminVendorAction);
   const [vendors, setVendors] = useState<VendorRow[]>([]);
-  const [tab, setTab] = useState<"pending" | "approved" | "rejected" | "suspended">("pending");
+  const [tab, setTab] = useState<"pending" | "approved" | "rejected" | "suspended" | "disabled">(
+    "pending",
+  );
   const [working, setWorking] = useState(false);
 
   const load = useCallback(async () => {
@@ -50,11 +52,13 @@ function AdminTradingVendorsPage() {
 
   async function runAction(
     vendorId: string,
-    action: "approve" | "reject" | "suspend" | "reactivate",
+    action: "approve" | "reject" | "suspend" | "disable" | "reactivate",
   ) {
     const reason =
-      action === "reject" || action === "suspend" ? window.prompt("Reason")?.trim() : undefined;
-    if ((action === "reject" || action === "suspend") && !reason) return;
+      action === "reject" || action === "suspend" || action === "disable"
+        ? window.prompt("Reason")?.trim()
+        : undefined;
+    if ((action === "reject" || action === "suspend" || action === "disable") && !reason) return;
     setWorking(true);
     try {
       await updateVendor({ data: { vendorId, action, reason } });
@@ -74,7 +78,7 @@ function AdminTradingVendorsPage() {
         description="Vendor self-registration review and lifecycle controls."
       />
       <div className="flex flex-wrap gap-2">
-        {(["pending", "approved", "rejected", "suspended"] as const).map((status) => (
+        {(["pending", "approved", "rejected", "suspended", "disabled"] as const).map((status) => (
           <Button
             key={status}
             variant={tab === status ? "default" : "secondary"}
@@ -147,7 +151,17 @@ function AdminTradingVendorsPage() {
                         Suspend
                       </Button>
                     ) : null}
-                    {vendor.status === "suspended" ? (
+                    {vendor.status === "approved" || vendor.status === "suspended" ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={working}
+                        onClick={() => void runAction(vendor.id, "disable")}
+                      >
+                        Disable
+                      </Button>
+                    ) : null}
+                    {vendor.status === "suspended" || vendor.status === "disabled" ? (
                       <Button
                         size="sm"
                         disabled={working}

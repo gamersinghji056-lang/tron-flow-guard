@@ -1,3 +1,5 @@
+import type { WtronAccountType } from "@/lib/role-auth-policy";
+
 export type TelegramBotAuthFlow = "login" | "register";
 export type TelegramBotAuthStep = "email" | "password" | "confirm_password";
 
@@ -37,6 +39,11 @@ export function telegramAuthEmailPrompt(flow: TelegramBotAuthFlow) {
   return flow === "register"
     ? "Enter the email address you want to use for your WTRON account."
     : "Enter your registered email address.";
+}
+
+export function telegramAuthFlowLabel(flow: TelegramBotAuthFlow, accountType: WtronAccountType) {
+  const role = accountType === "vendor" ? "Vendor" : "Trader";
+  return `${flow === "register" ? "Register" : "Login"} ${role}`;
 }
 
 export function telegramAuthPasswordPrompt(flow: TelegramBotAuthFlow) {

@@ -1,61 +1,24 @@
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 220 64"
-  role="img"
-  aria-labelledby="title desc"
->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 224 64" role="img" aria-labelledby="title desc">
   <title id="title">WTRON</title>
-  <desc id="desc">WTRON original wallet and transfer network logo.</desc>
+  <desc id="desc">WTRON red faceted diamond mark with wordmark.</desc>
   <defs>
-    <linearGradient
-      id="wtron-logo-fill"
-      x1="12"
-      y1="8"
-      x2="52"
-      y2="56"
-      gradientUnits="userSpaceOnUse"
-    >
-      <stop stop-color="#6ee7b7" />
-      <stop offset=".58" stop-color="#10b981" />
-      <stop offset="1" stop-color="#047857" />
+    <linearGradient id="wtron-logo-red-a" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff6b57"/>
+      <stop offset=".48" stop-color="#ef233c"/>
+      <stop offset="1" stop-color="#9f1239"/>
     </linearGradient>
-    <linearGradient
-      id="wtron-logo-edge"
-      x1="16"
-      y1="12"
-      x2="48"
-      y2="52"
-      gradientUnits="userSpaceOnUse"
-    >
-      <stop stop-color="#ecfdf5" stop-opacity=".88" />
-      <stop offset="1" stop-color="#a7f3d0" stop-opacity=".18" />
+    <linearGradient id="wtron-logo-red-b" x1="18" y1="10" x2="47" y2="51" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff1f2" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#fecdd3" stop-opacity=".18"/>
     </linearGradient>
   </defs>
-  <path
-    fill="#03130e"
-    d="M32 4.8 54 16.9v20.2c0 10.6-7.8 18.2-22 22.1C17.8 55.3 10 47.7 10 37.1V16.9L32 4.8Z"
-  />
-  <path
-    fill="url(#wtron-logo-fill)"
-    d="M32 8.5 50.6 18.8v17.8c0 8.6-6.4 14.8-18.6 18.5-12.2-3.7-18.6-9.9-18.6-18.5V18.8L32 8.5Z"
-  />
-  <path
-    fill="#03130e"
-    fill-opacity=".94"
-    d="M18.8 24.5h6.3l5 14.5 5-14.5h4.8l5 14.5 5.1-14.5h5.2L46.4 46h-4.9l-4.1-11.7L33.2 46h-5.8l-4.2-11.7L19.1 46h-4.9l4.6-21.5Z"
-  />
-  <path
-    fill="url(#wtron-logo-edge)"
-    d="M19.7 20.7 32 13.8l12.3 6.9-12.3 5-12.3-5Zm7.9.1 4.4 1.8 4.4-1.8-4.4-2.5-4.4 2.5Z"
-  />
-  <circle cx="18.8" cy="24.5" r="2.8" fill="#ecfdf5" />
-  <circle cx="32" cy="39" r="2.8" fill="#ecfdf5" />
-  <circle cx="50" cy="24.5" r="2.8" fill="#ecfdf5" />
-  <path
-    fill="#0f172a"
-    stroke="#f8fafc"
-    stroke-width=".7"
-    paint-order="stroke"
-    d="M78.3 44 71.7 19h5.4l4.1 16.7L86 19h4.8l4.8 16.7L99.8 19h5.2l-6.6 25h-5.5l-4.5-15.8L83.8 44h-5.5Zm35.3 0V23.8h-8V19h21.8v4.8h-8V44h-5.8Zm19 0V19h11.4c2.9 0 5.2.7 6.9 2.1 1.7 1.4 2.5 3.3 2.5 5.8 0 1.6-.4 3-1.3 4.2-.8 1.2-2 2.1-3.5 2.7l6.2 10.2h-6.3l-5.4-9.2h-4.8V44h-5.7Zm5.7-13.8h5.1c1.4 0 2.4-.3 3.2-.9.7-.6 1.1-1.4 1.1-2.4 0-1.1-.4-1.9-1.1-2.5-.7-.6-1.8-.9-3.2-.9h-5.1v6.7Zm31.8 14.2c-2.6 0-4.9-.5-6.9-1.6s-3.5-2.6-4.6-4.5c-1.1-2-1.7-4.2-1.7-6.8s.6-4.8 1.7-6.8c1.1-2 2.6-3.5 4.6-4.6s4.3-1.6 6.9-1.6 4.9.5 6.9 1.6 3.5 2.6 4.6 4.6c1.1 2 1.7 4.2 1.7 6.8s-.6 4.8-1.7 6.8c-1.1 2-2.6 3.5-4.6 4.5s-4.3 1.6-6.9 1.6Zm0-5c2.2 0 4-.7 5.3-2.2s1.9-3.4 1.9-5.7-.6-4.2-1.9-5.7-3.1-2.2-5.3-2.2-4 .7-5.3 2.2-1.9 3.4-1.9 5.7.6 4.2 1.9 5.7 3.1 2.2 5.3 2.2ZM189.8 44V19h5l13 15.5V19h5.4v25h-4.8l-13.1-15.8V44h-5.5Z"
-  />
+  <path fill="url(#wtron-logo-red-a)" d="M32 4 58 22 48 56H16L6 22 32 4Z"/>
+  <path fill="#17070a" fill-opacity=".3" d="M6 22h52L48 56H16L6 22Z"/>
+  <path fill="#fff" fill-opacity=".5" d="M32 4 18 22h28L32 4Z"/>
+  <path fill="url(#wtron-logo-red-b)" d="M18 22 32 4l14 18-14 8-14-8Z"/>
+  <path fill="#fff" fill-opacity=".38" d="m6 22 12-10v10H6Zm40-10 12 10H46V12Z"/>
+  <path fill="#fff" fill-opacity=".78" d="M18 22h28L34.5 50h-5L18 22Zm8.5 4 5.5 15 5.5-15h-4.2L32 31.8 30.7 26h-4.2Z"/>
+  <path fill="#7f0d1d" fill-opacity=".5" d="m16 56 13.5-6h5L48 56H16Z"/>
+  <path fill="#ef233c" d="M78.3 44 71.5 19h5.8l4.2 16.6L86.3 19h4.9l4.8 16.6 4.2-16.6h5.5L98.9 44h-5.6l-4.6-15.7L84 44h-5.7Z"/>
+  <path fill="currentColor" d="M114.4 44V23.8h-8V19h22v4.8h-8.1V44h-5.9Zm19.2 0V19h11.5c2.9 0 5.2.7 6.9 2.1s2.5 3.3 2.5 5.8c0 1.6-.4 3-1.3 4.2-.8 1.2-2 2.1-3.5 2.7l6.2 10.2h-6.4l-5.4-9.2h-4.7V44h-5.8Zm5.8-13.8h5.1c1.4 0 2.5-.3 3.2-.9s1.1-1.4 1.1-2.4c0-1.1-.4-1.9-1.1-2.5s-1.8-.9-3.2-.9h-5.1v6.7Zm31.9 14.2c-2.6 0-4.9-.5-6.9-1.6s-3.6-2.6-4.7-4.5c-1.1-2-1.7-4.2-1.7-6.8s.6-4.8 1.7-6.8c1.1-2 2.7-3.5 4.7-4.6s4.3-1.6 6.9-1.6 4.9.5 6.9 1.6 3.6 2.6 4.7 4.6c1.1 2 1.7 4.2 1.7 6.8s-.6 4.8-1.7 6.8c-1.1 2-2.7 3.5-4.7 4.5s-4.3 1.6-6.9 1.6Zm0-5c2.2 0 4-.7 5.3-2.2s1.9-3.4 1.9-5.7-.6-4.2-1.9-5.7-3.1-2.2-5.3-2.2-4 .7-5.3 2.2-1.9 3.4-1.9 5.7.6 4.2 1.9 5.7 3.1 2.2 5.3 2.2ZM191 44V19h5l13 15.5V19h5.5v25h-4.9l-13.1-15.8V44H191Z"/>
 </svg>

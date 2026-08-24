@@ -5,9 +5,11 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createEmployeeAccount,
+  disableEmployeeAccount,
   listEmployees,
   updateEmployeePermissions,
 } from "@/lib/employee.functions";
+import { ALL_PERMISSIONS } from "@/lib/rbac";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
@@ -16,21 +18,7 @@ export const Route = createFileRoute("/_authenticated/admin/employees")({
   component: AdminEmployeesPage,
 });
 
-const PERMISSIONS = [
-  "users.read",
-  "users.manage",
-  "p2p.read",
-  "p2p.manage",
-  "disputes.manage",
-  "direct_sell.manage",
-  "vendors.review",
-  "deposits.manage",
-  "wallets.manage",
-  "ledger.read",
-  "system_health.read",
-  "settings.manage",
-  "employees.manage",
-];
+const PERMISSIONS = ALL_PERMISSIONS.filter((permission) => !permission.includes(":"));
 
 interface EmployeeRow {
   id: string;
@@ -43,6 +31,7 @@ function AdminEmployeesPage() {
   const createEmployee = useServerFn(createEmployeeAccount);
   const fetchEmployees = useServerFn(listEmployees);
   const updatePerms = useServerFn(updateEmployeePermissions);
+  const disableEmployee = useServerFn(disableEmployeeAccount);
   const [rows, setRows] = useState<EmployeeRow[]>([]);
   const [pending, setPending] = useState(false);
   const [form, setForm] = useState({
@@ -88,6 +77,20 @@ function AdminEmployeesPage() {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update permissions");
+    }
+  }
+
+  async function disable(row: EmployeeRow) {
+    if (!window.confirm(`Disable employee ${row.email ?? row.id}?`)) return;
+    setPending(true);
+    try {
+      await disableEmployee({ data: { userId: row.id } });
+      toast.success("Employee disabled");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not disable employee");
+    } finally {
+      setPending(false);
     }
   }
 
@@ -143,6 +146,15 @@ function AdminEmployeesPage() {
                 <p className="text-sm text-muted-foreground">{row.email}</p>
               </div>
               <span className="rounded-full bg-secondary px-3 py-1 text-xs">employee</span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={pending}
+                onClick={() => void disable(row)}
+              >
+                Disable
+              </Button>
             </div>
             <PermissionPicker
               selected={row.permissions}

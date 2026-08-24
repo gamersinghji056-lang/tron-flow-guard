@@ -73,47 +73,58 @@ const adminVendorActionInput = z.object({
 
 type VendorStatus = "pending" | "approved" | "rejected" | "suspended" | "disabled";
 
+export async function registerVendorApplicationFromTelegram(input: {
+  businessName: string;
+  contactName: string;
+  email: string;
+  password: string;
+  telegram?: string | undefined;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: created, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: {
+      full_name: input.contactName,
+      account_type: "vendor",
+    },
+  });
+  if (authError) throw new Error(authError.message);
+  const userId = created.user?.id;
+  if (!userId) throw new Error("Could not create vendor account");
+
+  await supabaseAdmin.from("profiles").upsert({
+    id: userId,
+    email: input.email,
+    full_name: input.contactName,
+  });
+  await supabaseAdmin.from("user_roles" as never).upsert({
+    user_id: userId,
+    role: "vendor",
+  } as never);
+  const { data: vendor, error } = await supabaseAdmin
+    .from("trading_vendors" as never)
+    .insert({
+      user_id: userId,
+      name: input.businessName,
+      contact_name: input.contactName,
+      email: input.email,
+      telegram_username: input.telegram || null,
+      status: "pending",
+      application_terms_accepted_at: new Date().toISOString(),
+    } as never)
+    .select("id, status")
+    .single();
+  if (error) throw new Error(error.message);
+  return { ...(vendor as unknown as { id: string; status: VendorStatus }), userId };
+}
+
 export const registerVendorApplication = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => vendorRegisterInput.parse(input))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: created, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: data.email,
-      password: data.password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: data.contactName,
-        account_type: "vendor",
-      },
-    });
-    if (authError) throw new Error(authError.message);
-    const userId = created.user?.id;
-    if (!userId) throw new Error("Could not create vendor account");
-
-    await supabaseAdmin.from("profiles").upsert({
-      id: userId,
-      email: data.email,
-      full_name: data.contactName,
-    });
-    await supabaseAdmin.from("user_roles" as never).upsert({
-      user_id: userId,
-      role: "vendor",
-    } as never);
-    const { data: vendor, error } = await supabaseAdmin
-      .from("trading_vendors" as never)
-      .insert({
-        user_id: userId,
-        name: data.businessName,
-        contact_name: data.contactName,
-        email: data.email,
-        telegram_username: data.telegram || null,
-        status: "pending",
-        application_terms_accepted_at: new Date().toISOString(),
-      } as never)
-      .select("id, status")
-      .single();
-    if (error) throw new Error(error.message);
-    return vendor as unknown as { id: string; status: VendorStatus };
+    const vendor = await registerVendorApplicationFromTelegram(data);
+    return { id: vendor.id, status: vendor.status };
   });
 
 export const fetchVendorApplication = createServerFn({ method: "GET" })
@@ -453,7 +464,7 @@ export const adminVendorAction = createServerFn({ method: "POST" })
     z
       .object({
         vendorId: z.string().uuid(),
-        action: z.enum(["approve", "reject", "suspend", "reactivate"]),
+        action: z.enum(["approve", "reject", "suspend", "disable", "reactivate"]),
         reason: z.string().trim().max(500).optional(),
       })
       .parse(input),
@@ -462,6 +473,32 @@ export const adminVendorAction = createServerFn({ method: "POST" })
     const { requirePermission } = await import("@/lib/access.server");
     const { PERMISSIONS } = await import("@/lib/rbac");
     await requirePermission(context.supabase, context.userId, PERMISSIONS.VENDORS_REVIEW);
+    if (data.action === "disable") {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const now = new Date().toISOString();
+      const { data: vendor, error } = await supabaseAdmin
+        .from("trading_vendors" as never)
+        .update({
+          status: "disabled",
+          suspended_at: now,
+          suspended_reason: data.reason ?? "Disabled by administrator",
+          updated_at: now,
+        } as never)
+        .eq("id", data.vendorId as never)
+        .select("*")
+        .single();
+      if (error) throw new Error(error.message);
+      await supabaseAdmin.from("audit_logs").insert({
+        actor_id: context.userId,
+        actor_type: "admin",
+        action: "vendor_disabled",
+        entity_type: "trading_vendor",
+        entity_id: data.vendorId,
+        metadata: { reason: data.reason ?? null },
+      });
+      return vendor;
+    }
+
     const rpcName =
       data.action === "approve"
         ? "approve_trading_vendor"
