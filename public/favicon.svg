@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">WTRON</title>
+  <defs>
+    <linearGradient id="wtron-favicon-a" x1="10" y1="8" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#wtron-favicon-a)" d="M32 4 58 18.5v27L32 60 6 45.5v-27L32 4Z"/>
+  <path fill="#03130e" fill-opacity=".92" d="M18.1 19.7h7.1l3.8 18.5 5.7-18.5h5.6L46 38.2l3.8-18.5h6.1l-6.8 25h-6.5l-5.2-16.6-5.2 16.6h-6.6l-7.5-25Z"/>
+  <path fill="#fff" fill-opacity=".92" d="M14 18.4 32 8.1l18 10.3-18 7.7-18-7.7Zm9.9.3 8.1 3.5 8.1-3.5-8.1-4.6-8.1 4.6Z"/>
+</svg>

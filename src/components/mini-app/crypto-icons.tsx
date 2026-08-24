@@ -19,7 +19,7 @@ import {
   WalletCards,
   Zap,
 } from "lucide-react";
-import { WTRON_OFFICIAL_LOGO_PATH } from "@/lib/branding";
+import { WTRON_OFFICIAL_MARK_PATH } from "@/lib/branding";
 
 export type MiniIcon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -37,22 +37,25 @@ export function WtronLogo({
   return (
     <div className={`flex items-center gap-2 ${className ?? ""}`}>
       <span
-        className={`relative grid place-items-center overflow-hidden rounded-xl bg-emerald-500 text-[#03130e] shadow-[0_12px_30px_-20px_rgba(16,185,129,0.8)] ${markClassName ?? "h-9 w-9"}`}
+        className={`relative grid place-items-center overflow-hidden text-[#03130e] ${markClassName ?? "h-9 w-9"}`}
       >
         <img
-          src={WTRON_OFFICIAL_LOGO_PATH}
+          src={WTRON_OFFICIAL_MARK_PATH}
           alt=""
-          className="absolute inset-0 hidden h-full w-full object-contain p-1.5"
+          className="absolute inset-0 h-full w-full object-contain"
           onLoad={(event) => {
-            event.currentTarget.classList.remove("hidden");
             event.currentTarget.nextElementSibling?.classList.add("hidden");
+            event.currentTarget.nextElementSibling?.classList.remove("grid");
           }}
           onError={(event) => {
             event.currentTarget.classList.add("hidden");
             event.currentTarget.nextElementSibling?.classList.remove("hidden");
+            event.currentTarget.nextElementSibling?.classList.add("grid");
           }}
         />
-        <span className="text-sm font-black tracking-normal">WT</span>
+        <span className="hidden h-full w-full place-items-center rounded-xl bg-emerald-500 text-sm font-semibold tracking-normal">
+          WT
+        </span>
       </span>
       {showText ? (
         <span className={textClassName ?? "font-semibold tracking-tight"}>WTRON</span>

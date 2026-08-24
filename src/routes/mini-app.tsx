@@ -304,6 +304,7 @@ interface WalletRow {
   balance?: number | string | null;
   onchain_balance?: number | string | null;
   onchain_trx_balance?: number | string | null;
+  onchain_checked_at?: string | null;
   is_default?: boolean | null;
   custody?: string | null;
   wallet_type?: string | null;
@@ -1038,13 +1039,27 @@ function TelegramMiniApp() {
       setWalletTransactionHasMore(false);
       return;
     }
+    if (screen === "wallet-gasfree" && selectedGasfreeWallet?.id) return;
     setSelectedWalletTransactionId("");
     void loadSelectedWalletTransactions(selectedWallet.id, true);
-  }, [selectedWallet?.id, hasSession]);
+  }, [screen, selectedWallet?.id, selectedGasfreeWallet?.id, hasSession]);
 
   useEffect(() => {
-    if (!["wallet", "wallet-detail"].includes(screen) || !selectedWallet?.id || !hasSession) return;
-    void refreshBalance({ data: { walletId: selectedWallet.id } }).then(
+    if (screen !== "wallet-gasfree" || !selectedGasfreeWallet?.id || !hasSession) return;
+    setSelectedWalletTransactionId("");
+    void loadSelectedWalletTransactions(selectedGasfreeWallet.id, true);
+  }, [screen, selectedGasfreeWallet?.id, hasSession]);
+
+  useEffect(() => {
+    const walletIdForRefresh =
+      screen === "wallet-gasfree" ? selectedGasfreeWallet?.id : selectedWallet?.id;
+    if (
+      !["wallet", "wallet-detail", "wallet-gasfree"].includes(screen) ||
+      !walletIdForRefresh ||
+      !hasSession
+    )
+      return;
+    void refreshBalance({ data: { walletId: walletIdForRefresh } }).then(
       (result) => {
         const snapshot = result as {
           resources?: WalletResourceSnapshot | null;
@@ -1056,7 +1071,7 @@ function TelegramMiniApp() {
       },
       () => undefined,
     );
-  }, [screen, selectedWallet?.id, hasSession]);
+  }, [screen, selectedWallet?.id, selectedGasfreeWallet?.id, hasSession]);
 
   useEffect(() => {
     const webApp =
@@ -1424,6 +1439,17 @@ function TelegramMiniApp() {
       const result = (await checkGasfreeCapability({ data: { walletId: selectedWallet.id } })) as {
         status?: string;
       };
+      if (selectedGasfreeWallet?.id) {
+        const snapshot = (await refreshBalance({
+          data: { walletId: selectedGasfreeWallet.id, forceGasfreeCheck: false },
+        })) as {
+          resources?: WalletResourceSnapshot | null;
+          checkedAt?: string;
+        };
+        setWalletResources(snapshot.resources ?? null);
+        setWalletResourcesCheckedAt(snapshot.checkedAt ?? new Date().toISOString());
+        await loadSelectedWalletTransactions(selectedGasfreeWallet.id, true);
+      }
       await refresh("wallet-gasfree");
       toast.success(result.status === "check_failed" ? t("checkFailed") : t("walletSyncCompleted"));
     } catch (error) {
@@ -1437,7 +1463,14 @@ function TelegramMiniApp() {
     if (!selectedWallet?.id) return;
     setBusy(true);
     try {
-      await discoverGasfreeWallet({ data: { walletId: selectedWallet.id } });
+      const result = (await discoverGasfreeWallet({ data: { walletId: selectedWallet.id } })) as {
+        wallet?: { id?: string };
+      };
+      const gasfreeId = result.wallet?.id ?? selectedGasfreeWallet?.id;
+      if (gasfreeId) {
+        await refreshBalance({ data: { walletId: gasfreeId, forceGasfreeCheck: false } });
+        await loadSelectedWalletTransactions(gasfreeId, true);
+      }
       await refresh("wallet-gasfree");
       toast.success(t("gasfreeWalletDiscovered"));
     } catch (error) {
@@ -1659,6 +1692,7 @@ function TelegramMiniApp() {
         {screen === "wallet" && wallets.length ? (
           <WalletDetailScreen
             wallet={selectedWallet}
+            gasfreeWallet={selectedGasfreeWallet ?? null}
             wallets={wallets}
             transactions={walletTransactions}
             resources={walletResources}
@@ -1686,6 +1720,7 @@ function TelegramMiniApp() {
         {screen === "wallet-detail" ? (
           <WalletDetailScreen
             wallet={selectedWallet}
+            gasfreeWallet={selectedGasfreeWallet ?? null}
             wallets={wallets}
             transactions={walletTransactions}
             resources={walletResources}
@@ -1780,11 +1815,22 @@ function TelegramMiniApp() {
           <WalletGasFreeScreen
             wallet={selectedWallet}
             gasfreeWallet={selectedGasfreeWallet ?? null}
+            transactions={walletTransactions}
             readiness={gasfreeReadiness}
             busy={busy}
             t={t}
             onCheck={() => void checkSelectedWalletGasfree()}
             onDiscover={() => void discoverSelectedWalletGasfree()}
+            onReceive={() => {
+              if (selectedGasfreeWallet?.id) setSelectedWalletId(selectedGasfreeWallet.id);
+              setReceiveAsset("USDT");
+              void navigate("wallet-receive");
+            }}
+            onSelectTransaction={(transaction) => {
+              setSelectedWalletTransactionId(transaction.id);
+              setTransactionBackScreen("wallet-gasfree");
+              void navigate("wallet-transaction-detail");
+            }}
           />
         ) : null}
         {screen === "wallet-backup" ? (
@@ -2483,6 +2529,7 @@ function WalletImportScreen(props: {
 
 function WalletDetailScreen({
   wallet,
+  gasfreeWallet,
   wallets,
   transactions,
   resources,
@@ -2500,6 +2547,7 @@ function WalletDetailScreen({
   onSetDefault,
 }: {
   wallet: WalletRow | null;
+  gasfreeWallet: WalletRow | null;
   wallets: WalletRow[];
   transactions: TransactionRow[];
   resources: WalletResourceSnapshot | null;
@@ -2525,7 +2573,10 @@ function WalletDetailScreen({
     );
   const balance = walletDisplayBalance(wallet);
   const typeLabel = (wallet.wallet_type ?? "standard").toUpperCase();
-  const gasStatus = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
+  const gasReady = Boolean(gasfreeWallet?.address);
+  const gasStatus = gasReady
+    ? t("gasfreeWalletReady")
+    : gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
   const recentRows = transactions.slice(0, 4);
   const address = safeAddress(wallet.address);
   const resourceState = walletResourceDisplay(resources);
@@ -2580,7 +2631,7 @@ function WalletDetailScreen({
             <span>GasFree</span>
             <StatusPill
               label={gasStatus}
-              tone={wallet.gas_sponsorship_status === "available" ? "success" : "muted"}
+              tone={gasReady || wallet.gas_sponsorship_status === "available" ? "success" : "muted"}
             />
             <ChevronDown className="h-3 w-3 -rotate-90 text-slate-500" />
           </button>
@@ -3030,19 +3081,25 @@ function WalletMoreScreen({
 function WalletGasFreeScreen({
   wallet,
   gasfreeWallet,
+  transactions,
   readiness,
   busy,
   t,
   onCheck,
   onDiscover,
+  onReceive,
+  onSelectTransaction,
 }: {
   wallet: WalletRow | null;
   gasfreeWallet: WalletRow | null;
+  transactions: TransactionRow[];
   readiness: GasFreeReadiness | null;
   busy: boolean;
   t: MiniT;
   onCheck: () => void;
   onDiscover: () => void;
+  onReceive: () => void;
+  onSelectTransaction: (transaction: TransactionRow) => void;
 }) {
   if (!wallet) {
     return (
@@ -3053,7 +3110,7 @@ function WalletGasFreeScreen({
   }
   const discovered = Boolean(gasfreeWallet?.address);
   const walletAddress = safeAddress(gasfreeWallet?.address);
-  const status = gasfreeStatusLabel(wallet.gas_sponsorship_status, t);
+  const status = discovered ? t("gasfreeWalletReady") : t("notDiscovered");
   const transferStatus = readiness?.status ?? (discovered ? "NOT_CONFIGURED" : "DISABLED");
   const transferLabel =
     transferStatus === "AVAILABLE"
@@ -3065,14 +3122,18 @@ function WalletGasFreeScreen({
           : transferStatus === "LIMIT_REACHED"
             ? t("limitReached")
             : t("disabled");
-  const rawStatus = gasfreeCapabilityStatus(wallet.gas_sponsorship_status);
+  const rawStatus = discovered
+    ? "available"
+    : gasfreeCapabilityStatus(wallet.gas_sponsorship_status);
   const needsCheck = gasfreeCapabilityNeedsCheck(
     wallet.gas_sponsorship_status,
     wallet.gasfree_capability_checked_at,
   );
-  const checkedAt = wallet.gasfree_capability_checked_at
-    ? new Date(wallet.gasfree_capability_checked_at).toLocaleString()
-    : t("notCheckedYet");
+  const checkedAt = gasfreeWallet?.onchain_checked_at
+    ? new Date(gasfreeWallet.onchain_checked_at).toLocaleString()
+    : wallet.gasfree_capability_checked_at
+      ? new Date(wallet.gasfree_capability_checked_at).toLocaleString()
+      : t("notCheckedYet");
   const pillTone =
     rawStatus === "available" || rawStatus === "limited" || rawStatus === "enabled"
       ? "success"
@@ -3085,56 +3146,105 @@ function WalletGasFreeScreen({
       : transferStatus === "NOT_CONFIGURED" || transferStatus === "PROVIDER_ERROR"
         ? "warning"
         : "muted";
-  const explanation =
-    readiness?.reason ??
-    (discovered ? t("gasfreeTransferSetupRequired") : t("gasfreeUnavailableConfirmedMessage"));
+  const explanation = discovered
+    ? (readiness?.reason ?? t("gasfreeTransferSetupRequired"))
+    : t("gasfreeUnavailableConfirmedMessage");
+  const usdtBalance = walletDisplayBalance(gasfreeWallet);
+  const trxBalance = Number(gasfreeWallet?.onchain_trx_balance ?? 0);
+  const providerName =
+    readiness?.provider && readiness.provider !== "gasfree_open_api"
+      ? readiness.provider
+      : "GasFree";
   return (
-    <Screen title={t("gasfreeTransactions")} subtitle={wallet.name ?? t("wallet")}>
-      <Surface className="p-4">
+    <Screen title={t("gasfreeWallet")} subtitle={networkLabelForMini(wallet.network, t)}>
+      <section className="space-y-5">
         <div className="flex items-center gap-3">
           <GasFreeIcon className="h-10 w-10" />
-          <div>
-            <p className="font-semibold">GasFree</p>
-            <p className="text-xs text-slate-400">{t("gasfreeCapability")}</p>
+          <div className="min-w-0">
+            <p className="text-base font-semibold">{t("gasfreeWallet")}</p>
+            <p className="text-xs text-slate-500">{wallet.name ?? t("mainWallet")}</p>
           </div>
           <div className="ml-auto">
             <StatusPill label={status} tone={pillTone} />
           </div>
         </div>
-        <MetricGrid
-          items={[
-            [t("gasfreeWallet"), discovered ? t("discovered") : t("notDiscovered")],
-            [t("gasfreeTransfers"), transferLabel],
-            [t("supportedAssets"), "USDT"],
-            [t("lastChecked"), checkedAt],
-            [t("provider"), readiness?.provider ?? "gasfree_open_api"],
-          ]}
-        />
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <StatusPill
-            label={discovered ? t("gasfreeWalletReady") : t("notDiscovered")}
-            tone={discovered ? "success" : "warning"}
-          />
-          <StatusPill label={transferLabel} tone={transferTone} />
-        </div>
+
         {discovered ? (
           <button
             type="button"
-            className="mono mt-3 w-full rounded-2xl bg-white/6 p-3 text-left text-xs"
+            className="mono w-full break-all border-y border-white/10 py-3 text-left text-xs text-slate-300"
             dir={technicalTextDirection()}
             onClick={() => copyText(walletAddress, t("addressCopied"))}
           >
             {walletAddress}
           </button>
         ) : null}
+
+        <div>
+          <p className="text-xs text-slate-500">{t("portfolioBalance")}</p>
+          <p className="mt-2 text-3xl font-semibold tracking-normal tabular-nums">
+            {money(usdtBalance)} USDT
+          </p>
+          <p className="mt-1 text-sm text-slate-400 tabular-nums">{money(trxBalance, "TRX")} TRX</p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <QuickAction icon={MiniIcons.receive} label={t("receive")} onClick={onReceive} />
+          <QuickAction icon={MiniIcons.history} label={t("history")} onClick={onCheck} />
+          <QuickAction
+            icon={MiniIcons.send}
+            label={t("send")}
+            disabled={transferStatus !== "AVAILABLE"}
+            onClick={() => undefined}
+          />
+        </div>
+
+        <Surface className="p-3">
+          <MetricGrid
+            items={[
+              [t("walletStatus"), discovered ? t("discovered") : t("notDiscovered")],
+              [t("gasfreeTransfers"), transferLabel],
+              [t("supportedAssets"), "USDT"],
+              [t("lastChecked"), checkedAt],
+              [t("provider"), providerName],
+            ]}
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StatusPill
+              label={discovered ? t("gasfreeWalletReady") : t("notDiscovered")}
+              tone={discovered ? "success" : "warning"}
+            />
+            <StatusPill label={transferLabel} tone={transferTone} />
+          </div>
+        </Surface>
+
+        {discovered ? (
+          <Section title={t("assets")}>
+            <AssetRow
+              icon={<UsdtIcon />}
+              symbol="USDT"
+              name={t("tetherUsd")}
+              network="TRC20"
+              amount={`${money(usdtBalance)} USDT`}
+            />
+            <AssetRow
+              icon={<TronIcon />}
+              symbol="TRX"
+              name="TRON"
+              network="TRON"
+              amount={`${money(trxBalance, "TRX")} TRX`}
+            />
+          </Section>
+        ) : null}
+
         {wallet.gasfree_capability_error ? (
-          <p className="mt-3 rounded-2xl bg-amber-500/10 p-3 text-xs text-amber-200">
+          <p className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">
             {t("gasfreeCheckFailedMessage")}
           </p>
         ) : null}
         <button
           type="button"
-          className="mt-4 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-[#03130e] disabled:opacity-60"
+          className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-medium text-[#03130e] disabled:opacity-60"
           onClick={onDiscover}
           disabled={busy}
         >
@@ -3146,7 +3256,7 @@ function WalletGasFreeScreen({
         </button>
         <button
           type="button"
-          className="mt-2 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          className="w-full rounded-xl border border-white/10 px-4 py-3 text-sm font-medium text-slate-100 disabled:opacity-60"
           onClick={onCheck}
           disabled={busy}
         >
@@ -3156,10 +3266,14 @@ function WalletGasFreeScreen({
               ? t("retry")
               : t("checkAvailability")}
         </button>
-      </Surface>
+      </section>
       <CompactEmpty title={transferLabel} body={explanation} />
       <Section title={t("recentGasfreeTransactions")}>
-        <CompactEmpty title={t("noTransactionsYet")} body={t("gasfreeTransactionsEmpty")} />
+        {transactions.length ? (
+          <WalletTransactionRows rows={transactions} t={t} onSelect={onSelectTransaction} />
+        ) : (
+          <CompactEmpty title={t("noTransactionsYet")} body={t("gasfreeTransactionsEmpty")} />
+        )}
       </Section>
     </Screen>
   );
@@ -4269,9 +4383,9 @@ function Screen({
   children: React.ReactNode;
 }) {
   return (
-    <main className="space-y-5 pb-2">
+    <main className="space-y-4 pb-2">
       <div className={compact ? "sr-only" : undefined}>
-        <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
+        <h1 className="text-[22px] font-semibold leading-tight tracking-normal">{title}</h1>
         <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
       </div>
       {children}
@@ -4280,7 +4394,10 @@ function Screen({
 }
 function BackButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button className="inline-flex items-center gap-1 text-sm text-slate-300" onClick={onClick}>
+    <button
+      className="inline-flex items-center gap-1 text-sm font-normal text-slate-300"
+      onClick={onClick}
+    >
       <ChevronLeft className="h-4 w-4" />
       {label}
     </button>
@@ -4298,7 +4415,7 @@ function IconButton({
   return (
     <button
       aria-label={label}
-      className="grid h-9 w-9 place-items-center rounded-full bg-white/6 text-slate-200"
+      className="grid h-9 w-9 place-items-center rounded-full bg-white/5 text-slate-200"
       onClick={onClick}
     >
       <Icon className="h-4 w-4" />
@@ -4307,8 +4424,8 @@ function IconButton({
 }
 function AssetCard({ total, profile }: { total: number; profile: ProfileSummary | null }) {
   return (
-    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500 text-[#03130e] hover:bg-emerald-400 p-4 shadow-[0_16px_38px_-28px_rgba(16,185,129,0.75)]">
-      <p className="text-xs font-semibold uppercase text-emerald-100">Total Assets</p>
+    <div className="rounded-xl bg-emerald-500 p-4 text-[#03130e] shadow-[0_14px_34px_-28px_rgba(16,185,129,0.75)] hover:bg-emerald-400">
+      <p className="text-xs font-medium uppercase text-emerald-100">Total Assets</p>
       <p className="mono mt-2 text-2xl font-semibold">{money(total)}</p>
       <div className="mt-5 grid grid-cols-3 gap-2">
         <MiniMetric label="Available" value={money(profile?.balance)} />
@@ -4320,15 +4437,17 @@ function AssetCard({ total, profile }: { total: number; profile: ProfileSummary 
 }
 function MiniMetric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-white/8 bg-white/5 p-2.5">
+    <div className="border-t border-white/8 py-2">
       <p className="text-[11px] text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold tabular-nums">{value}</p>
+      <p className="mt-1 text-sm font-medium tabular-nums">{value}</p>
     </div>
   );
 }
 function Surface({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={`rounded-2xl border border-white/10 bg-white/6 ${className}`}>{children}</div>
+    <div className={`rounded-xl border border-white/10 bg-white/[0.045] ${className}`}>
+      {children}
+    </div>
   );
 }
 
@@ -4343,7 +4462,7 @@ function SectionHeader({
 }) {
   return (
     <div className="flex w-full items-center justify-between gap-3">
-      <h2 className="text-sm font-semibold">{title}</h2>
+      <h2 className="text-[15px] font-medium">{title}</h2>
       {action ? (
         <button className="text-xs font-medium text-emerald-300" onClick={() => void onAction?.()}>
           {action}
@@ -4364,7 +4483,7 @@ function Action({
 }) {
   return (
     <button className="text-center" onClick={() => void onClick()}>
-      <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white/8 text-emerald-300 ">
+      <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white/6 text-emerald-300 ">
         <Icon className="h-5 w-5" />
       </span>
       <span className="mt-2 block text-[11px] text-slate-200">{label}</span>
@@ -4375,17 +4494,23 @@ function QuickAction({
   icon: Icon,
   label,
   onClick,
+  disabled,
 }: {
   icon: MiniIcon;
   label: string;
   onClick: () => void | Promise<void>;
+  disabled?: boolean;
 }) {
   return (
-    <button className="text-center" onClick={() => void onClick()}>
-      <span className="mx-auto grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/6 text-emerald-300">
+    <button
+      className="text-center disabled:opacity-45"
+      disabled={disabled}
+      onClick={() => void onClick()}
+    >
+      <span className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-white/6 text-emerald-300">
         <Icon className="h-4 w-4" />
       </span>
-      <span className="mt-2 block text-[11px] font-medium text-slate-300">{label}</span>
+      <span className="mt-2 block text-[11px] font-normal text-slate-300">{label}</span>
     </button>
   );
 }
@@ -4409,15 +4534,13 @@ function Section({
 }
 function EmptyLine({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-xl border border-white/10 bg-white/4 p-3 text-center text-sm text-slate-400">
-      {children}
-    </p>
+    <p className="border-y border-white/10 py-3 text-center text-sm text-slate-400">{children}</p>
   );
 }
 function CompactEmpty({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/4 p-3 text-center">
-      <p className="text-sm font-semibold text-slate-200">{title}</p>
+    <div className="border-y border-white/10 py-3 text-center">
+      <p className="text-sm font-medium text-slate-200">{title}</p>
       <p className="mt-1 text-xs text-slate-500">{body}</p>
     </div>
   );

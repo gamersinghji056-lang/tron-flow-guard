@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it } from "node:test";
 import {
   createPlaintextApiKey,
@@ -30,7 +32,7 @@ import {
   validateTelegramInitData,
 } from "./telegram-auth.ts";
 import { createMiniAppClientId, miniAppErrorHomeHref } from "./mini-app-runtime.ts";
-import { WTRON_OFFICIAL_LOGO_PATH } from "./branding.ts";
+import { WTRON_OFFICIAL_LOGO_PATH, WTRON_OFFICIAL_MARK_PATH } from "./branding.ts";
 import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
@@ -1495,5 +1497,34 @@ describe("GasFree transfer service safety", () => {
       ["GASFREE_API_KEY", "GASFREE_API_SECRET"],
     );
     assert.equal(WTRON_OFFICIAL_LOGO_PATH, "/branding/wtron-logo.svg");
+    assert.equal(WTRON_OFFICIAL_MARK_PATH, "/branding/wtron-mark.svg");
+  });
+
+  it("ships valid original WTRON SVG brand assets", () => {
+    for (const asset of [
+      "public/branding/wtron-logo.svg",
+      "public/branding/wtron-mark.svg",
+      "public/favicon.svg",
+    ]) {
+      const absolute = resolve(process.cwd(), asset);
+      assert.equal(existsSync(absolute), true, `${asset} must exist`);
+      const svg = readFileSync(absolute, "utf8");
+      assert.match(svg, /^<svg[\s>]/);
+      assert.match(svg, /<title[^>]*>WTRON/);
+      assert.doesNotMatch(svg, /TronLink|Binance|Tether|Telegram/);
+    }
+  });
+
+  it("keeps GasFree wallet ready separate from provider transfer setup in translated strings", () => {
+    const en = createMiniT("en");
+    const zh = createMiniT("zh");
+    const ru = createMiniT("ru");
+    const fa = createMiniT("fa");
+    assert.equal(en("gasfreeWalletReady"), "GasFree Wallet Ready");
+    assert.equal(en("walletStatus"), "Wallet status");
+    assert.notEqual(zh("walletStatus"), "Wallet status");
+    assert.notEqual(ru("walletStatus"), "Wallet status");
+    assert.notEqual(fa("walletStatus"), "Wallet status");
+    assert.match(en("gasfreeTransferSetupRequired"), /provider setup/);
   });
 });
