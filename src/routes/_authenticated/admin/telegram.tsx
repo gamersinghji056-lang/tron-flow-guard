@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { SectionHeader } from "@/components/stat-card";
 
 export const Route = createFileRoute("/_authenticated/admin/telegram")({
-  head: () => ({ meta: [{ title: "Telegram operations - TRONDESK" }] }),
+  head: () => ({ meta: [{ title: "Telegram operations - WTRON" }] }),
   component: AdminTelegramPage,
 });
 

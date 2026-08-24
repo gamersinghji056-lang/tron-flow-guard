@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
 
 export const Route = createFileRoute("/_authenticated/orders")({
-  head: () => ({ meta: [{ title: "Orders - TRONDESK" }] }),
+  head: () => ({ meta: [{ title: "Orders - WTRON" }] }),
   component: OrdersPage,
 });
 

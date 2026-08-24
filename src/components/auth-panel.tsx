@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { registerAdmin, registerTrader } from "@/lib/accounts.functions";
+import { getCurrentAccountAccess, registerAdmin, registerTrader } from "@/lib/accounts.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,19 +55,9 @@ function schemaFor(audience: Audience, mode: AuthMode) {
   });
 }
 
-/** Reads the caller's role directly from `user_roles` after a successful login. */
-async function readRole(userId: string) {
-  const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-  const held = (data ?? []).map((row) => row.role as string);
-  if (held.includes("super_admin")) return "super_admin";
-  if (held.includes("admin")) return "admin";
-  if (held.includes("employee")) return "employee";
-  if (held.includes("vendor")) return "vendor";
-  return "trader";
-}
-
 export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMode }) {
   const navigate = useNavigate();
+  const resolveCurrentAccount = useServerFn(getCurrentAccountAccess);
   const copy = COPY[audience][mode];
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -74,22 +65,29 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
   const [adminCode, setAdminCode] = useState("");
   const [pending, setPending] = useState(false);
   const [awaitingVerification, setAwaitingVerification] = useState(false);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
 
   // Already signed in? Send the session to the right console.
   useEffect(() => {
     let active = true;
     supabase.auth.getSession().then(async ({ data }) => {
       if (!active || !data.session) return;
-      const role = await readRole(data.session.user.id);
-      navigate({ to: role === "trader" ? "/dashboard" : "/admin", replace: true });
+      const account = await resolveCurrentAccount();
+      if (audience === "admin") {
+        if (account.isAdmin) navigate({ to: "/admin", replace: true });
+        else await supabase.auth.signOut();
+        return;
+      }
+      if (account.accountType === "trader") navigate({ to: "/dashboard", replace: true });
+      else await supabase.auth.signOut();
     });
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, [audience, navigate, resolveCurrentAccount]);
 
   async function signInAndRoute(credentials: { email: string; password: string }) {
-    const { data, error } = await supabase.auth.signInWithPassword(credentials);
+    const { error } = await supabase.auth.signInWithPassword(credentials);
     if (error) {
       throw new Error(
         /Email not confirmed/i.test(error.message)
@@ -100,16 +98,20 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
       );
     }
 
-    const role = await readRole(data.user.id);
-    const isStaff = role === "admin" || role === "super_admin" || role === "employee";
+    const account = await resolveCurrentAccount();
+    const isStaff = account.isAdmin;
 
     if (audience === "admin" && !isStaff) {
       await supabase.auth.signOut();
-      throw new Error("This account is a trader account. Use the trader sign-in page.");
+      throw new Error("This account is not an administrator account.");
     }
     if (audience === "trader" && isStaff) {
       await supabase.auth.signOut();
       throw new Error("This is an administrator account. Use the administrator sign-in page.");
+    }
+    if (audience === "trader" && account.accountType === "vendor") {
+      await supabase.auth.signOut();
+      throw new Error("This is a Vendor account. Use Vendor Login.");
     }
 
     navigate({ to: isStaff ? "/admin" : "/dashboard", replace: true });
@@ -142,6 +144,13 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
               data: { ...payload, ...(adminCode.trim() ? { code: adminCode.trim() } : {}) },
             })
           : await registerTrader({ data: payload });
+
+      if (audience === "trader") {
+        setPassword("");
+        setRegistrationComplete(true);
+        toast.success("Trader registration successful. Please login.");
+        return;
+      }
 
       if (!result.canSignInNow) {
         setAwaitingVerification(true);
@@ -181,7 +190,16 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
           <h1 className="mt-2 text-lg font-semibold">{copy.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{copy.hint}</p>
 
-          {awaitingVerification ? (
+          {registrationComplete ? (
+            <div className="mt-5 space-y-3">
+              <p className="text-sm">
+                Trader registration successful. Please login with your email and password.
+              </p>
+              <Button asChild className="w-full">
+                <Link to="/trader/login">Trader Login</Link>
+              </Button>
+            </div>
+          ) : awaitingVerification ? (
             <div className="mt-5 space-y-3">
               <p className="text-sm">
                 We sent a confirmation link to <span className="font-medium">{email}</span>. Confirm

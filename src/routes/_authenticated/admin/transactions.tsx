@@ -12,13 +12,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/admin/transactions")({
   head: () => ({
     meta: [
-      { title: "On-chain transactions — TRONDESK admin" },
+      { title: "On-chain transactions - WTRON admin" },
       {
         name: "description",
         content:
           "Every TRC20 USDT transfer the listener has ingested, with verification result, confirmations and matched deposit request.",
       },
-      { property: "og:title", content: "On-chain transactions — TRONDESK admin" },
+      { property: "og:title", content: "On-chain transactions - WTRON admin" },
       {
         property: "og:description",
         content: "Ingested transfers, verification results and confirmation counts.",
@@ -132,7 +132,7 @@ function AdminTransactions() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `trondesk-transactions-${Date.now()}.csv`;
+    anchor.download = `wtron-transactions-${Date.now()}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   }

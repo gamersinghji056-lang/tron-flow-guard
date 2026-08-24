@@ -19,13 +19,13 @@ import { LiveDot, StatusBadge } from "@/components/status-badge";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Deposit desk — TRONDESK" },
+      { title: "Deposit desk - WTRON" },
       {
         name: "description",
         content:
           "Create a USDT (TRC20) deposit request and watch the blockchain listener detect, confirm and credit it automatically.",
       },
-      { property: "og:title", content: "Deposit desk — TRONDESK" },
+      { property: "og:title", content: "Deposit desk - WTRON" },
       {
         property: "og:description",
         content: "Automatic TRC20 USDT deposit verification with live confirmation tracking.",

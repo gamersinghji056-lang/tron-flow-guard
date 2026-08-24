@@ -9,13 +9,13 @@ import { SectionHeader } from "@/components/stat-card";
 export const Route = createFileRoute("/_authenticated/deposits")({
   head: () => ({
     meta: [
-      { title: "Deposit history — TRONDESK" },
+      { title: "Deposit history - WTRON" },
       {
         name: "description",
         content:
           "Full audit trail of your USDT (TRC20) deposit requests, on-chain transactions and confirmation counts.",
       },
-      { property: "og:title", content: "Deposit history — TRONDESK" },
+      { property: "og:title", content: "Deposit history - WTRON" },
       {
         property: "og:description",
         content: "Every deposit request with its verified on-chain transaction and status.",

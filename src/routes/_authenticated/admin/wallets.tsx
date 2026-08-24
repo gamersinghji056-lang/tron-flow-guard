@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/admin/wallets")({
   head: () => ({
     meta: [
-      { title: "Company wallets - TRONDESK admin" },
+      { title: "Company wallets - WTRON admin" },
       {
         name: "description",
         content:

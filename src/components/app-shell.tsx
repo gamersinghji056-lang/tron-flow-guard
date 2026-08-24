@@ -147,7 +147,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground">
               <Radio className="h-4 w-4" />
             </span>
-            <span className="text-sm font-semibold tracking-tight">TRONDESK</span>
+            <span className="text-sm font-semibold tracking-tight">WTRON</span>
           </Link>
 
           <nav className="ml-2 hidden items-center gap-1 md:flex">

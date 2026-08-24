@@ -13,7 +13,7 @@ import { LiveDot } from "@/components/status-badge";
 export const Route = createFileRoute("/_authenticated/admin/")({
   head: () => ({
     meta: [
-      { title: "Operations dashboard - TRONDESK admin" },
+      { title: "Operations dashboard - WTRON admin" },
       {
         name: "description",
         content:

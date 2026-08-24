@@ -8,6 +8,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const traderInput = z.object({
   email: z.string().trim().email("Enter a valid email address").max(255),
@@ -34,4 +35,33 @@ export const registerAdmin = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { provisionAdmin } = await import("@/lib/accounts.server");
     return provisionAdmin(data);
+  });
+
+export const getCurrentAccountAccess = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { readAccess } = await import("@/lib/access.server");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [access, vendor] = await Promise.all([
+      readAccess(context.supabase, context.userId),
+      supabaseAdmin
+        .from("trading_vendors" as never)
+        .select("id, status")
+        .eq("user_id", context.userId as never)
+        .maybeSingle(),
+    ]);
+    const vendorStatus = (vendor.data as { status?: string | null } | null)?.status ?? null;
+    const accountType = access.isAdmin
+      ? "admin"
+      : access.role === "vendor" || vendorStatus
+        ? "vendor"
+        : "trader";
+    return {
+      userId: context.userId,
+      role: access.role,
+      isAdmin: access.isAdmin,
+      isSuperAdmin: access.isSuperAdmin,
+      accountType,
+      vendorStatus,
+    };
   });

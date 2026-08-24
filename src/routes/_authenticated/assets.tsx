@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { SectionHeader, StatCard } from "@/components/stat-card";
 
 export const Route = createFileRoute("/_authenticated/assets")({
-  head: () => ({ meta: [{ title: "Assets - TRONDESK" }] }),
+  head: () => ({ meta: [{ title: "Assets - WTRON" }] }),
   component: AssetsPage,
 });
 

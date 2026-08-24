@@ -386,9 +386,6 @@ export async function registerAndLinkTelegramMiniApp(input: {
     userId: result.userId,
     reason: "mini_app_register",
   });
-  if (accountType !== "vendor") {
-    await createTelegramAppSession(account, "mini_app_register");
-  }
   await supabaseAdmin.from("telegram_link_audit").insert({
     user_id: result.userId,
     telegram_account_id: account.id,
@@ -429,8 +426,9 @@ export async function issueTelegramSupabaseSession(initData: string, handoffToke
     });
     handoffConsumed = Boolean(handoff);
   }
-  if (!(await hasActiveTelegramSession(verified.telegramUser.id))) {
-    await createTelegramAppSession(account, "mini_app_reconnect");
+  const hasActiveSession = await hasActiveTelegramSession(verified.telegramUser.id);
+  if (!handoffConsumed && !hasActiveSession) {
+    throw new TelegramAuthError("telegram_session_required", "Telegram login is required.");
   }
   const { data: userResult, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
   const email = userResult.user?.email;
@@ -739,24 +737,13 @@ async function completeBotRegistration(input: {
         email_verification_required: result.emailVerificationRequired ?? false,
       } as never,
     } as never);
-    if (accountType === "vendor") {
-      return {
-        text: "Registration submitted. Your Vendor account is waiting for approval.",
-        replyMarkup: keyboardFromLabels(
-          telegramStartMenuLabels({
-            linked: true,
-            authenticated: false,
-            accountType: "vendor",
-            vendorStatus: "pending",
-          }),
-        ),
-      };
-    }
-    await createTelegramAppSession(account, "bot_register");
-    const handoff = await createTelegramAppHandoff(account, "bot_register");
+    const linkedState = await readLinkedState(input.user.id);
     return {
-      text: telegramAuthSuccessMessage("register"),
-      replyMarkup: openMiniAppKeyboard("/mini-app", handoff.token),
+      text:
+        accountType === "vendor"
+          ? "Registration submitted. Your Vendor account is waiting for approval."
+          : "Trader registration successful. Please login.",
+      replyMarkup: await menuKeyboardForLinkedState(linkedState),
     };
   } catch (error) {
     await clearBotAuthState(input.user.id);

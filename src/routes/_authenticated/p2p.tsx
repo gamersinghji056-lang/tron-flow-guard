@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
 
 export const Route = createFileRoute("/_authenticated/p2p")({
-  head: () => ({ meta: [{ title: "P2P marketplace - TRONDESK" }] }),
+  head: () => ({ meta: [{ title: "P2P marketplace - WTRON" }] }),
   component: P2pPage,
 });
 

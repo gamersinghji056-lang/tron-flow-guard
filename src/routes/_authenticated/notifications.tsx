@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/stat-card";
 
 export const Route = createFileRoute("/_authenticated/notifications")({
-  head: () => ({ meta: [{ title: "Notifications - TRONDESK" }] }),
+  head: () => ({ meta: [{ title: "Notifications - WTRON" }] }),
   component: NotificationsPage,
 });
 

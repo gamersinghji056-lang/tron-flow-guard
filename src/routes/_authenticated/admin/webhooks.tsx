@@ -93,7 +93,7 @@ function WebhooksPage() {
           <Input
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://example.com/webhooks/trondesk"
+            placeholder="https://example.com/webhooks/wtron"
           />
           <Button disabled={submitting || events.length === 0}>
             {submitting ? (

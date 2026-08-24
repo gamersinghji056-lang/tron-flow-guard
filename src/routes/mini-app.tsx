@@ -595,6 +595,7 @@ function TelegramMiniApp() {
   const [authMode, setAuthMode] = useState<"login" | "register">(
     search.auth as "login" | "register",
   );
+  const [authNotice, setAuthNotice] = useState("");
   const [accountType, setAccountType] = useState<"trader" | "vendor">("trader");
   const [initData, setInitData] = useState("");
   const [handoffToken, setHandoffToken] = useState(search.handoff ?? "");
@@ -817,6 +818,10 @@ function TelegramMiniApp() {
       setLinked(Boolean(verified.linked));
       setLinkedAccountType((verified.accountType ?? null) as WtronAccountType | "admin" | null);
       setVendorStatus((verified.vendorStatus ?? null) as VendorApprovalStatus | null);
+      if (verified.accountType === "trader" || verified.accountType === "vendor") {
+        setAccountType(verified.accountType);
+        setAuthMode("login");
+      }
       const entryState = miniAppEntryState({
         linked: Boolean(verified.linked),
         accountType: (verified.accountType ?? null) as WtronAccountType | "admin" | null,
@@ -827,7 +832,7 @@ function TelegramMiniApp() {
         setHasSession(false);
         return;
       }
-      if (verified.linked && (handoff || !sessionData.session || !verified.authorized)) {
+      if (verified.linked && (handoff || verified.authorized)) {
         const session = await createTelegramSession({
           data: { initData: launch, handoff: handoff || undefined },
         });
@@ -841,9 +846,10 @@ function TelegramMiniApp() {
         }
         setHasSession(true);
       } else {
-        setHasSession(Boolean(sessionData.session));
+        if (sessionData.session && !verified.authorized) await supabase.auth.signOut();
+        setHasSession(Boolean(sessionData.session && verified.authorized));
       }
-      if (!verified.linked) return;
+      if (!verified.linked || !verified.authorized) return;
       await loadAuthenticatedData(nextScreen, launch);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Telegram verification failed";
@@ -1128,6 +1134,7 @@ function TelegramMiniApp() {
     }
     setBusy(true);
     try {
+      setAuthNotice("");
       const authResult =
         authMode === "login"
           ? await loginTelegram({ data: { initData, email, password, accountType } })
@@ -1149,12 +1156,26 @@ function TelegramMiniApp() {
       setLinked(true);
       setLinkedAccountType(resolvedAccountType);
       setVendorStatus(resolvedVendorStatus);
+      if (authMode === "register") {
+        setPassword("");
+        setConfirmPassword("");
+        setHasSession(false);
+        setScreen("home");
+        if (resolvedAccountType === "vendor") {
+          setAuthNotice("");
+          toast.success("Vendor application submitted");
+          await refresh("home");
+          return;
+        }
+        setAuthMode("login");
+        setAuthNotice("Trader registration successful. Please login.");
+        toast.success("Trader registration successful. Please login.");
+        return;
+      }
       if (resolvedAccountType === "vendor" && resolvedVendorStatus !== "approved") {
         setHasSession(false);
         setScreen("home");
-        toast.success(
-          authMode === "register" ? "Vendor application submitted" : "Vendor approval required",
-        );
+        toast.success("Vendor approval required");
         await refresh("home");
         return;
       }
@@ -1650,7 +1671,7 @@ function TelegramMiniApp() {
     );
   }
 
-  if (!linked) {
+  if (!linked || !hasSession) {
     return (
       <MiniFrame locale={locale} theme={appliedTheme}>
         <AuthScreen
@@ -1665,6 +1686,7 @@ function TelegramMiniApp() {
           confirmPassword={confirmPassword}
           setConfirmPassword={setConfirmPassword}
           busy={busy}
+          notice={authNotice}
           onSubmit={submitAuth}
         />
       </MiniFrame>
@@ -1977,6 +1999,7 @@ function TelegramMiniApp() {
         ) : null}
         {screen === "trade" ? (
           <TradeScreen
+            vendorMode={entryState === "vendor_app"}
             tab={tradeTab}
             setTab={setTradeTab}
             amount={directSellAmount}
@@ -2186,6 +2209,7 @@ function AuthScreen(props: {
   confirmPassword: string;
   setConfirmPassword: (value: string) => void;
   busy: boolean;
+  notice: string;
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
@@ -2203,6 +2227,11 @@ function AuthScreen(props: {
         <p className="mt-2 text-sm text-slate-400">
           Choose Trader for wallet/P2P/WTRON Trade, or Vendor for approved marketplace operations.
         </p>
+        {props.notice ? (
+          <p className="mt-3 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-100">
+            {props.notice}
+          </p>
+        ) : null}
       </div>
       <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/6 p-1">
         <button
@@ -3795,6 +3824,7 @@ function P2pScreen(props: {
 }
 
 function TradeScreen(props: {
+  vendorMode?: boolean;
   tab: TradeTab;
   setTab: (tab: TradeTab) => void;
   amount: string;
@@ -3813,15 +3843,24 @@ function TradeScreen(props: {
   onAddPayment: () => void;
 }) {
   return (
-    <Screen title="WTRON Trade" subtitle="Company and verified-vendor trading">
-      <SegmentedControl
-        value={props.tab}
-        setValue={(value) => props.setTab(value as TradeTab)}
-        items={[
-          ["sell", "Sell to WTRON"],
-          ["buy", "Buy from WTRON"],
-        ]}
-      />
+    <Screen
+      title={props.vendorMode ? "Vendor Trade" : "WTRON Trade"}
+      subtitle={
+        props.vendorMode
+          ? "Approved vendors can sell USDT to WTRON. Buy-side trader actions are hidden."
+          : "Company and verified-vendor trading"
+      }
+    >
+      {props.vendorMode ? null : (
+        <SegmentedControl
+          value={props.tab}
+          setValue={(value) => props.setTab(value as TradeTab)}
+          items={[
+            ["sell", "Sell to WTRON"],
+            ["buy", "Buy from WTRON"],
+          ]}
+        />
+      )}
       {props.tab === "sell" ? (
         <form className="space-y-4" onSubmit={props.onSell}>
           <Surface className="p-4">
@@ -3874,7 +3913,7 @@ function TradeScreen(props: {
           </Button>
         </form>
       ) : null}
-      {props.tab === "buy" ? (
+      {!props.vendorMode && props.tab === "buy" ? (
         <div className="space-y-3">
           <FormField label="USDT amount">
             <Input
