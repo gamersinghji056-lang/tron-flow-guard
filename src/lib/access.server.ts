@@ -72,7 +72,7 @@ export async function requirePermission(
   permission: Permission,
 ): Promise<AccessProfile> {
   const access = await requireStaff(client, userId);
-  if (access.isSuperAdmin) return access;
+  if (access.role === "super_admin" || access.role === "admin") return access;
   if (!access.permissions.includes(permission)) {
     throw new Error("Forbidden: you do not have permission to perform this action");
   }

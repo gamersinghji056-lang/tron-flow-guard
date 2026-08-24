@@ -1072,6 +1072,7 @@ describe("vendor account and listing controls", () => {
 describe("RBAC and system error safety", () => {
   it("grants super admin implicitly and denies employees without explicit permission", () => {
     assert.equal(grants("super_admin", [], PERMISSIONS.EMPLOYEES_MANAGE), true);
+    assert.equal(grants("admin", [], PERMISSIONS.EMPLOYEES_MANAGE), true);
     assert.equal(grants("employee", [], PERMISSIONS.EMPLOYEES_MANAGE), false);
     assert.equal(
       grants("employee", [PERMISSIONS.EMPLOYEES_MANAGE], PERMISSIONS.EMPLOYEES_MANAGE),

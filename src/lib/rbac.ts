@@ -151,7 +151,7 @@ export function isStaffRole(role: AppRole | null): boolean {
 
 /** Super administrators implicitly hold every permission. */
 export function grants(role: AppRole | null, held: string[], permission: Permission): boolean {
-  if (role === "super_admin") return true;
+  if (role === "super_admin" || role === "admin") return true;
   return held.includes(permission);
 }
 
@@ -165,7 +165,7 @@ export function canGrantPermissions(input: {
   requestedPermissions: string[];
 }) {
   if (!input.requestedPermissions.every(isKnownPermission)) return false;
-  if (input.actorRole === "super_admin") return true;
+  if (input.actorRole === "super_admin" || input.actorRole === "admin") return true;
   return input.requestedPermissions.every((permission) =>
     input.actorPermissions.includes(permission),
   );
