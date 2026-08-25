@@ -648,9 +648,9 @@ Do not hardcode blockchain data.
 
 Design the application exactly as if it will later become a production crypto payment gateway. Every module should already be structured for future expansion with minimal code changes.
 
-This project was built with [Lovable](https://lovable.dev).
+This project is deployed through Railway as the authoritative production runtime.
 
-**Live app**: https://tron-flow-guard.lovable.app
+**Live app**: https://tron-flow-guard-production.up.railway.app
 
 ## Build with Lovable
 

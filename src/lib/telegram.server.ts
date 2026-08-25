@@ -23,6 +23,7 @@ import {
   type WtronAccountType,
 } from "@/lib/role-auth-policy";
 import { normalizeP2pMarketplaceAd } from "@/lib/p2p-state";
+import { CANONICAL_PRODUCTION_ORIGIN, normalizeOrigin } from "@/lib/production-url";
 
 const DEFAULT_AUTH_MAX_AGE_SECONDS = 600;
 const DEFAULT_BOT_AUTH_TTL_MS = 5 * 60_000;
@@ -1105,10 +1106,16 @@ export async function processTelegramNotificationQueue(limit = 20) {
 }
 
 function miniAppUrl(path = "/mini-app", handoffToken?: string) {
-  return new URL(
-    appendTelegramHandoff(path, handoffToken),
-    requiredEnv("TELEGRAM_MINI_APP_URL"),
-  ).toString();
+  const configured =
+    optionalEnv("TELEGRAM_MINI_APP_URL") ||
+    optionalEnv("APP_BASE_URL") ||
+    optionalEnv("PUBLIC_APP_URL") ||
+    CANONICAL_PRODUCTION_ORIGIN;
+  return new URL(appendTelegramHandoff(path, handoffToken), normalizeOrigin(configured)).toString();
+}
+
+export function telegramMiniAppHomeUrl() {
+  return miniAppUrl("/mini-app");
 }
 
 function openMiniAppKeyboard(path = "/mini-app", handoffToken?: string) {
@@ -1520,17 +1527,19 @@ export async function writeTelegramHealth(
   detail: string,
   metadata: Record<string, unknown> = {},
 ) {
+  const now = new Date().toISOString();
   await supabaseAdmin.from("telegram_bot_health").upsert(
     {
       service: "telegram-worker",
       status,
       detail,
       bot_username: optionalEnv("TELEGRAM_BOT_USERNAME") || null,
-      mini_app_url: optionalEnv("TELEGRAM_MINI_APP_URL") || null,
+      mini_app_url: telegramMiniAppHomeUrl(),
       ...(status === "ok"
-        ? { last_ok_at: new Date().toISOString(), last_error: null }
-        : { last_error: detail, last_error_at: new Date().toISOString() }),
+        ? { last_ok_at: now, last_error: null }
+        : { last_error: detail, last_error_at: now }),
       metadata,
+      updated_at: now,
     } as never,
     { onConflict: "service" },
   );

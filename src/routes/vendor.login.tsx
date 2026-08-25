@@ -31,6 +31,23 @@ function VendorLoginPage() {
         await supabase.auth.signOut();
         throw new Error("This account is not a Vendor account. Use Trader Login instead.");
       }
+      const status = String((application as { status?: string | null }).status ?? "pending");
+      if (status !== "approved") {
+        await supabase.auth.signOut();
+        if (status === "pending") {
+          throw new Error("Vendor application is pending approval.");
+        }
+        if (status === "rejected") {
+          throw new Error("Vendor application was rejected. Contact WTRON support.");
+        }
+        if (status === "suspended") {
+          throw new Error("Vendor access is suspended.");
+        }
+        if (status === "disabled") {
+          throw new Error("Vendor access is disabled.");
+        }
+        throw new Error("Vendor approval required.");
+      }
       navigate({ to: "/vendor", replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not sign in");

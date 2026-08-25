@@ -7,12 +7,12 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { miniAppErrorHomeHref } from "@/lib/mini-app-runtime";
+import { CANONICAL_PRODUCTION_ORIGIN } from "@/lib/production-url";
 
 function publicConfigScript() {
   const env =
@@ -50,9 +50,6 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   const homeHref =
     typeof window === "undefined" ? "/" : miniAppErrorHomeHref(window.location.pathname);
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -97,14 +94,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "WTRON" },
+      {
+        name: "description",
+        content: "WTRON wallet, P2P, vendor and direct-sell operations platform.",
+      },
+      { name: "author", content: "WTRON" },
+      { property: "og:title", content: "WTRON" },
+      {
+        property: "og:description",
+        content: "TRON USDT wallet, P2P, vendor and direct-sell operations.",
+      },
       { property: "og:type", content: "website" },
+      { property: "og:url", content: CANONICAL_PRODUCTION_ORIGIN },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {

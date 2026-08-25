@@ -4,6 +4,7 @@ import {
   handleTelegramCommand,
   processTelegramNotificationQueue,
   sendTelegramMessage,
+  telegramMiniAppHomeUrl,
   writeTelegramHealth,
 } from "@/lib/telegram.server";
 import { recordSystemError, writeServiceHeartbeat } from "@/lib/system-health.server";
@@ -84,6 +85,18 @@ async function telegramApi(method: string, body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error(`Telegram ${method} failed with HTTP ${response.status}`);
+}
+
+async function configureTelegramMenuButton() {
+  const url = telegramMiniAppHomeUrl();
+  await telegramApi("setChatMenuButton", {
+    menu_button: {
+      type: "web_app",
+      text: "Open WTRON",
+      web_app: { url },
+    },
+  });
+  return url;
 }
 
 async function deleteMessageBestEffort(chatId: number, messageId: number) {
@@ -167,9 +180,21 @@ async function runForever() {
     return;
   }
 
+  let menuUrl: string | null = null;
+  try {
+    menuUrl = await configureTelegramMenuButton();
+  } catch (error) {
+    await writeTelegramHealth("degraded", "Telegram Mini App menu button update failed", {
+      pollMs,
+      queueBatchSize,
+      error: error instanceof Error ? error.message : "Unknown Telegram menu error",
+    });
+  }
+
   await writeTelegramHealth("ok", "Telegram worker started", {
     pollMs,
     queueBatchSize,
+    menuUrl,
   });
   await writeServiceHeartbeat({
     service: "TELEGRAM WORKER",

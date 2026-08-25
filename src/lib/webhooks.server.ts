@@ -91,7 +91,7 @@ export async function deliverWebhook(delivery: DeliveryRow) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "user-agent": "TRONDESK-Webhooks/1.0",
+        "user-agent": "WTRON-Webhooks/1.0",
         "x-trondesk-event": delivery.event,
         "x-trondesk-delivery": delivery.event_key,
         "x-trondesk-timestamp": timestamp,
