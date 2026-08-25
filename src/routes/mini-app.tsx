@@ -1117,6 +1117,9 @@ function TelegramMiniApp() {
   }, [screen, transactionBackScreen]);
 
   async function navigate(next: MiniScreen) {
+    if (entryState === "vendor_app" && next === "p2p") {
+      next = "trade";
+    }
     setRevealedPhrase("");
     setScreen(next);
     await refresh(next);

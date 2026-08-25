@@ -1,8 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { enqueueWebhookEvent } from "@/lib/webhooks.server";
 import { normalizeP2pMarketplaceAd } from "@/lib/p2p-state";
+import type { Database } from "@/integrations/supabase/types";
 
 const createAdInput = z.object({
   side: z.enum(["buy", "sell"]),
@@ -94,9 +96,28 @@ interface MerchantRow {
   status: string | null;
 }
 
+async function requireTraderP2pAccess(client: SupabaseClient<Database>, userId: string) {
+  const { readAccess } = await import("@/lib/access.server");
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const access = await readAccess(client, userId);
+  if (access.role === "vendor") {
+    throw new Error("Vendor accounts use Vendor Trade, not Trader P2P.");
+  }
+  const { data, error } = await supabaseAdmin
+    .from("trading_vendors" as never)
+    .select("id, status")
+    .eq("user_id", userId as never)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data) {
+    throw new Error("Vendor accounts use Vendor Trade, not Trader P2P.");
+  }
+}
+
 export const fetchP2pMarketplace = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requireTraderP2pAccess(context.supabase, context.userId);
     const { data: adRows, error: adError } = await context.supabase
       .from("p2p_advertisements" as never)
       .select(
@@ -132,6 +153,7 @@ export const createP2pAd = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => createAdInput.parse(input))
   .handler(async ({ data, context }) => {
+    await requireTraderP2pAccess(context.supabase, context.userId);
     if (data.side === "sell") {
       await requireActiveSellUpi(context.supabase, context.userId, data.paymentMethodId);
     }
@@ -157,6 +179,7 @@ export const updateP2pAd = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => updateAdInput.parse(input))
   .handler(async ({ data, context }) => {
+    await requireTraderP2pAccess(context.supabase, context.userId);
     if (data.side === "sell") {
       await requireActiveSellUpi(context.supabase, context.userId, data.paymentMethodId);
     }
@@ -182,6 +205,7 @@ export const setP2pAdActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => adActiveInput.parse(input))
   .handler(async ({ data, context }) => {
+    await requireTraderP2pAccess(context.supabase, context.userId);
     const { error } = await context.supabase.rpc(
       "p2p_set_ad_active" as never,
       {
@@ -197,6 +221,7 @@ export const createP2pOrderFromAd = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => createOrderInput.parse(input))
   .handler(async ({ data, context }) => {
+    await requireTraderP2pAccess(context.supabase, context.userId);
     const { data: rows, error } = await context.supabase.rpc(
       "p2p_create_order_from_ad" as never,
       {

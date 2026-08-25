@@ -29,14 +29,15 @@ async function writeWorkerHealth(
   detail: string,
   metadata: Record<string, unknown> = {},
 ) {
+  const now = new Date().toISOString();
   await supabaseAdmin.from("service_health").upsert(
     {
       service: "blockchain-worker",
       status,
       detail,
       ...(status === "ok"
-        ? { last_ok_at: new Date().toISOString(), last_error: null }
-        : { last_error: detail, last_error_at: new Date().toISOString() }),
+        ? { last_ok_at: now, last_error: null }
+        : { last_error: detail, last_error_at: now }),
       metadata: {
         uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
         pollMs,
@@ -44,6 +45,7 @@ async function writeWorkerHealth(
         consecutiveFailures,
         ...metadata,
       },
+      updated_at: now,
     } as never,
     { onConflict: "service" },
   );
@@ -130,6 +132,7 @@ async function runForever() {
               last_ok_at: new Date().toISOString(),
               last_error: null,
               metadata: { processed: webhooks.processed },
+              updated_at: new Date().toISOString(),
             } as never,
             { onConflict: "service" },
           );
@@ -151,6 +154,7 @@ async function runForever() {
             detail: message,
             last_error: message,
             last_error_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           } as never,
           { onConflict: "service" },
         );

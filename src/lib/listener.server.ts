@@ -175,12 +175,14 @@ async function persistState(network: ChainNetwork, patch: Record<string, unknown
 }
 
 async function persistHealth(status: string, detail: string, extra: Record<string, unknown>) {
+  const now = new Date().toISOString();
   await supabaseAdmin.from("service_health").upsert(
     {
       service: "blockchain-listener",
       status,
       detail,
       ...extra,
+      updated_at: now,
     } as never,
     { onConflict: "service" },
   );
