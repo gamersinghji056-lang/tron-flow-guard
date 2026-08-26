@@ -394,6 +394,7 @@ export type Database = {
       direct_sell_orders: {
         Row: {
           assigned_company_address: string;
+          actor_type: string;
           block_number: number | null;
           completed_at: string | null;
           confirmations: number;
@@ -409,6 +410,7 @@ export type Database = {
           order_ref: string;
           payment_assignment: Json;
           payment_method_id: string | null;
+          payout_account_source: string;
           payment_reference: string | null;
           received_usdt: number;
           remaining_usdt: number;
@@ -419,10 +421,13 @@ export type Database = {
           updated_at: string;
           usdt_confirmed_at: string | null;
           user_id: string;
+          vendor_id: string | null;
+          vendor_payment_account_id: string | null;
           wallet_id: string | null;
         };
         Insert: {
           assigned_company_address: string;
+          actor_type?: string;
           block_number?: number | null;
           completed_at?: string | null;
           confirmations?: number;
@@ -438,6 +443,7 @@ export type Database = {
           order_ref?: string;
           payment_assignment?: Json;
           payment_method_id?: string | null;
+          payout_account_source?: string;
           payment_reference?: string | null;
           received_usdt?: number;
           remaining_usdt?: number;
@@ -448,10 +454,13 @@ export type Database = {
           updated_at?: string;
           usdt_confirmed_at?: string | null;
           user_id: string;
+          vendor_id?: string | null;
+          vendor_payment_account_id?: string | null;
           wallet_id?: string | null;
         };
         Update: {
           assigned_company_address?: string;
+          actor_type?: string;
           block_number?: number | null;
           completed_at?: string | null;
           confirmations?: number;
@@ -467,6 +476,7 @@ export type Database = {
           order_ref?: string;
           payment_assignment?: Json;
           payment_method_id?: string | null;
+          payout_account_source?: string;
           payment_reference?: string | null;
           received_usdt?: number;
           remaining_usdt?: number;
@@ -477,6 +487,8 @@ export type Database = {
           updated_at?: string;
           usdt_confirmed_at?: string | null;
           user_id?: string;
+          vendor_id?: string | null;
+          vendor_payment_account_id?: string | null;
           wallet_id?: string | null;
         };
         Relationships: [

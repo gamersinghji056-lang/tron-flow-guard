@@ -11,6 +11,7 @@ import {
 } from "./api-crypto.ts";
 import { assertAdminRegistrationCode } from "./admin-registration.ts";
 import { canTransitionDirectSell } from "./direct-sell-state.ts";
+import { assertVendorDirectSellAccount, directSellPayoutMetadata } from "./direct-sell-policy.ts";
 import { canTransitionP2pOrder, normalizeP2pMarketplaceAd } from "./p2p-state.ts";
 import {
   calculateP2pSellerFee,
@@ -253,6 +254,117 @@ describe("direct sell state machine", () => {
     assert.equal(canTransitionDirectSell("usdt_confirmed", "inr_payment_pending"), true);
     assert.equal(canTransitionDirectSell("usdt_confirmed", "completed"), false);
     assert.equal(canTransitionDirectSell("inr_payment_sent", "completed"), true);
+  });
+
+  it("records separate payout account sources for trader and vendor direct sell", () => {
+    assert.deepEqual(
+      directSellPayoutMetadata({
+        actorType: "trader",
+        payoutSource: "payment_methods",
+        payoutAccountId: "pm-1",
+      }),
+      {
+        actor_type: "trader",
+        payout_account_source: "payment_methods",
+        payout_account_id: "pm-1",
+        vendor_id: null,
+      },
+    );
+    assert.deepEqual(
+      directSellPayoutMetadata({
+        actorType: "vendor",
+        payoutSource: "vendor_payment_accounts",
+        payoutAccountId: "vpa-1",
+        vendorId: "vendor-1",
+      }),
+      {
+        actor_type: "vendor",
+        payout_account_source: "vendor_payment_accounts",
+        payout_account_id: "vpa-1",
+        vendor_id: "vendor-1",
+      },
+    );
+  });
+
+  it("validates vendor direct sell payout account ownership and status", () => {
+    const account = {
+      id: "vpa-1",
+      vendor_id: "vendor-1",
+      status: "active",
+      enabled: true,
+      frozen: false,
+      min_inr: 500,
+      max_inr: 50_000,
+      daily_limit_inr: 100_000,
+    };
+    assert.doesNotThrow(() =>
+      assertVendorDirectSellAccount({
+        account,
+        vendorId: "vendor-1",
+        expectedInr: 10_000,
+        usedTodayInr: 20_000,
+      }),
+    );
+    assert.throws(
+      () =>
+        assertVendorDirectSellAccount({
+          account,
+          vendorId: "vendor-2",
+          expectedInr: 10_000,
+          usedTodayInr: 0,
+        }),
+      /own active vendor payout/,
+    );
+    assert.throws(
+      () =>
+        assertVendorDirectSellAccount({
+          account: { ...account, frozen: true },
+          vendorId: "vendor-1",
+          expectedInr: 10_000,
+          usedTodayInr: 0,
+        }),
+      /active, unfrozen/,
+    );
+    assert.throws(
+      () =>
+        assertVendorDirectSellAccount({
+          account: { ...account, enabled: false, status: "disabled" },
+          vendorId: "vendor-1",
+          expectedInr: 10_000,
+          usedTodayInr: 0,
+        }),
+      /active, unfrozen/,
+    );
+    assert.throws(
+      () =>
+        assertVendorDirectSellAccount({
+          account,
+          vendorId: "vendor-1",
+          expectedInr: 100,
+          usedTodayInr: 0,
+        }),
+      /below this account minimum/,
+    );
+    assert.throws(
+      () =>
+        assertVendorDirectSellAccount({
+          account,
+          vendorId: "vendor-1",
+          expectedInr: 60_000,
+          usedTodayInr: 0,
+        }),
+      /exceeds this account maximum/,
+    );
+    assert.throws(
+      () =>
+        assertVendorDirectSellAccount({
+          account,
+          vendorId: "vendor-1",
+          expectedInr: 40_000,
+          usedTodayInr: 70_000,
+        }),
+      /daily limit/,
+    );
   });
 });
 

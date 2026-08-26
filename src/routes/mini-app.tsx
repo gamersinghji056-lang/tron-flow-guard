@@ -45,7 +45,7 @@ import {
   registerTelegramMiniApp,
   verifyTelegramMiniApp,
 } from "@/lib/telegram.functions";
-import { createDirectSellOrder } from "@/lib/direct-sell.functions";
+import { createDirectSellOrder, createVendorDirectSellOrder } from "@/lib/direct-sell.functions";
 import {
   confirmDirectSellPaymentItem,
   disputeDirectSellPaymentItem,
@@ -76,6 +76,11 @@ import {
   fetchTradeHistory,
   fetchUserAnalytics,
 } from "@/lib/user-product.functions";
+import {
+  fetchVendorPortal,
+  saveVendorAccount,
+  updateVendorAccountState,
+} from "@/lib/vendor.functions";
 import { formatUsdt, networkConfig, shortenHash, type ChainNetwork } from "@/lib/chain";
 import {
   createMiniT,
@@ -266,6 +271,11 @@ interface DirectSellOrderRow {
   order_ref?: string | null;
   deposit_request_id?: string | null;
   payment_method_id?: string | null;
+  payment_assignment?: Record<string, unknown> | null;
+  actor_type?: string | null;
+  payout_account_source?: string | null;
+  vendor_id?: string | null;
+  vendor_payment_account_id?: string | null;
   expected_usdt?: number | string | null;
   received_usdt?: number | string | null;
   expected_inr?: number | string | null;
@@ -298,6 +308,12 @@ interface DirectSellOrderCreated {
   deposit_request_id: string;
   wallet_address: string;
   expected_inr: number | string;
+  locked_rate_inr?: number | string;
+  network?: string;
+  actor_type?: string;
+  payout_account_source?: string;
+  payout_account_id?: string;
+  vendor_id?: string | null;
   amount_usdt?: number;
 }
 
@@ -372,6 +388,25 @@ interface VendorListingRow {
     completed_orders?: number | null;
     status?: string | null;
   } | null;
+}
+
+interface VendorPaymentAccountRow {
+  id: string;
+  rail: "upi" | "imps" | "neft" | "rtgs" | string;
+  label?: string | null;
+  account_ref?: string | null;
+  holder_name?: string | null;
+  bank_name?: string | null;
+  account_number?: string | null;
+  ifsc?: string | null;
+  archived_at?: string | null;
+  min_inr?: number | string | null;
+  max_inr?: number | string | null;
+  daily_limit_inr?: number | string | null;
+  status?: string | null;
+  enabled?: boolean | null;
+  frozen?: boolean | null;
+  is_default?: boolean | null;
 }
 
 interface AnalyticsSummary {
@@ -461,6 +496,31 @@ function money(value: unknown, currency = "USDT") {
     return `INR ${number.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
   }
   return formatUsdt(number);
+}
+
+function vendorAccountAsPaymentMethod(account: VendorPaymentAccountRow): PaymentMethodRow {
+  const isUpi = account.rail === "upi";
+  return {
+    id: account.id,
+    kind: isUpi ? "upi" : "bank",
+    label: account.label ?? (isUpi ? "Vendor UPI" : "Vendor Bank"),
+    holder_name: account.holder_name ?? null,
+    upi_id: isUpi ? (account.account_ref ?? null) : null,
+    bank_name: isUpi ? null : (account.bank_name ?? account.rail.toUpperCase()),
+    account_number: isUpi ? null : (account.account_number ?? account.account_ref ?? null),
+    ifsc: account.ifsc ?? null,
+    supported_rails: [String(account.rail).toUpperCase()],
+    status: account.status ?? "active",
+    is_default: account.is_default ?? false,
+    verified: true,
+  };
+}
+
+function directSellAssignmentValue(order: DirectSellOrderRow | null | undefined, key: string) {
+  const assignment = order?.payment_assignment;
+  if (!assignment || typeof assignment !== "object") return null;
+  const value = assignment[key];
+  return typeof value === "string" && value ? value : null;
 }
 
 function completionRate(ad: AdRow) {
@@ -559,6 +619,7 @@ function TelegramMiniApp() {
   const takeP2pAd = useServerFn(createP2pOrderFromAd);
   const createSellAd = useServerFn(createP2pAd);
   const createDirectSell = useServerFn(createDirectSellOrder);
+  const createVendorDirectSell = useServerFn(createVendorDirectSellOrder);
   const confirmDirectSellItem = useServerFn(confirmDirectSellPaymentItem);
   const disputeDirectSellItem = useServerFn(disputeDirectSellPaymentItem);
   const createPersonalWallet = useServerFn(createWallet);
@@ -572,6 +633,9 @@ function TelegramMiniApp() {
   const discoverGasfreeWallet = useServerFn(discoverWalletGasFreeAddress);
   const loadGasfreeReadiness = useServerFn(getGasFreeSendReadiness);
   const loadPaymentMethods = useServerFn(listPaymentMethods);
+  const loadVendorPortal = useServerFn(fetchVendorPortal);
+  const saveVendorPayout = useServerFn(saveVendorAccount);
+  const updateVendorPayoutState = useServerFn(updateVendorAccountState);
   const saveUpi = useServerFn(saveUpiMethod);
   const saveBank = useServerFn(saveBankMethod);
   const makePaymentDefault = useServerFn(setDefaultPaymentMethod);
@@ -649,6 +713,8 @@ function TelegramMiniApp() {
   const [tradeTab, setTradeTab] = useState<TradeTab>("sell");
   const [directSellAmount, setDirectSellAmount] = useState("");
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
+  const [vendorPaymentAccounts, setVendorPaymentAccounts] = useState<VendorPaymentAccountRow[]>([]);
+  const [selectedVendorPaymentAccountId, setSelectedVendorPaymentAccountId] = useState("");
   const [vendorAmount, setVendorAmount] = useState("");
   const [vendorRail, setVendorRail] = useState<"upi" | "imps" | "neft" | "rtgs">("upi");
   const [createWalletName, setCreateWalletName] = useState("Main Wallet");
@@ -677,6 +743,12 @@ function TelegramMiniApp() {
     ifsc: "",
     bankName: "",
     label: "",
+  });
+  const [vendorBankRail, setVendorBankRail] = useState<"imps" | "neft" | "rtgs">("imps");
+  const [vendorAccountLimits, setVendorAccountLimits] = useState({
+    minInr: "500",
+    maxInr: "50000",
+    dailyLimitInr: "100000",
   });
 
   const profile = overview?.profile ?? null;
@@ -719,6 +791,23 @@ function TelegramMiniApp() {
       ["upi", "bank"].includes(String(method.kind ?? "")) &&
       (method.status ?? "active") === "active",
   );
+  const activeVendorPaymentAccounts = vendorPaymentAccounts.filter(
+    (account) =>
+      account.status === "active" &&
+      account.enabled !== false &&
+      account.frozen !== true &&
+      !account.archived_at,
+  );
+  const vendorPayoutMethods = vendorPaymentAccounts.map(vendorAccountAsPaymentMethod);
+  const activeVendorPayoutMethods = activeVendorPaymentAccounts.map(vendorAccountAsPaymentMethod);
+  const selectedActiveVendorPayout =
+    activeVendorPaymentAccounts.find((method) => method.id === selectedVendorPaymentAccountId) ??
+    activeVendorPaymentAccounts.find((method) => method.is_default) ??
+    activeVendorPaymentAccounts[0] ??
+    null;
+  const selectedVendorPayoutDisplay = selectedActiveVendorPayout
+    ? vendorAccountAsPaymentMethod(selectedActiveVendorPayout)
+    : null;
   const selectedDirectSell =
     directSellOrders.find((order) => order.id === selectedDirectSellId) ??
     (createdDirectSell
@@ -726,9 +815,26 @@ function TelegramMiniApp() {
           id: createdDirectSell.order_id,
           order_ref: createdDirectSell.order_ref,
           deposit_request_id: createdDirectSell.deposit_request_id,
-          payment_method_id: selectedPaymentMethodId,
+          payment_method_id:
+            createdDirectSell.payout_account_source === "payment_methods"
+              ? (createdDirectSell.payout_account_id ?? null)
+              : null,
+          vendor_payment_account_id:
+            createdDirectSell.payout_account_source === "vendor_payment_accounts"
+              ? (createdDirectSell.payout_account_id ?? null)
+              : null,
+          vendor_id: createdDirectSell.vendor_id ?? null,
+          actor_type: createdDirectSell.actor_type ?? null,
+          payout_account_source: createdDirectSell.payout_account_source ?? null,
+          payment_assignment: {
+            actor_type: createdDirectSell.actor_type ?? null,
+            payout_account_source: createdDirectSell.payout_account_source ?? null,
+            payout_account_id: createdDirectSell.payout_account_id ?? null,
+            vendor_id: createdDirectSell.vendor_id ?? null,
+          },
           expected_usdt: createdDirectSell.amount_usdt ?? directSellAmount,
           expected_inr: createdDirectSell.expected_inr,
+          locked_rate_inr: createdDirectSell.locked_rate_inr ?? null,
           assigned_company_address: createdDirectSell.wallet_address,
           status: "waiting_for_usdt",
         } satisfies DirectSellOrderRow)
@@ -749,7 +855,11 @@ function TelegramMiniApp() {
     activeUpiMethods[0] ??
     null;
 
-  async function loadAuthenticatedData(nextScreen: MiniScreen, launch = initData) {
+  async function loadAuthenticatedData(
+    nextScreen: MiniScreen,
+    launch = initData,
+    isVendorApp = linkedAccountType === "vendor" && vendorStatus === "approved",
+  ) {
     const [
       homeResult,
       walletResult,
@@ -797,6 +907,31 @@ function TelegramMiniApp() {
     if (securityResult.status === "fulfilled") {
       setTransactionPasswordEnabled(Boolean(securityResult.value.transactionPasswordEnabled));
       setTransactionPasswordChangeOpen(false);
+    }
+    if (isVendorApp) {
+      const portal = (await loadVendorPortal()) as unknown as {
+        accounts?: VendorPaymentAccountRow[];
+      };
+      const vendorAccounts = portal.accounts ?? [];
+      const activeVendorAccounts = vendorAccounts.filter(
+        (account) =>
+          account.status === "active" &&
+          account.enabled !== false &&
+          account.frozen !== true &&
+          !account.archived_at,
+      );
+      setVendorPaymentAccounts(vendorAccounts);
+      setSelectedVendorPaymentAccountId((current) => {
+        if (current && activeVendorAccounts.some((row) => row.id === current)) return current;
+        return (
+          activeVendorAccounts.find((row) => row.is_default)?.id ||
+          activeVendorAccounts[0]?.id ||
+          ""
+        );
+      });
+    } else {
+      setVendorPaymentAccounts([]);
+      setSelectedVendorPaymentAccountId("");
     }
     if (tabForScreen(nextScreen) === "p2p") {
       const p2p = await loadP2p({ data: { initData: launch } });
@@ -850,7 +985,7 @@ function TelegramMiniApp() {
         setHasSession(Boolean(sessionData.session && verified.authorized));
       }
       if (!verified.linked || !verified.authorized) return;
-      await loadAuthenticatedData(nextScreen, launch);
+      await loadAuthenticatedData(nextScreen, launch, entryState === "vendor_app");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Telegram verification failed";
       console.info("[telegram-mini] secure launch diagnostics", {
@@ -1229,15 +1364,25 @@ function TelegramMiniApp() {
       toast.error("Enter a valid USDT amount");
       return;
     }
-    if (!selectedActivePayout?.id) {
+    if (linkedAccountType === "vendor" && !selectedActiveVendorPayout?.id) {
+      toast.error("Add an active vendor payout account first");
+      return;
+    }
+    if (linkedAccountType !== "vendor" && !selectedActivePayout?.id) {
       toast.error("Add payout method first");
       return;
     }
     setBusy(true);
     try {
-      const order = await createDirectSell({
-        data: { amount, paymentMethodId: selectedActivePayout.id },
-      });
+      const traderPayout = selectedActivePayout;
+      const order =
+        linkedAccountType === "vendor"
+          ? await createVendorDirectSell({
+              data: { amount, vendorPaymentAccountId: selectedActiveVendorPayout!.id },
+            })
+          : await createDirectSell({
+              data: { amount, paymentMethodId: traderPayout!.id },
+            });
       toast.success(`WTRON sell order ${order.order_ref ?? order.order_id} created`);
       const created = { ...order, amount_usdt: amount } as DirectSellOrderCreated;
       setCreatedDirectSell(created);
@@ -1556,6 +1701,16 @@ function TelegramMiniApp() {
     }
   }
 
+  function parseVendorAccountLimits() {
+    const minInr = Number(vendorAccountLimits.minInr);
+    const maxInr = Number(vendorAccountLimits.maxInr);
+    const dailyLimitInr = Number(vendorAccountLimits.dailyLimitInr);
+    if (![minInr, maxInr, dailyLimitInr].every((value) => Number.isFinite(value) && value > 0)) {
+      throw new Error("Enter valid vendor account limits");
+    }
+    return { minInr, maxInr, dailyLimitInr };
+  }
+
   async function revealBackupPhrase(event: FormEvent) {
     event.preventDefault();
     if (!selectedWallet?.id) return;
@@ -1577,7 +1732,23 @@ function TelegramMiniApp() {
     event.preventDefault();
     setBusy(true);
     try {
-      await saveUpi({ data: { ...upiForm, isDefault: paymentMethods.length === 0 } });
+      if (linkedAccountType === "vendor") {
+        await saveVendorPayout({
+          data: {
+            rail: "upi",
+            label: upiForm.label || "Vendor UPI",
+            holderName: upiForm.holderName,
+            accountRef: upiForm.upiId,
+            ...parseVendorAccountLimits(),
+            priority: 100,
+            isDefault: vendorPaymentAccounts.length === 0,
+            enabled: true,
+            frozen: false,
+          },
+        });
+      } else {
+        await saveUpi({ data: { ...upiForm, isDefault: paymentMethods.length === 0 } });
+      }
       setUpiForm({ upiId: "", holderName: "", label: "" });
       toast.success("UPI added");
       await refresh("bank-accounts");
@@ -1592,13 +1763,32 @@ function TelegramMiniApp() {
     event.preventDefault();
     setBusy(true);
     try {
-      await saveBank({
-        data: {
-          ...bankForm,
-          supportedRails: ["IMPS", "NEFT", "RTGS"],
-          isDefault: paymentMethods.length === 0,
-        },
-      });
+      if (linkedAccountType === "vendor") {
+        await saveVendorPayout({
+          data: {
+            rail: vendorBankRail,
+            label: bankForm.label || bankForm.bankName || "Vendor Bank",
+            holderName: bankForm.accountHolder,
+            accountRef: bankForm.accountNumber,
+            bankName: bankForm.bankName,
+            accountNumber: bankForm.accountNumber,
+            ifsc: bankForm.ifsc,
+            ...parseVendorAccountLimits(),
+            priority: 100,
+            isDefault: vendorPaymentAccounts.length === 0,
+            enabled: true,
+            frozen: false,
+          },
+        });
+      } else {
+        await saveBank({
+          data: {
+            ...bankForm,
+            supportedRails: ["IMPS", "NEFT", "RTGS"],
+            isDefault: paymentMethods.length === 0,
+          },
+        });
+      }
       setBankForm({ accountHolder: "", accountNumber: "", ifsc: "", bankName: "", label: "" });
       toast.success("Bank account added");
       await refresh("bank-accounts");
@@ -1960,13 +2150,22 @@ function TelegramMiniApp() {
             )}
             qr={directSellQr}
             busy={busy}
-            onCopy={(value) => copyText(value, "Address copied")}
+            onCopy={(value, label) => copyText(value, label ?? "Address copied")}
             onConfirm={(itemId) => void confirmDirectSellPayment(itemId)}
             onDispute={(itemId) => void disputeDirectSellPayment(itemId)}
             paymentMethod={
-              paymentMethods.find(
-                (method) => method.id === selectedDirectSell?.payment_method_id,
-              ) ?? selectedActivePayout
+              (selectedDirectSell?.payout_account_source ??
+                directSellAssignmentValue(selectedDirectSell, "payout_account_source")) ===
+              "vendor_payment_accounts"
+                ? (vendorPayoutMethods.find(
+                    (method) =>
+                      method.id ===
+                      (selectedDirectSell?.vendor_payment_account_id ??
+                        directSellAssignmentValue(selectedDirectSell, "payout_account_id")),
+                  ) ?? selectedVendorPayoutDisplay)
+                : (paymentMethods.find(
+                    (method) => method.id === selectedDirectSell?.payment_method_id,
+                  ) ?? selectedActivePayout)
             }
           />
         ) : null}
@@ -2007,9 +2206,17 @@ function TelegramMiniApp() {
             setTab={setTradeTab}
             amount={directSellAmount}
             setAmount={setDirectSellAmount}
-            paymentMethods={activeUpiMethods}
-            selectedPaymentMethodId={selectedPaymentMethodId}
-            setSelectedPaymentMethodId={setSelectedPaymentMethodId}
+            paymentMethods={
+              entryState === "vendor_app" ? activeVendorPayoutMethods : activePayoutMethods
+            }
+            selectedPaymentMethodId={
+              entryState === "vendor_app" ? selectedVendorPaymentAccountId : selectedPaymentMethodId
+            }
+            setSelectedPaymentMethodId={
+              entryState === "vendor_app"
+                ? setSelectedVendorPaymentAccountId
+                : setSelectedPaymentMethodId
+            }
             vendors={vendorListings}
             vendorAmount={vendorAmount}
             setVendorAmount={setVendorAmount}
@@ -2045,19 +2252,37 @@ function TelegramMiniApp() {
         {screen === "analytics" ? <AnalyticsScreen data={analytics} /> : null}
         {screen === "bank-accounts" ? (
           <BankAccountsScreen
-            methods={paymentMethods}
+            vendorMode={entryState === "vendor_app"}
+            methods={entryState === "vendor_app" ? vendorPayoutMethods : paymentMethods}
             upi={upiForm}
             setUpi={setUpiForm}
             bank={bankForm}
             setBank={setBankForm}
+            vendorBankRail={vendorBankRail}
+            setVendorBankRail={setVendorBankRail}
+            vendorLimits={vendorAccountLimits}
+            setVendorLimits={setVendorAccountLimits}
             busy={busy}
             onSaveUpi={submitUpi}
             onSaveBank={submitBank}
             onDefault={(id) =>
-              void makePaymentDefault({ data: { id } }).then(() => refresh("bank-accounts"))
+              entryState === "vendor_app"
+                ? void updateVendorPayoutState({ data: { accountId: id, action: "default" } }).then(
+                    () => refresh("bank-accounts"),
+                  )
+                : void makePaymentDefault({ data: { id } }).then(() => refresh("bank-accounts"))
             }
             onDelete={(id) =>
-              void removePaymentMethod({ data: { id } }).then(() => refresh("bank-accounts"))
+              entryState === "vendor_app"
+                ? void updateVendorPayoutState({ data: { accountId: id, action: "archive" } }).then(
+                    () => refresh("bank-accounts"),
+                  )
+                : void removePaymentMethod({ data: { id } }).then(() => refresh("bank-accounts"))
+            }
+            onVendorAction={(id, action) =>
+              void updateVendorPayoutState({ data: { accountId: id, action } }).then(() =>
+                refresh("bank-accounts"),
+              )
             }
           />
         ) : null}
@@ -3892,8 +4117,12 @@ function TradeScreen(props: {
                 </FormField>
               ) : (
                 <CompactEmpty
-                  title="Add UPI ID first"
-                  body="Direct sell payouts require a saved payment account."
+                  title={props.vendorMode ? "Add payout account first" : "Add payout method first"}
+                  body={
+                    props.vendorMode
+                      ? "Vendor Direct Sell requires an active vendor payout account."
+                      : "Direct sell payouts require a saved payment account."
+                  }
                 />
               )}
             </div>
@@ -3905,7 +4134,7 @@ function TradeScreen(props: {
               className="w-full"
               onClick={props.onAddPayment}
             >
-              Add UPI ID first
+              {props.vendorMode ? "Add payout account" : "Add payout method"}
             </Button>
           ) : null}
           <Button
@@ -4401,6 +4630,7 @@ function ReferralScreen({ summary }: { summary: ReferralSummary | null }) {
 }
 
 function BankAccountsScreen(props: {
+  vendorMode?: boolean;
   methods: PaymentMethodRow[];
   upi: { upiId: string; holderName: string; label: string };
   setUpi: (value: { upiId: string; holderName: string; label: string }) => void;
@@ -4418,14 +4648,50 @@ function BankAccountsScreen(props: {
     bankName: string;
     label: string;
   }) => void;
+  vendorBankRail: "imps" | "neft" | "rtgs";
+  setVendorBankRail: (rail: "imps" | "neft" | "rtgs") => void;
+  vendorLimits: { minInr: string; maxInr: string; dailyLimitInr: string };
+  setVendorLimits: (value: { minInr: string; maxInr: string; dailyLimitInr: string }) => void;
   busy: boolean;
   onSaveUpi: (event: FormEvent) => void;
   onSaveBank: (event: FormEvent) => void;
   onDefault: (id: string) => void;
   onDelete: (id: string) => void;
+  onVendorAction?: (
+    id: string,
+    action: "enable" | "disable" | "freeze" | "unfreeze" | "archive" | "default",
+  ) => void;
 }) {
+  const limitFields = props.vendorMode ? (
+    <div className="grid grid-cols-3 gap-2">
+      {(
+        [
+          ["minInr", "Min INR"],
+          ["maxInr", "Max INR"],
+          ["dailyLimitInr", "Daily INR"],
+        ] as const
+      ).map(([key, label]) => (
+        <Input
+          key={key}
+          value={props.vendorLimits[key as keyof typeof props.vendorLimits]}
+          onChange={(event) =>
+            props.setVendorLimits({ ...props.vendorLimits, [key]: event.target.value })
+          }
+          placeholder={label}
+        />
+      ))}
+    </div>
+  ) : null;
+
   return (
-    <Screen title="Payment Methods" subtitle="UPI and bank accounts for INR settlement">
+    <Screen
+      title={props.vendorMode ? "Vendor Payout Accounts" : "Payment Methods"}
+      subtitle={
+        props.vendorMode
+          ? "Receiving accounts used for vendor sell listings and Direct Sell payouts"
+          : "UPI and bank accounts for INR settlement"
+      }
+    >
       <form
         className="space-y-2 rounded-2xl border border-white/10 bg-white/6 p-3"
         onSubmit={props.onSaveUpi}
@@ -4446,6 +4712,7 @@ function BankAccountsScreen(props: {
           onChange={(event) => props.setUpi({ ...props.upi, label: event.target.value })}
           placeholder="Label"
         />
+        {limitFields}
         <Button
           className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
           disabled={props.busy}
@@ -4458,6 +4725,26 @@ function BankAccountsScreen(props: {
         onSubmit={props.onSaveBank}
       >
         <h2 className="font-semibold">Add Bank Account</h2>
+        {props.vendorMode ? (
+          <select
+            aria-label="Settlement rail"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none"
+            value={props.vendorBankRail}
+            onChange={(event) =>
+              props.setVendorBankRail(event.target.value as "imps" | "neft" | "rtgs")
+            }
+          >
+            <option className="bg-slate-950" value="imps">
+              IMPS
+            </option>
+            <option className="bg-slate-950" value="neft">
+              NEFT
+            </option>
+            <option className="bg-slate-950" value="rtgs">
+              RTGS
+            </option>
+          </select>
+        ) : null}
         <Input
           value={props.bank.accountHolder}
           onChange={(event) => props.setBank({ ...props.bank, accountHolder: event.target.value })}
@@ -4483,6 +4770,7 @@ function BankAccountsScreen(props: {
           onChange={(event) => props.setBank({ ...props.bank, label: event.target.value })}
           placeholder="Label"
         />
+        {limitFields}
         <Button
           className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
           disabled={props.busy}
@@ -4502,8 +4790,36 @@ function BankAccountsScreen(props: {
                 <Button size="sm" variant="secondary" onClick={() => props.onDefault(method.id)}>
                   Set Default
                 </Button>
+                {props.vendorMode ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        props.onVendorAction?.(
+                          method.id,
+                          method.status === "disabled" ? "enable" : "disable",
+                        )
+                      }
+                    >
+                      {method.status === "disabled" ? "Enable" : "Disable"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        props.onVendorAction?.(
+                          method.id,
+                          method.status === "frozen" ? "unfreeze" : "freeze",
+                        )
+                      }
+                    >
+                      {method.status === "frozen" ? "Unfreeze" : "Freeze"}
+                    </Button>
+                  </>
+                ) : null}
                 <Button size="sm" variant="secondary" onClick={() => props.onDelete(method.id)}>
-                  Delete
+                  {props.vendorMode ? "Archive" : "Delete"}
                 </Button>
               </div>
             </div>
@@ -5355,7 +5671,7 @@ function DirectSellDetailScreen(props: {
   paymentMethod: PaymentMethodRow | null | undefined;
   qr: string;
   busy: boolean;
-  onCopy: (value: string) => void;
+  onCopy: (value: string, label?: string) => void;
   onConfirm: (itemId: string) => void;
   onDispute: (itemId: string) => void;
 }) {
@@ -5426,14 +5742,25 @@ function DirectSellDetailScreen(props: {
               <p className="text-xs uppercase tracking-wide text-slate-400">To WTRON address</p>
               <p className="mono mt-1 break-all text-sm text-white">{address || "Assigning..."}</p>
             </div>
-            <Button
-              type="button"
-              className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
-              disabled={!address}
-              onClick={() => props.onCopy(address)}
-            >
-              Copy Address
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+                disabled={!address}
+                onClick={() => props.onCopy(address, "Address copied")}
+              >
+                Copy Address
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                disabled={!order.expected_usdt}
+                onClick={() => props.onCopy(String(order.expected_usdt ?? ""), "Amount copied")}
+              >
+                Copy Amount
+              </Button>
+            </div>
             {props.qr ? (
               <div className="rounded-xl bg-white p-2.5">
                 <img src={props.qr} alt="Direct sell address QR" className="mx-auto h-52 w-52" />
