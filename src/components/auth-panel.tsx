@@ -148,7 +148,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
       if (audience === "trader") {
         setPassword("");
         setRegistrationComplete(true);
-        toast.success("Trader registration successful. Please login.");
+        toast.success("Registration successful. Please log in.");
         return;
       }
 
@@ -192,9 +192,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
 
           {registrationComplete ? (
             <div className="mt-5 space-y-3">
-              <p className="text-sm">
-                Trader registration successful. Please login with your email and password.
-              </p>
+              <p className="text-sm">Registration successful. Please log in.</p>
               <Button asChild className="w-full">
                 <Link to="/trader/login">Trader Login</Link>
               </Button>

@@ -66,7 +66,7 @@ function VendorRegisterPage() {
           <section className="mt-8 rounded-lg border border-white/10 bg-white/6 p-6">
             <h1 className="text-2xl font-semibold">Vendor Application Under Review</h1>
             <p className="mt-3 text-sm text-slate-300">
-              Your vendor account was created with pending approval. Sign in after admin review.
+              Registration submitted. Waiting for admin approval.
             </p>
             <Button asChild className="mt-5 w-full bg-blue-600">
               <Link to="/vendor/login">Vendor Login</Link>

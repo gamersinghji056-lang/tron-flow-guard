@@ -35,6 +35,13 @@ import {
 import { createMiniAppClientId, miniAppErrorHomeHref } from "./mini-app-runtime.ts";
 import { WTRON_OFFICIAL_LOGO_PATH, WTRON_OFFICIAL_MARK_PATH } from "./branding.ts";
 import {
+  AUTHORITATIVE_SUPABASE_PROJECT_REF,
+  CANONICAL_PRODUCTION_ORIGIN,
+  canonicalRuntimeRedirectScript,
+  canonicalRuntimeUrl,
+  isAuthoritativeSupabaseUrl,
+} from "./production-url.ts";
+import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
 } from "./tron-personal-wallet.ts";
@@ -1250,6 +1257,38 @@ describe("admin registration hardening", () => {
 });
 
 describe("public website auth surface", () => {
+  it("redirects the legacy Lovable host to the authoritative Railway runtime", () => {
+    assert.equal(
+      canonicalRuntimeUrl({
+        hostname: "wtron.lovable.app",
+        pathname: "/vendor/login",
+        search: "?from=owner",
+      }),
+      `${CANONICAL_PRODUCTION_ORIGIN}/vendor/login?from=owner`,
+    );
+    assert.equal(
+      canonicalRuntimeUrl({ hostname: "tron-flow-guard-production.up.railway.app" }),
+      null,
+    );
+    assert.match(canonicalRuntimeRedirectScript(), /location/);
+  });
+
+  it("accepts only the authoritative production Supabase URL", () => {
+    assert.equal(
+      isAuthoritativeSupabaseUrl(`https://${AUTHORITATIVE_SUPABASE_PROJECT_REF}.supabase.co`),
+      true,
+    );
+    assert.equal(isAuthoritativeSupabaseUrl("https://wlzgyqgooydwjhjejmjc.supabase.co"), false);
+  });
+
+  it("compensates failed vendor provisioning and supports orphan recovery", () => {
+    const source = readFileSync(resolve("src/lib/vendor.functions.ts"), "utf8");
+    assert.match(source, /findAuthUserByEmail/);
+    assert.match(source, /verifyExistingVendorPassword/);
+    assert.match(source, /automatic cleanup failed/);
+    assert.match(source, /auth\.admin\.deleteUser\(userId\)/);
+    assert.match(source, /\.eq\("role", "trader"\)/);
+  });
   it("keeps the landing page trader-first without public admin links", () => {
     const landing = readFileSync(resolve(process.cwd(), "src/routes/index.tsx"), "utf8");
     assert.match(landing, /Trader Login/);

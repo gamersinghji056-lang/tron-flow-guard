@@ -73,40 +73,86 @@ const adminVendorActionInput = z.object({
 
 type VendorStatus = "pending" | "approved" | "rejected" | "suspended" | "disabled";
 
-export async function registerVendorApplicationFromTelegram(input: {
-  businessName: string;
-  contactName: string;
+type ExistingAuthUser = {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, unknown>;
+};
+
+function normalizeVendorEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+async function findAuthUserByEmail(email: string): Promise<ExistingAuthUser | null> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const perPage = 200;
+  for (let page = 1; page <= 50; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) throw new Error("Could not inspect the existing vendor identity");
+    const match = data.users.find((user) => user.email?.toLowerCase() === email);
+    if (match) return match as ExistingAuthUser;
+    if (data.users.length < perPage) return null;
+  }
+  throw new Error("Could not safely resolve the existing vendor identity");
+}
+
+async function verifyExistingVendorPassword(
+  email: string,
+  password: string,
+  expectedUserId: string,
+) {
+  const { createClient } = await import("@supabase/supabase-js");
+  const url = process.env["SUPABASE_URL"];
+  const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
+  if (!url || !key) throw new Error("Vendor authentication is not configured");
+  const client = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await client.auth.signInWithPassword({ email, password });
+  if (error || data.user?.id !== expectedUserId) {
+    throw new Error(
+      "An account with this email already exists. Use its correct password or contact WTRON support.",
+    );
+  }
+  await client.auth.signOut().catch(() => undefined);
+}
+
+async function ensureVendorSupportRows(input: {
+  userId: string;
   email: string;
-  password: string;
-  telegram?: string | undefined;
+  contactName: string;
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data: created, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email: input.email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: {
-      full_name: input.contactName,
-      account_type: "vendor",
-    },
-  });
-  if (authError) throw new Error(authError.message);
-  const userId = created.user?.id;
-  if (!userId) throw new Error("Could not create vendor account");
-
-  await supabaseAdmin.from("profiles").upsert({
-    id: userId,
+  const profile = await supabaseAdmin.from("profiles").upsert({
+    id: input.userId,
     email: input.email,
     full_name: input.contactName,
   });
-  await supabaseAdmin.from("user_roles" as never).upsert({
-    user_id: userId,
-    role: "vendor",
-  } as never);
-  const { data: vendor, error } = await supabaseAdmin
+  if (profile.error) throw new Error(profile.error.message);
+  const role = await supabaseAdmin
+    .from("user_roles" as never)
+    .upsert({ user_id: input.userId, role: "vendor" } as never, { onConflict: "user_id,role" });
+  if (role.error) throw new Error(role.error.message);
+  const traderRole = await supabaseAdmin
+    .from("user_roles")
+    .delete()
+    .eq("user_id", input.userId)
+    .eq("role", "trader");
+  if (traderRole.error) throw new Error(traderRole.error.message);
+}
+
+async function insertVendorApplication(input: {
+  userId: string;
+  businessName: string;
+  contactName: string;
+  email: string;
+  telegram?: string | undefined;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
     .from("trading_vendors" as never)
     .insert({
-      user_id: userId,
+      user_id: input.userId,
       name: input.businessName,
       contact_name: input.contactName,
       email: input.email,
@@ -117,7 +163,98 @@ export async function registerVendorApplicationFromTelegram(input: {
     .select("id, status")
     .single();
   if (error) throw new Error(error.message);
-  return { ...(vendor as unknown as { id: string; status: VendorStatus }), userId };
+  return data as unknown as { id: string; status: VendorStatus };
+}
+
+export async function registerVendorApplicationFromTelegram(input: {
+  businessName: string;
+  contactName: string;
+  email: string;
+  password: string;
+  telegram?: string | undefined;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const email = normalizeVendorEmail(input.email);
+  const { data: existingApplication, error: applicationLookupError } = await supabaseAdmin
+    .from("trading_vendors" as never)
+    .select("id, user_id, status")
+    .eq("email", email as never)
+    .maybeSingle();
+  if (applicationLookupError) throw new Error(applicationLookupError.message);
+
+  const existingAuth = await findAuthUserByEmail(email);
+  const application = existingApplication as unknown as {
+    id: string;
+    user_id: string;
+    status: VendorStatus;
+  } | null;
+
+  if (application) {
+    if (!existingAuth || existingAuth.id !== application.user_id) {
+      throw new Error("Vendor application identity is inconsistent. Contact WTRON support.");
+    }
+    await verifyExistingVendorPassword(email, input.password, existingAuth.id);
+    await ensureVendorSupportRows({
+      userId: existingAuth.id,
+      email,
+      contactName: input.contactName,
+    });
+    return { id: application.id, status: application.status, userId: existingAuth.id };
+  }
+
+  if (existingAuth) {
+    const { data: vendorRole } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", existingAuth.id)
+      .eq("role", "vendor")
+      .maybeSingle();
+    const markedVendor =
+      existingAuth.user_metadata?.["account_type"] === "vendor" || Boolean(vendorRole);
+    if (!markedVendor) {
+      throw new Error(
+        "This email belongs to a Trader or staff account. Use a different email for Vendor registration.",
+      );
+    }
+    await verifyExistingVendorPassword(email, input.password, existingAuth.id);
+    await ensureVendorSupportRows({
+      userId: existingAuth.id,
+      email,
+      contactName: input.contactName,
+    });
+    const repaired = await insertVendorApplication({
+      ...input,
+      email,
+      userId: existingAuth.id,
+    });
+    return { ...repaired, userId: existingAuth.id };
+  }
+
+  const { data: created, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: {
+      full_name: input.contactName,
+      account_type: "vendor",
+    },
+  });
+  if (authError) throw new Error(authError.message);
+  const userId = created.user?.id;
+  if (!userId) throw new Error("Could not create vendor account");
+  try {
+    await ensureVendorSupportRows({ userId, email, contactName: input.contactName });
+    const vendor = await insertVendorApplication({ ...input, email, userId });
+    return { ...vendor, userId };
+  } catch (error) {
+    const cleanup = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (cleanup.error) {
+      throw new Error(
+        "Vendor registration could not finish and automatic cleanup failed. Contact WTRON support before retrying.",
+      );
+    }
+    throw error;
+  }
 }
 
 export const registerVendorApplication = createServerFn({ method: "POST" })
@@ -464,7 +601,7 @@ export const adminVendorAction = createServerFn({ method: "POST" })
     z
       .object({
         vendorId: z.string().uuid(),
-        action: z.enum(["approve", "reject", "suspend", "disable", "reactivate"]),
+        action: z.enum(["approve", "reject", "freeze", "suspend", "disable", "reactivate"]),
         reason: z.string().trim().max(500).optional(),
       })
       .parse(input),
@@ -504,11 +641,11 @@ export const adminVendorAction = createServerFn({ method: "POST" })
         ? "approve_trading_vendor"
         : data.action === "reject"
           ? "reject_trading_vendor"
-          : data.action === "suspend"
+          : data.action === "suspend" || data.action === "freeze"
             ? "suspend_trading_vendor"
             : "reactivate_trading_vendor";
     const args =
-      data.action === "reject" || data.action === "suspend"
+      data.action === "reject" || data.action === "suspend" || data.action === "freeze"
         ? { _vendor_id: data.vendorId, _reason: data.reason ?? null }
         : { _vendor_id: data.vendorId };
     const { data: vendor, error } = await context.supabase.rpc(rpcName as never, args as never);
@@ -530,4 +667,63 @@ export const listAdminVendors = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
+  });
+
+export const getAdminVendorDetail = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ vendorId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.VENDORS_READ);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const vendorResult = await supabaseAdmin
+      .from("trading_vendors" as never)
+      .select("*")
+      .eq("id", data.vendorId as never)
+      .single();
+    if (vendorResult.error) throw new Error(vendorResult.error.message);
+    const vendor = vendorResult.data as unknown as { user_id: string };
+    const [profile, accounts, listings, orders, directSell] = await Promise.all([
+      supabaseAdmin
+        .from("profiles")
+        .select("id, email, full_name, balance, created_at")
+        .eq("id", vendor.user_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("vendor_payment_accounts" as never)
+        .select("*")
+        .eq("vendor_id", data.vendorId as never)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabaseAdmin
+        .from("vendor_listings" as never)
+        .select("*")
+        .eq("vendor_id", data.vendorId as never)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabaseAdmin
+        .from("vendor_orders" as never)
+        .select("*")
+        .eq("vendor_id", data.vendorId as never)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabaseAdmin
+        .from("direct_sell_orders" as never)
+        .select("*")
+        .eq("vendor_id", data.vendorId as never)
+        .order("created_at", { ascending: false })
+        .limit(100),
+    ]);
+    for (const result of [profile, accounts, listings, orders, directSell]) {
+      if (result.error) throw new Error(result.error.message);
+    }
+    return {
+      vendor: vendorResult.data,
+      profile: profile.data,
+      accounts: accounts.data ?? [],
+      listings: listings.data ?? [],
+      orders: orders.data ?? [],
+      directSell: directSell.data ?? [],
+    };
   });

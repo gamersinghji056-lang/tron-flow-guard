@@ -12,7 +12,7 @@ import { type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 import { miniAppErrorHomeHref } from "@/lib/mini-app-runtime";
-import { CANONICAL_PRODUCTION_ORIGIN } from "@/lib/production-url";
+import { CANONICAL_PRODUCTION_ORIGIN, canonicalRuntimeRedirectScript } from "@/lib/production-url";
 
 function publicConfigScript() {
   const env =
@@ -128,6 +128,7 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: canonicalRuntimeRedirectScript() }} />
         <script dangerouslySetInnerHTML={{ __html: publicConfigScript() }} />
         <script src="https://telegram.org/js/telegram-web-app.js" />
       </head>

@@ -32,16 +32,30 @@ function VendorLoginPage() {
         throw new Error("This account is not a Vendor account. Use Trader Login instead.");
       }
       const status = String((application as { status?: string | null }).status ?? "pending");
+      const rejectionReason = String(
+        (application as { rejection_reason?: string | null }).rejection_reason ?? "",
+      ).trim();
+      const suspensionReason = String(
+        (application as { suspension_reason?: string | null }).suspension_reason ?? "",
+      ).trim();
       if (status !== "approved") {
         await supabase.auth.signOut();
         if (status === "pending") {
           throw new Error("Vendor application is pending approval.");
         }
         if (status === "rejected") {
-          throw new Error("Vendor application was rejected. Contact WTRON support.");
+          throw new Error(
+            rejectionReason
+              ? `Vendor application was rejected: ${rejectionReason}`
+              : "Vendor application was rejected. Contact WTRON support.",
+          );
         }
         if (status === "suspended") {
-          throw new Error("Vendor access is suspended.");
+          throw new Error(
+            suspensionReason
+              ? `Vendor access is suspended: ${suspensionReason}`
+              : "Vendor access is suspended.",
+          );
         }
         if (status === "disabled") {
           throw new Error("Vendor access is disabled.");
