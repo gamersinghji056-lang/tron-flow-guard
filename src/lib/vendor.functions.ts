@@ -21,6 +21,10 @@ const vendorRegisterInput = z.object({
 const vendorAccountInput = z.object({
   id: z.string().uuid().optional(),
   rail: z.enum(["upi", "imps", "neft", "rtgs"]),
+  supportedRails: z
+    .array(z.enum(["upi", "imps", "neft", "rtgs"]))
+    .min(1)
+    .optional(),
   label: z.string().trim().max(80).optional(),
   holderName: z.string().trim().min(2).max(120),
   accountRef: z.string().trim().min(3).max(120),
@@ -72,6 +76,27 @@ const adminVendorActionInput = z.object({
 });
 
 type VendorStatus = "pending" | "approved" | "rejected" | "suspended" | "disabled";
+
+const BANK_RAILS = ["imps", "neft", "rtgs"] as const;
+
+function normalizeVendorSupportedRails(
+  rail: "upi" | "imps" | "neft" | "rtgs",
+  supportedRails?: Array<"upi" | "imps" | "neft" | "rtgs">,
+) {
+  if (rail === "upi") return ["upi"];
+  const rails = [...new Set((supportedRails?.length ? supportedRails : [rail]).filter(Boolean))];
+  const bankRails = rails.filter((value): value is (typeof BANK_RAILS)[number] =>
+    (BANK_RAILS as readonly string[]).includes(value),
+  );
+  return bankRails.length ? bankRails : [rail];
+}
+
+function accountRails(row: { rail?: string | null; supported_rails?: string[] | null }) {
+  const supported = (row.supported_rails ?? [])
+    .map((rail) => String(rail).toLowerCase())
+    .filter((rail) => ["upi", "imps", "neft", "rtgs"].includes(rail));
+  return supported.length ? supported : row.rail ? [String(row.rail).toLowerCase()] : [];
+}
 
 type ExistingAuthUser = {
   id: string;
@@ -313,9 +338,37 @@ export const fetchVendorPortal = createServerFn({ method: "GET" })
     for (const result of [accounts, listings, orders, wallets]) {
       if (result.error) throw new Error(result.error.message);
     }
+    const accountRows = (accounts.data ?? []) as unknown as Array<{ id: string }>;
+    type CapacityRow = {
+      account_id: string;
+      used_today_inr?: number | string | null;
+      remaining_today_inr?: number | string | null;
+      business_date?: string | null;
+    };
+    const capacities: Array<CapacityRow | null> = await Promise.all(
+      accountRows.map(async (account) => {
+        const { data, error } = await supabaseAdmin.rpc(
+          "vendor_payment_account_capacity" as never,
+          { _account_id: account.id, _business_tz: "Asia/Kolkata" } as never,
+        );
+        if (error) return null;
+        return (Array.isArray(data) ? data[0] : data) as unknown as CapacityRow | null;
+      }),
+    );
+    const capacityById = new Map(
+      capacities
+        .filter((row): row is CapacityRow => Boolean(row && (row as CapacityRow).account_id))
+        .map((row) => [row.account_id, row]),
+    );
+    const enrichedAccounts = accountRows.map((account) => ({
+      ...(account as Record<string, unknown>),
+      daily_used_inr: capacityById.get(account.id)?.used_today_inr ?? 0,
+      daily_remaining_inr: capacityById.get(account.id)?.remaining_today_inr ?? null,
+      daily_usage_business_date: capacityById.get(account.id)?.business_date ?? null,
+    }));
     return {
       vendor,
-      accounts: accounts.data ?? [],
+      accounts: enrichedAccounts,
       listings: listings.data ?? [],
       orders: orders.data ?? [],
       wallets: wallets.data ?? [],
@@ -338,6 +391,7 @@ export const saveVendorAccount = createServerFn({ method: "POST" })
     const row = {
       vendor_id: vendor.id,
       rail: data.rail,
+      supported_rails: normalizeVendorSupportedRails(data.rail, data.supportedRails),
       label: data.label || null,
       account_ref: data.accountRef,
       holder_name: data.holderName,
@@ -438,7 +492,7 @@ export const saveVendorListing = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: account, error: accountError } = await supabaseAdmin
       .from("vendor_payment_accounts" as never)
-      .select("id, min_inr, max_inr, rail, status, enabled, frozen")
+      .select("id, min_inr, max_inr, rail, supported_rails, status, enabled, frozen")
       .eq("id", data.paymentAccountId as never)
       .eq("vendor_id", vendor.id as never)
       .single();
@@ -447,6 +501,7 @@ export const saveVendorListing = createServerFn({ method: "POST" })
       min_inr: number | string;
       max_inr: number | string;
       rail: string;
+      supported_rails?: string[] | null;
       status: string;
       enabled: boolean;
       frozen: boolean;
@@ -460,7 +515,9 @@ export const saveVendorListing = createServerFn({ method: "POST" })
     ) {
       throw new Error("Listing min/max must stay within account limits");
     }
-    if (!data.paymentRails.includes(paymentAccount.rail as never)) {
+    const supportedRails = accountRails(paymentAccount);
+    const unavailableRail = data.paymentRails.find((rail) => !supportedRails.includes(rail));
+    if (unavailableRail) {
       throw new Error("Selected account rail must be included in the listing rails");
     }
     const existing = data.id

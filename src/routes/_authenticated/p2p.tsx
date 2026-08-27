@@ -5,7 +5,17 @@ import { BadgeIndianRupee, Loader2, Plus, Search, ShieldCheck } from "lucide-rea
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { createDirectSellOrder } from "@/lib/direct-sell.functions";
-import { createP2pAd, createP2pOrderFromAd, fetchP2pMarketplace } from "@/lib/p2p.functions";
+import {
+  acknowledgeP2pRisk,
+  createP2pAvatarUpload,
+  createP2pAd,
+  createP2pOrderFromAd,
+  fetchP2pMarketplace,
+  getP2pAvatarViewUrl,
+  getP2pParticipantProfile,
+  getP2pRiskAcknowledgement,
+  registerP2pAvatar,
+} from "@/lib/p2p.functions";
 import { formatUsdt } from "@/lib/chain";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,11 +38,31 @@ interface AdRow {
   payment_methods: string[];
   terms: string | null;
   merchants?: {
+    user_id?: string | null;
     display_name: string;
     completed_orders: number;
     total_orders: number;
     status: string;
   } | null;
+}
+
+interface P2pProfile {
+  userId: string;
+  displayName: string;
+  avatarPath?: string | null;
+  accountType: "Trader" | "Vendor" | string;
+  joinedAt?: string | null;
+  joinedDays?: number;
+  completedTrades?: number;
+  successfulTrades?: number;
+  completionRate?: number;
+  totalUsdtTraded?: number;
+  volume30d?: number;
+  openDisputes?: number;
+  resolvedDisputes?: number;
+  reportsReceived?: number;
+  rankingTier?: string;
+  rankingScore?: number;
 }
 
 type RawAdRow = Omit<AdRow, "price_inr" | "available_usdt" | "min_order_inr" | "max_order_inr"> & {
@@ -47,7 +77,20 @@ function P2pPage() {
   const createAd = useServerFn(createP2pAd);
   const createOrder = useServerFn(createP2pOrderFromAd);
   const loadMarketplace = useServerFn(fetchP2pMarketplace);
+  const getRiskAck = useServerFn(getP2pRiskAcknowledgement);
+  const acknowledgeRisk = useServerFn(acknowledgeP2pRisk);
+  const loadParticipantProfile = useServerFn(getP2pParticipantProfile);
+  const loadAvatarUrl = useServerFn(getP2pAvatarViewUrl);
+  const createAvatarUpload = useServerFn(createP2pAvatarUpload);
+  const saveAvatar = useServerFn(registerP2pAvatar);
   const [ads, setAds] = useState<AdRow[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, P2pProfile>>({});
+  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
+  const [pendingRiskAd, setPendingRiskAd] = useState<AdRow | null>(null);
+  const [workingRisk, setWorkingRisk] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPending, setAvatarPending] = useState(false);
   const [loadingAds, setLoadingAds] = useState(true);
   const [marketplaceError, setMarketplaceError] = useState("");
   const [side, setSide] = useState<"buy" | "sell">("buy");
@@ -89,6 +132,8 @@ function P2pPage() {
       setPaymentMethods((methodsResult.data ?? []) as { id: string; upi_id: string }[]);
       setSelectedPaymentMethod((current) => current || methodsResult.data?.[0]?.id || "");
       if (methodsResult.error) toast.error(methodsResult.error.message);
+      const ack = (await getRiskAck()) as { acknowledged?: boolean };
+      setRiskAcknowledged(Boolean(ack.acknowledged));
     } catch (error) {
       const message =
         error instanceof Error
@@ -99,11 +144,36 @@ function P2pPage() {
     } finally {
       setLoadingAds(false);
     }
-  }, [loadMarketplace]);
+  }, [getRiskAck, loadMarketplace]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const merchantUserIds = [
+      ...new Set(
+        ads
+          .map((ad) => ad.merchants?.user_id)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    ];
+    for (const userId of merchantUserIds) {
+      if (profiles[userId]) continue;
+      void loadParticipantProfile({ data: { userId } })
+        .then(async (profile) => {
+          const typed = profile as P2pProfile;
+          setProfiles((current) => ({ ...current, [userId]: typed }));
+          if (typed.avatarPath) {
+            const result = (await loadAvatarUrl({
+              data: { avatarPath: typed.avatarPath },
+            })) as { url?: string };
+            if (result.url) setAvatarUrls((current) => ({ ...current, [userId]: result.url! }));
+          }
+        })
+        .catch(() => undefined);
+    }
+  }, [ads, avatarUrls, loadAvatarUrl, loadParticipantProfile, profiles]);
 
   const filtered = useMemo(() => {
     const value = Number(amount);
@@ -180,7 +250,7 @@ function P2pPage() {
     }
   }
 
-  async function takeAd(ad: AdRow) {
+  async function takeAd(ad: AdRow, skipRiskCheck = false) {
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) {
       toast.error("Enter the USDT amount first");
@@ -188,6 +258,10 @@ function P2pPage() {
     }
     if (side === "sell" && !selectedPaymentMethod) {
       toast.error("Add a UPI payment method before selling into a buy ad");
+      return;
+    }
+    if (!skipRiskCheck && !riskAcknowledged) {
+      setPendingRiskAd(ad);
       return;
     }
     setTakingAdId(ad.id);
@@ -211,8 +285,74 @@ function P2pPage() {
     }
   }
 
+  async function acknowledgeAndContinue() {
+    setWorkingRisk(true);
+    try {
+      await acknowledgeRisk({ data: { policyVersion: "v1" } });
+      setRiskAcknowledged(true);
+      const ad = pendingRiskAd;
+      setPendingRiskAd(null);
+      if (ad) await takeAd(ad, true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not acknowledge P2P warning");
+    } finally {
+      setWorkingRisk(false);
+    }
+  }
+
+  async function uploadAvatar() {
+    if (!avatarFile) return;
+    setAvatarPending(true);
+    try {
+      const upload = await createAvatarUpload({
+        data: {
+          fileName: avatarFile.name,
+          contentType: avatarFile.type as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+          sizeBytes: avatarFile.size,
+        },
+      });
+      const { error } = await supabase.storage
+        .from("user-avatars")
+        .uploadToSignedUrl(upload.path, upload.token, avatarFile);
+      if (error) throw new Error(error.message);
+      await saveAvatar({
+        data: {
+          storagePath: upload.path,
+          fileName: avatarFile.name,
+          contentType: avatarFile.type as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+          sizeBytes: avatarFile.size,
+        },
+      });
+      setAvatarFile(null);
+      toast.success("P2P profile photo updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update profile photo");
+    } finally {
+      setAvatarPending(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {pendingRiskAd ? (
+        <div className="panel border-amber-400/40 bg-amber-500/10 p-5">
+          <p className="font-semibold">P2P risk confirmation</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Verify the counterparty and payment details before proceeding. Keep all communication
+            and proof inside WTRON. Do not accept or send payments from unrelated third-party
+            accounts. WTRON can assist with platform disputes, but you remain responsible for
+            reviewing the counterparty and payment details.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button disabled={workingRisk} onClick={() => void acknowledgeAndContinue()}>
+              I understand
+            </Button>
+            <Button variant="secondary" onClick={() => setPendingRiskAd(null)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
         <div className="panel p-5">
           <SectionHeader
@@ -295,6 +435,23 @@ function P2pPage() {
             </Button>
           </div>
         </form>
+      </div>
+
+      <div className="panel p-5">
+        <SectionHeader
+          title="P2P profile photo"
+          description="Upload an image-only avatar shown on P2P listings, profiles and order conversations."
+        />
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <Input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={(event) => setAvatarFile(event.target.files?.[0] ?? null)}
+          />
+          <Button type="button" disabled={!avatarFile || avatarPending} onClick={uploadAvatar}>
+            {avatarPending ? "Uploading..." : "Update Photo"}
+          </Button>
+        </div>
       </div>
 
       <form className="panel p-5" onSubmit={submitAd}>
@@ -413,6 +570,8 @@ function P2pPage() {
             ) : (
               filtered.map((ad) => {
                 const merchant = ad.merchants;
+                const profile = merchant?.user_id ? profiles[merchant.user_id] : null;
+                const avatarUrl = merchant?.user_id ? avatarUrls[merchant.user_id] : "";
                 const completion =
                   merchant && merchant.total_orders > 0
                     ? Math.round((merchant.completed_orders / merchant.total_orders) * 100)
@@ -420,10 +579,38 @@ function P2pPage() {
                 return (
                   <tr key={ad.id} className="hover:bg-secondary/30">
                     <td className="px-4 py-2.5">
-                      <p className="font-medium">{merchant?.display_name ?? "Advertiser"}</p>
+                      <div className="flex items-start gap-2">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt=""
+                            className="h-9 w-9 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                            W
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-medium">
+                            {profile?.displayName ?? merchant?.display_name ?? "Advertiser"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {profile?.accountType ?? "Trader"} - {profile?.rankingTier ?? "New"}
+                          </p>
+                        </div>
+                      </div>
                       <p className="text-xs text-muted-foreground">
-                        {merchant?.completed_orders ?? 0} completed - {completion}% completion
+                        {profile?.completedTrades ?? merchant?.completed_orders ?? 0} completed -{" "}
+                        {profile?.completionRate ?? completion}% completion
                       </p>
+                      {profile ? (
+                        <p className="text-xs text-muted-foreground">
+                          {Number(profile.totalUsdtTraded ?? 0).toLocaleString()} USDT traded -{" "}
+                          {profile.openDisputes ?? 0} open disputes - joined{" "}
+                          {profile.joinedDays ?? 0} days ago
+                        </p>
+                      ) : null}
                     </td>
                     <td className="mono px-4 py-2.5 text-primary">
                       Rs {ad.price_inr.toLocaleString("en-IN")}

@@ -124,6 +124,10 @@ export async function writeSettings(input: {
   gasfreeKillSwitch?: boolean | undefined;
   gasfreeProviderFeePolicy?: string | undefined;
   gasfreeWtronFeePolicy?: string | undefined;
+  referralCampaignEnabled?: boolean | undefined;
+  referralDirectRatePercent?: number | undefined;
+  referralEligibleP2pEnabled?: boolean | undefined;
+  referralEligibleDirectSellEnabled?: boolean | undefined;
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -199,6 +203,21 @@ export async function writeSettings(input: {
   }
   if (input.gasfreeWtronFeePolicy !== undefined) {
     rows.push({ key: "gasfree_wtron_fee_policy", value: input.gasfreeWtronFeePolicy });
+  }
+  if (input.referralCampaignEnabled !== undefined) {
+    rows.push({ key: "referral_campaign_enabled", value: input.referralCampaignEnabled });
+  }
+  if (input.referralDirectRatePercent !== undefined) {
+    rows.push({ key: "referral_direct_rate_percent", value: input.referralDirectRatePercent });
+  }
+  if (input.referralEligibleP2pEnabled !== undefined) {
+    rows.push({ key: "referral_eligible_p2p_enabled", value: input.referralEligibleP2pEnabled });
+  }
+  if (input.referralEligibleDirectSellEnabled !== undefined) {
+    rows.push({
+      key: "referral_eligible_direct_sell_enabled",
+      value: input.referralEligibleDirectSellEnabled,
+    });
   }
 
   for (const row of rows) {

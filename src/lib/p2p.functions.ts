@@ -56,6 +56,50 @@ const messageInput = orderIdInput.extend({
   body: z.string().trim().min(1).max(2000),
 });
 
+const imageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+
+const avatarUploadInput = z.object({
+  fileName: z.string().trim().min(1).max(160),
+  contentType: z.enum(imageTypes),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(2 * 1024 * 1024),
+});
+
+const proofAttachmentUploadInput = orderIdInput.extend({
+  fileName: z.string().trim().min(1).max(160),
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(5 * 1024 * 1024),
+});
+
+const registerProofAttachmentInput = proofAttachmentUploadInput.extend({
+  messageId: z.string().uuid(),
+  storagePath: z.string().trim().min(10).max(500),
+  attachmentType: z.enum(["image", "payment_proof", "transaction_screenshot"]).default("image"),
+});
+
+const attachmentViewInput = z.object({
+  attachmentId: z.string().uuid(),
+});
+
+const participantProfileInput = z.object({
+  userId: z.string().uuid(),
+});
+
+const riskAckInput = z.object({
+  policyVersion: z.string().trim().min(1).max(40).default("v1"),
+});
+
+function safeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+}
+
 async function requireActiveSellUpi(
   supabaseClient: typeof import("@/integrations/supabase/client.server").supabaseAdmin,
   userId: string,
@@ -90,6 +134,7 @@ interface P2pAdRow {
 
 interface MerchantRow {
   id: string;
+  user_id: string | null;
   display_name: string | null;
   completed_orders: number | null;
   total_orders: number | null;
@@ -134,7 +179,7 @@ export const fetchP2pMarketplace = createServerFn({ method: "GET" })
     const { data: merchantRows, error: merchantError } = merchantIds.length
       ? await context.supabase
           .from("merchants" as never)
-          .select("id, display_name, completed_orders, total_orders, status")
+          .select("id, user_id, display_name, completed_orders, total_orders, status")
           .in("id", merchantIds as never)
       : { data: [], error: null };
     if (merchantError) throw new Error(merchantError.message);
@@ -222,6 +267,14 @@ export const createP2pOrderFromAd = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => createOrderInput.parse(input))
   .handler(async ({ data, context }) => {
     await requireTraderP2pAccess(context.supabase, context.userId);
+    const { data: hasAck, error: ackError } = await context.supabase.rpc(
+      "p2p_has_risk_acknowledgement" as never,
+      { _policy_version: "v1" } as never,
+    );
+    if (ackError) throw new Error(ackError.message);
+    if (!hasAck) {
+      throw new Error("Review and acknowledge the P2P risk warning before creating an order.");
+    }
     const { data: rows, error } = await context.supabase.rpc(
       "p2p_create_order_from_ad" as never,
       {
@@ -320,4 +373,139 @@ export const sendP2pMessage = createServerFn({ method: "POST" })
     );
     if (error) throw new Error(error.message);
     return { messageId };
+  });
+
+export const getP2pRiskAcknowledgement = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase.rpc(
+      "p2p_has_risk_acknowledgement" as never,
+      { _policy_version: "v1" } as never,
+    );
+    if (error) throw new Error(error.message);
+    return { acknowledged: Boolean(data), policyVersion: "v1" };
+  });
+
+export const acknowledgeP2pRisk = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => riskAckInput.parse(input ?? {}))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase.rpc(
+      "p2p_acknowledge_risk" as never,
+      { _policy_version: data.policyVersion } as never,
+    );
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const getP2pParticipantProfile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => participantProfileInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: profile, error } = await context.supabase.rpc(
+      "p2p_participant_profile" as never,
+      { _user_id: data.userId } as never,
+    );
+    if (error) throw new Error(error.message);
+    return profile;
+  });
+
+export const createP2pAvatarUpload = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => avatarUploadInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const path = `${context.userId}/avatar-${crypto.randomUUID()}-${safeFileName(data.fileName)}`;
+    const { data: signed, error } = await supabaseAdmin.storage
+      .from("user-avatars")
+      .createSignedUploadUrl(path);
+    if (error) throw new Error(error.message);
+    return { path, token: signed.token, signedUrl: signed.signedUrl };
+  });
+
+export const registerP2pAvatar = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    avatarUploadInput.extend({ storagePath: z.string().trim().min(10).max(500) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    if (!data.storagePath.startsWith(`${context.userId}/`)) {
+      throw new Error("Invalid avatar path");
+    }
+    const { error } = await context.supabase
+      .from("profiles" as never)
+      .update({
+        avatar_path: data.storagePath,
+        avatar_updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", context.userId as never);
+    if (error) throw new Error(error.message);
+    return { path: data.storagePath };
+  });
+
+export const getP2pAvatarViewUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ avatarPath: z.string().min(3) }).parse(input))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: signed, error } = await supabaseAdmin.storage
+      .from("user-avatars")
+      .createSignedUrl(data.avatarPath, 300);
+    if (error) throw new Error(error.message);
+    return { url: signed.signedUrl };
+  });
+
+export const createP2pAttachmentUpload = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => proofAttachmentUploadInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const path = `${context.userId}/p2p/${data.orderId}/${crypto.randomUUID()}-${safeFileName(data.fileName)}`;
+    const { data: signed, error } = await supabaseAdmin.storage
+      .from("p2p-evidence")
+      .createSignedUploadUrl(path);
+    if (error) throw new Error(error.message);
+    return { path, token: signed.token, signedUrl: signed.signedUrl };
+  });
+
+export const registerP2pAttachment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => registerProofAttachmentInput.parse(input))
+  .handler(async ({ data, context }) => {
+    if (!data.storagePath.startsWith(`${context.userId}/p2p/${data.orderId}/`)) {
+      throw new Error("Invalid P2P evidence path");
+    }
+    const { error } = await context.supabase.from("p2p_message_attachments" as never).insert({
+      message_id: data.messageId,
+      order_id: data.orderId,
+      uploader_id: context.userId,
+      storage_bucket: "p2p-evidence",
+      storage_path: data.storagePath,
+      mime_type: data.contentType,
+      file_size_bytes: data.sizeBytes,
+      attachment_type: data.attachmentType,
+    } as never);
+    if (error) throw new Error(error.message);
+    return { path: data.storagePath };
+  });
+
+export const getP2pAttachmentViewUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => attachmentViewInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: attachment, error } = await context.supabase
+      .from("p2p_message_attachments" as never)
+      .select("storage_path")
+      .eq("id", data.attachmentId as never)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!attachment) throw new Error("Attachment is not available");
+    const path = (attachment as { storage_path?: string | null }).storage_path;
+    if (!path) throw new Error("Attachment path is missing");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: signed, error: signError } = await supabaseAdmin.storage
+      .from("p2p-evidence")
+      .createSignedUrl(path, 120);
+    if (signError) throw new Error(signError.message);
+    return { url: signed.signedUrl };
   });

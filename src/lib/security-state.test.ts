@@ -2088,4 +2088,128 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /entryState === "vendor_app" && nextScreen === "p2p" \? "trade"/);
     assert.match(p2p, /Vendor accounts use Vendor Trade, not Trader P2P/);
   });
+
+  it("ships admin referral settings and metrics UI backed by the admin overview RPC", () => {
+    const route = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/referrals.tsx"),
+      "utf8",
+    );
+    const adminFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/admin.functions.ts"),
+      "utf8",
+    );
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260827163554_finish_remaining_vendor_p2p_referral_admin.sql",
+      ),
+      "utf8",
+    );
+    assert.match(route, /Referral enabled/);
+    assert.match(route, /Direct referral percentage/);
+    assert.match(route, /Eligible P2P trades/);
+    assert.match(route, /Eligible WTRON Direct Sell trades/);
+    assert.match(route, /Recent referral rewards/);
+    assert.match(adminFunctions, /getAdminReferralOverview/);
+    assert.match(sql, /admin_referral_overview/);
+    assert.match(sql, /No second-level|referral_attributions|totalDirectReferrals/);
+  });
+
+  it("stores vendor bank account rails as a true supported_rails array with ALL normalization", () => {
+    const vendor = readFileSync(resolve(process.cwd(), "src/lib/vendor.functions.ts"), "utf8");
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260827163554_finish_remaining_vendor_p2p_referral_admin.sql",
+      ),
+      "utf8",
+    );
+    assert.match(sql, /ADD COLUMN IF NOT EXISTS supported_rails text\[\]/);
+    assert.match(sql, /ARRAY\['imps','neft','rtgs'\]/);
+    assert.match(vendor, /supportedRails/);
+    assert.match(vendor, /normalizeVendorSupportedRails/);
+    assert.match(vendor, /accountRails/);
+    assert.match(mini, /vendorBankRail === "all" \? \(\["imps", "neft", "rtgs"\]/);
+  });
+
+  it("uses real vendor daily capacity and blocks over-limit vendor orders server-side", () => {
+    const vendor = readFileSync(resolve(process.cwd(), "src/lib/vendor.functions.ts"), "utf8");
+    const directSell = readFileSync(
+      resolve(process.cwd(), "src/lib/direct-sell.functions.ts"),
+      "utf8",
+    );
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260827163554_finish_remaining_vendor_p2p_referral_admin.sql",
+      ),
+      "utf8",
+    );
+    assert.match(sql, /vendor_payment_account_capacity/);
+    assert.match(sql, /status NOT IN \('cancelled','expired','failed','rejected','refunded'\)/);
+    assert.match(sql, /Vendor payment account daily limit exceeded/);
+    assert.match(vendor, /daily_remaining_inr/);
+    assert.match(directSell, /vendor_payment_account_capacity/);
+    assert.match(mini, /\["Used today", money\(method\.daily_used_inr, "INR"\)\]/);
+    assert.match(mini, /\["Remaining", money\(method\.daily_remaining_inr, "INR"\)\]/);
+  });
+
+  it("enforces P2P warning acknowledgement and image-only private evidence uploads", () => {
+    const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
+    const marketplace = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
+      "utf8",
+    );
+    const order = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/orders.$orderId.tsx"),
+      "utf8",
+    );
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260827163554_finish_remaining_vendor_p2p_referral_admin.sql",
+      ),
+      "utf8",
+    );
+    assert.match(sql, /p2p_acknowledge_risk/);
+    assert.match(p2p, /p2p_has_risk_acknowledgement/);
+    assert.match(p2p, /Review and acknowledge the P2P risk warning/);
+    assert.match(marketplace, /P2P risk confirmation/);
+    assert.match(order, /createP2pAttachmentUpload/);
+    assert.match(order, /Image proof is evidence only/);
+    assert.match(sql, /'p2p-evidence', 'p2p-evidence', false/);
+  });
+
+  it("wires P2P avatar uploads and real participant profile ranking data", () => {
+    const p2pFunctions = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
+    const marketplace = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
+      "utf8",
+    );
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260827163554_finish_remaining_vendor_p2p_referral_admin.sql",
+      ),
+      "utf8",
+    );
+    assert.match(sql, /p2p_participant_profile/);
+    assert.match(sql, /rankingInputs/);
+    assert.match(sql, /reportsReceived/);
+    assert.match(sql, /'user-avatars', 'user-avatars', false/);
+    assert.match(p2pFunctions, /createP2pAvatarUpload/);
+    assert.match(p2pFunctions, /getP2pParticipantProfile/);
+    assert.match(marketplace, /P2P profile photo/);
+    assert.match(marketplace, /rankingTier/);
+  });
+
+  it("adds non-secret Telegram start-state diagnostics", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/lib/telegram.server.ts"), "utf8");
+    assert.match(source, /\[telegram\] start state/);
+    assert.match(source, /telegramUserId: user\.id/);
+    assert.match(source, /accountType: state\.accountType/);
+    assert.doesNotMatch(source, /password.*console\.info|token.*console\.info/i);
+  });
 });

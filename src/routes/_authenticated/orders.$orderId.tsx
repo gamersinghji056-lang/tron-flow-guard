@@ -8,8 +8,11 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   cancelP2pOrder,
   confirmP2pPaymentReceived,
+  createP2pAttachmentUpload,
+  getP2pAttachmentViewUrl,
   markP2pPaymentSent,
   raiseP2pDispute,
+  registerP2pAttachment,
   sendP2pMessage,
 } from "@/lib/p2p.functions";
 import {
@@ -66,6 +69,14 @@ interface MessageRow {
   created_at: string;
 }
 
+interface AttachmentRow {
+  id: string;
+  message_id: string;
+  attachment_type: string;
+  mime_type: string;
+  created_at: string;
+}
+
 function P2pOrderDetailPage() {
   const { orderId } = Route.useParams() as { orderId: string };
   const auth = useAuth();
@@ -74,21 +85,31 @@ function P2pOrderDetailPage() {
   const cancelOrder = useServerFn(cancelP2pOrder);
   const disputeOrder = useServerFn(raiseP2pDispute);
   const sendMessage = useServerFn(sendP2pMessage);
+  const createAttachmentUpload = useServerFn(createP2pAttachmentUpload);
+  const registerAttachment = useServerFn(registerP2pAttachment);
+  const viewAttachmentUrl = useServerFn(getP2pAttachmentViewUrl);
   const createProofUpload = useServerFn(createPaymentProofUpload);
   const registerProof = useServerFn(registerPaymentProof);
   const getProofView = useServerFn(getPaymentProofViewUrl);
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [utr, setUtr] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [chat, setChat] = useState("");
+  const [chatProofFile, setChatProofFile] = useState<File | null>(null);
   const [disputeReason, setDisputeReason] = useState("");
   const [working, setWorking] = useState(false);
 
   const load = useCallback(async () => {
-    const [{ data: orderRow }, { data: eventRows }, { data: messageRows }] = await Promise.all([
+    const [
+      { data: orderRow },
+      { data: eventRows },
+      { data: messageRows },
+      { data: attachmentRows },
+    ] = await Promise.all([
       supabase.from("p2p_orders").select("*").eq("id", orderId).maybeSingle(),
       supabase
         .from("p2p_order_events")
@@ -100,10 +121,16 @@ function P2pOrderDetailPage() {
         .select("id, sender_role, body, is_system, created_at")
         .eq("order_id", orderId)
         .order("created_at", { ascending: true }),
+      supabase
+        .from("p2p_message_attachments" as never)
+        .select("id, message_id, attachment_type, mime_type, created_at")
+        .eq("order_id", orderId as never)
+        .order("created_at", { ascending: true }),
     ]);
     setOrder(orderRow as unknown as OrderRow | null);
     setEvents((eventRows ?? []) as EventRow[]);
     setMessages((messageRows ?? []) as MessageRow[]);
+    setAttachments((attachmentRows ?? []) as unknown as AttachmentRow[]);
   }, [orderId]);
 
   useEffect(() => {
@@ -128,6 +155,16 @@ function P2pOrderDetailPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "p2p_messages", filter: `order_id=eq.${orderId}` },
+        () => void load(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "p2p_message_attachments",
+          filter: `order_id=eq.${orderId}`,
+        },
         () => void load(),
       )
       .subscribe();
@@ -193,6 +230,47 @@ function P2pOrderDetailPage() {
     }
   }
 
+  async function viewAttachment(attachmentId: string) {
+    try {
+      const { url } = (await viewAttachmentUrl({ data: { attachmentId } })) as { url: string };
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to open attachment");
+    }
+  }
+
+  async function sendChatMessage() {
+    const body = chat.trim() || (chatProofFile ? "Uploaded payment evidence." : "");
+    const sent = (await sendMessage({ data: { orderId, body } })) as { messageId?: string };
+    if (chatProofFile) {
+      const upload = await createAttachmentUpload({
+        data: {
+          orderId,
+          fileName: chatProofFile.name,
+          contentType: chatProofFile.type as "image/jpeg" | "image/png" | "image/webp",
+          sizeBytes: chatProofFile.size,
+        },
+      });
+      const { error } = await supabase.storage
+        .from("p2p-evidence")
+        .uploadToSignedUrl(upload.path, upload.token, chatProofFile);
+      if (error) throw new Error(error.message);
+      await registerAttachment({
+        data: {
+          orderId,
+          messageId: String(sent.messageId),
+          storagePath: upload.path,
+          fileName: chatProofFile.name,
+          contentType: chatProofFile.type as "image/jpeg" | "image/png" | "image/webp",
+          sizeBytes: chatProofFile.size,
+          attachmentType: "payment_proof",
+        },
+      });
+    }
+    setChat("");
+    setChatProofFile(null);
+  }
+
   if (!order) {
     return (
       <div className="grid h-72 place-items-center">
@@ -232,6 +310,10 @@ function P2pOrderDetailPage() {
           </div>
           <div className="mt-5 rounded-md border p-4 text-sm">
             <p className="font-medium">Payment instructions</p>
+            <p className="mt-2 rounded-md border border-amber-400/40 bg-amber-500/10 p-2 text-amber-700 dark:text-amber-200">
+              Use only the payment account shown in this order. Third-party payments may increase
+              fraud or dispute risk.
+            </p>
             <p className="mt-2 text-muted-foreground">
               Pay using {order.payment_method.toUpperCase()} to{" "}
               {order.payout_holder_name ?? "counterparty"} at{" "}
@@ -373,6 +455,19 @@ function P2pOrderDetailPage() {
                 }
               >
                 <p>{message.body}</p>
+                {attachments
+                  .filter((attachment) => attachment.message_id === message.id)
+                  .map((attachment) => (
+                    <Button
+                      key={attachment.id}
+                      className="mt-2"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void viewAttachment(attachment.id)}
+                    >
+                      View {attachment.attachment_type.replaceAll("_", " ")}
+                    </Button>
+                  ))}
                 <p className="mt-1 text-xs text-muted-foreground">
                   {message.sender_role} - {new Date(message.created_at).toLocaleString()}
                 </p>
@@ -385,14 +480,18 @@ function P2pOrderDetailPage() {
               onChange={(event) => setChat(event.target.value)}
               placeholder="Write a message"
             />
+            <Input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => setChatProofFile(event.target.files?.[0] ?? null)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Image proof is evidence only. It does not automatically confirm payment or release
+              escrow.
+            </p>
             <Button
-              disabled={working || !chat.trim()}
-              onClick={() =>
-                void run(
-                  () => sendMessage({ data: { orderId, body: chat } }).then(() => setChat("")),
-                  "Message sent",
-                )
-              }
+              disabled={working || (!chat.trim() && !chatProofFile)}
+              onClick={() => void run(sendChatMessage, "Message sent")}
             >
               <Send className="mr-1.5 h-4 w-4" />
               Send

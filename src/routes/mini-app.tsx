@@ -378,6 +378,7 @@ interface PaymentMethodRow {
   max_inr?: number | string | null;
   daily_limit_inr?: number | string | null;
   daily_used_inr?: number | string | null;
+  daily_remaining_inr?: number | string | null;
   frozen?: boolean | null;
 }
 
@@ -399,6 +400,7 @@ interface VendorListingRow {
 interface VendorPaymentAccountRow {
   id: string;
   rail: "upi" | "imps" | "neft" | "rtgs" | string;
+  supported_rails?: string[] | null;
   label?: string | null;
   account_ref?: string | null;
   holder_name?: string | null;
@@ -409,6 +411,9 @@ interface VendorPaymentAccountRow {
   min_inr?: number | string | null;
   max_inr?: number | string | null;
   daily_limit_inr?: number | string | null;
+  daily_used_inr?: number | string | null;
+  daily_remaining_inr?: number | string | null;
+  daily_usage_business_date?: string | null;
   status?: string | null;
   enabled?: boolean | null;
   frozen?: boolean | null;
@@ -529,14 +534,17 @@ function vendorAccountAsPaymentMethod(account: VendorPaymentAccountRow): Payment
     bank_name: isUpi ? null : (account.bank_name ?? account.rail.toUpperCase()),
     account_number: isUpi ? null : (account.account_number ?? account.account_ref ?? null),
     ifsc: account.ifsc ?? null,
-    supported_rails: [String(account.rail).toUpperCase()],
+    supported_rails: (account.supported_rails?.length ? account.supported_rails : [account.rail])
+      .filter(Boolean)
+      .map((rail) => String(rail).toUpperCase()),
     status: account.status ?? "active",
     is_default: account.is_default ?? false,
     verified: true,
     min_inr: account.min_inr ?? null,
     max_inr: account.max_inr ?? null,
     daily_limit_inr: account.daily_limit_inr ?? null,
-    daily_used_inr: 0,
+    daily_used_inr: account.daily_used_inr ?? null,
+    daily_remaining_inr: account.daily_remaining_inr ?? null,
     frozen: account.frozen ?? false,
   };
 }
@@ -1798,10 +1806,13 @@ function TelegramMiniApp() {
     setBusy(true);
     try {
       if (linkedAccountType === "vendor") {
-        const normalizedRail = vendorBankRail === "all" ? "imps" : vendorBankRail;
+        const supportedRails =
+          vendorBankRail === "all" ? (["imps", "neft", "rtgs"] as const) : [vendorBankRail];
+        const normalizedRail = supportedRails[0];
         await saveVendorPayout({
           data: {
             rail: normalizedRail,
+            supportedRails: [...supportedRails],
             label: bankForm.label || bankForm.bankName || "Vendor Bank",
             holderName: bankForm.accountHolder,
             accountRef: bankForm.accountNumber,
@@ -4914,6 +4925,8 @@ function BankAccountsScreen(props: {
                     ["Min per transaction", money(method.min_inr, "INR")],
                     ["Max per transaction", money(method.max_inr, "INR")],
                     ["Daily limit", money(method.daily_limit_inr, "INR")],
+                    ["Used today", money(method.daily_used_inr, "INR")],
+                    ["Remaining", money(method.daily_remaining_inr, "INR")],
                     ["Status", String(method.status ?? "active")],
                     ["Default", method.is_default ? "Yes" : "No"],
                     ["Frozen", method.frozen ? "Yes" : "No"],

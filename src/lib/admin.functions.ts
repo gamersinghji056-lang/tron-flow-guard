@@ -40,6 +40,10 @@ const settingsInput = z.object({
   gasfreeKillSwitch: z.boolean().optional(),
   gasfreeProviderFeePolicy: z.string().trim().min(1).max(80).optional(),
   gasfreeWtronFeePolicy: z.string().trim().min(1).max(80).optional(),
+  referralCampaignEnabled: z.boolean().optional(),
+  referralDirectRatePercent: z.number().min(0.1).max(0.2).optional(),
+  referralEligibleP2pEnabled: z.boolean().optional(),
+  referralEligibleDirectSellEnabled: z.boolean().optional(),
 });
 
 const feeSweepInput = z.object({
@@ -142,6 +146,17 @@ export const getAdminDashboard = createServerFn({ method: "GET" })
     const { PERMISSIONS } = await import("@/lib/rbac");
     await requirePermission(context.supabase, context.userId, PERMISSIONS.DASHBOARD_READ);
     return fetchAdminDashboard();
+  });
+
+export const getAdminReferralOverview = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.SETTINGS_MANAGE);
+    const { data, error } = await context.supabase.rpc("admin_referral_overview" as never);
+    if (error) throw new Error(error.message);
+    return data;
   });
 
 export const addCompanyWallet = createServerFn({ method: "POST" })

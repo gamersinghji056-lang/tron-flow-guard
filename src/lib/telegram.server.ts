@@ -1437,6 +1437,16 @@ export async function handleTelegramCommand(user: TelegramWebAppUser, text: stri
     pendingRegistrationPasswords.delete(user.id);
   }
   const state = await readLinkedState(user.id);
+  if (command === "/start") {
+    console.info("[telegram] start state", {
+      telegramUserId: user.id,
+      linked: state.linked,
+      authorized: state.authorized,
+      accountType: state.accountType ?? null,
+      vendorStatus: state.vendorStatus ?? null,
+      hasAccount: Boolean(state.account),
+    });
+  }
 
   const pathByCommand: Record<string, string> = {
     "/wallet": "/mini-app?tab=wallet",

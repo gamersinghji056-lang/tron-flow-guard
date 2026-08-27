@@ -256,20 +256,15 @@ export const createVendorDirectSellOrder = createServerFn({ method: "POST" })
       .eq("id", data.vendorPaymentAccountId as never)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    const dayStart = new Date();
-    dayStart.setUTCHours(0, 0, 0, 0);
-    const { data: usedRows, error: usedError } = await supabaseAdmin
-      .from("direct_sell_orders" as never)
-      .select("expected_inr")
-      .eq("vendor_payment_account_id", data.vendorPaymentAccountId as never)
-      .eq("payout_account_source", "vendor_payment_accounts" as never)
-      .neq("status", "failed" as never)
-      .gte("created_at", dayStart.toISOString() as never);
-    if (usedError) throw new Error(usedError.message);
-    const usedTodayInr = ((usedRows ?? []) as unknown as { expected_inr?: number | string }[])
-      .map((row) => Number(row.expected_inr ?? 0))
-      .filter(Number.isFinite)
-      .reduce((sum, value) => sum + value, 0);
+    const { data: capacityRows, error: capacityError } = await supabaseAdmin.rpc(
+      "vendor_payment_account_capacity" as never,
+      { _account_id: data.vendorPaymentAccountId, _business_tz: "Asia/Kolkata" } as never,
+    );
+    if (capacityError) throw new Error(capacityError.message);
+    const capacity = Array.isArray(capacityRows) ? capacityRows[0] : capacityRows;
+    const usedTodayInr = Number(
+      (capacity as { used_today_inr?: number | string | null } | null)?.used_today_inr ?? 0,
+    );
     assertVendorDirectSellAccount({
       account: account as never,
       vendorId: vendor.id,
