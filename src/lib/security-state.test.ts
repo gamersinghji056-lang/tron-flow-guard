@@ -137,6 +137,11 @@ import {
   validateVendorAccountLimits,
 } from "./vendor-policy.ts";
 import { PERMISSIONS, canGrantPermissions, grants } from "./rbac.ts";
+import {
+  adminLoginErrorMessage,
+  resolveAdminLoginDecision,
+  selectPrimaryRole,
+} from "./admin-auth-policy.ts";
 import { safeErrorMessage } from "./system-health-policy.ts";
 import {
   assertSendAmount,
@@ -1238,6 +1243,70 @@ describe("RBAC and system error safety", () => {
     assert.equal(message.includes("secret-value"), false);
     assert.equal(message.includes("seed"), false);
     assert.match(message, /\[redacted\]/);
+  });
+});
+
+describe("admin login role resolution", () => {
+  it("prioritizes owner and elevated staff roles over ordinary roles", () => {
+    assert.equal(selectPrimaryRole(["trader", "owner"]), "owner");
+    assert.equal(selectPrimaryRole(["vendor", "super_admin"]), "super_admin");
+    assert.equal(selectPrimaryRole(["trader", "admin"]), "admin");
+    assert.equal(selectPrimaryRole(["trader", "employee"]), "employee");
+  });
+
+  it("allows owner, super admin, admin, and employee accounts into Admin", () => {
+    for (const role of ["owner", "super_admin", "admin", "employee"] as const) {
+      const decision = resolveAdminLoginDecision({
+        hasProfile: true,
+        roles: [role],
+        permissions: role === "employee" ? [PERMISSIONS.DASHBOARD_READ] : [],
+      });
+      assert.equal(decision.status, "allowed");
+      if (decision.status === "allowed") {
+        assert.equal(decision.role, role);
+        assert.equal(decision.implicitPermissions, role !== "employee");
+      }
+    }
+  });
+
+  it("denies trader and vendor accounts from Admin", () => {
+    assert.deepEqual(resolveAdminLoginDecision({ hasProfile: true, roles: ["trader"] }), {
+      status: "not_authorized",
+      role: "trader",
+    });
+    assert.deepEqual(resolveAdminLoginDecision({ hasProfile: true, roles: ["vendor"] }), {
+      status: "not_authorized",
+      role: "vendor",
+    });
+  });
+
+  it("surfaces incomplete admin profile and role state safely", () => {
+    assert.deepEqual(resolveAdminLoginDecision({ hasProfile: false, roles: ["super_admin"] }), {
+      status: "missing_profile",
+    });
+    assert.deepEqual(resolveAdminLoginDecision({ hasProfile: true, roles: [] }), {
+      status: "missing_role",
+    });
+    assert.equal(adminLoginErrorMessage("missing_profile"), "Admin profile is incomplete.");
+    assert.equal(adminLoginErrorMessage("missing_role"), "Admin access is incomplete.");
+    assert.equal(adminLoginErrorMessage("not_authorized"), "Account is not authorized for Admin.");
+  });
+
+  it("clears stale sessions and uses the explicit admin resolver during admin login", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/components/auth-panel.tsx"), "utf8");
+    assert.match(source, /audience === "admin"[\s\S]*supabase\.auth\.signOut\(\)/);
+    assert.match(source, /getCurrentAdminLoginAccess/);
+    assert.match(source, /adminLoginErrorMessage\(adminAccess\.status\)/);
+    assert.doesNotMatch(source, /audience === "admin" && !isStaff/);
+  });
+
+  it("keeps admin logout clearing the Supabase session", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/admin-ops-shell.tsx"),
+      "utf8",
+    );
+    assert.match(source, /supabase\.auth\.signOut\(\)/);
+    assert.match(source, /navigate\(\{ to: "\/admin\/login", replace: true \}\)/);
   });
 });
 

@@ -5,7 +5,13 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { getCurrentAccountAccess, registerAdmin, registerTrader } from "@/lib/accounts.functions";
+import {
+  getCurrentAccountAccess,
+  getCurrentAdminLoginAccess,
+  registerAdmin,
+  registerTrader,
+} from "@/lib/accounts.functions";
+import { adminLoginErrorMessage } from "@/lib/admin-auth-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,6 +64,7 @@ function schemaFor(audience: Audience, mode: AuthMode) {
 export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMode }) {
   const navigate = useNavigate();
   const resolveCurrentAccount = useServerFn(getCurrentAccountAccess);
+  const resolveAdminLoginAccess = useServerFn(getCurrentAdminLoginAccess);
   const copy = COPY[audience][mode];
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -87,6 +94,10 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
   }, [audience, navigate, resolveCurrentAccount]);
 
   async function signInAndRoute(credentials: { email: string; password: string }) {
+    if (audience === "admin") {
+      await supabase.auth.signOut().catch(() => undefined);
+    }
+
     const { error } = await supabase.auth.signInWithPassword(credentials);
     if (error) {
       throw new Error(
@@ -98,13 +109,19 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
       );
     }
 
+    if (audience === "admin") {
+      const adminAccess = await resolveAdminLoginAccess();
+      if (adminAccess.status !== "allowed") {
+        await supabase.auth.signOut();
+        throw new Error(adminLoginErrorMessage(adminAccess.status));
+      }
+      navigate({ to: "/admin", replace: true });
+      return;
+    }
+
     const account = await resolveCurrentAccount();
     const isStaff = account.isAdmin;
 
-    if (audience === "admin" && !isStaff) {
-      await supabase.auth.signOut();
-      throw new Error("This account is not an administrator account.");
-    }
     if (audience === "trader" && isStaff) {
       await supabase.auth.signOut();
       throw new Error("This is an administrator account. Use the administrator sign-in page.");

@@ -65,3 +65,27 @@ export const getCurrentAccountAccess = createServerFn({ method: "GET" })
       vendorStatus,
     };
   });
+
+export const getCurrentAdminLoginAccess = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveAdminLoginDecision } = await import("@/lib/admin-auth-policy");
+
+    const [{ data: profile }, { data: roles }, { data: permissions }] = await Promise.all([
+      supabaseAdmin.from("profiles").select("id").eq("id", context.userId).maybeSingle(),
+      supabaseAdmin.from("user_roles").select("role").eq("user_id", context.userId),
+      supabaseAdmin.from("admin_permissions").select("permission").eq("user_id", context.userId),
+    ]);
+
+    const decision = resolveAdminLoginDecision({
+      hasProfile: Boolean(profile),
+      roles: (roles ?? []).map((row) => row.role),
+      permissions: (permissions ?? []).map((row) => row.permission),
+    });
+
+    return {
+      userId: context.userId,
+      ...decision,
+    };
+  });
