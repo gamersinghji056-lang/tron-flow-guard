@@ -4914,17 +4914,6 @@ function BankAccountsScreen(props: {
                     ["Min per transaction", money(method.min_inr, "INR")],
                     ["Max per transaction", money(method.max_inr, "INR")],
                     ["Daily limit", money(method.daily_limit_inr, "INR")],
-                    ["Today's used", money(method.daily_used_inr, "INR")],
-                    [
-                      "Remaining today",
-                      money(
-                        Math.max(
-                          0,
-                          Number(method.daily_limit_inr ?? 0) - Number(method.daily_used_inr ?? 0),
-                        ),
-                        "INR",
-                      ),
-                    ],
                     ["Status", String(method.status ?? "active")],
                     ["Default", method.is_default ? "Yes" : "No"],
                     ["Frozen", method.frozen ? "Yes" : "No"],
