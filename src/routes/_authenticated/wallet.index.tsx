@@ -581,19 +581,10 @@ function WalletDialog({
                   </p>
                 </div>
               ) : null}
-              <select
-                value={form.network}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    network: event.target.value as ChainNetwork,
-                  }))
-                }
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="trc20-nile">TRON Nile Testnet</option>
-                <option value="trc20-mainnet">TRON Mainnet</option>
-              </select>
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                TRON Mainnet is used automatically for production customer wallets. Existing Nile
+                wallets remain labelled as test wallets and are not converted.
+              </div>
             </Field>
             {isImport ? (
               <Field label="Recovery phrase">

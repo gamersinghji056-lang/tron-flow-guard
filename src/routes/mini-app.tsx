@@ -127,6 +127,7 @@ export const Route = createFileRoute("/mini-app")({
 });
 
 type PrimaryTab = "home" | "p2p" | "trade" | "wallet" | "more";
+type VendorPrimaryTab = "home" | "trade" | "wallet" | "orders" | "more";
 type MiniScreen =
   | PrimaryTab
   | "wallet-create"
@@ -373,6 +374,11 @@ interface PaymentMethodRow {
   status?: string | null;
   is_default?: boolean | null;
   verified?: boolean | null;
+  min_inr?: number | string | null;
+  max_inr?: number | string | null;
+  daily_limit_inr?: number | string | null;
+  daily_used_inr?: number | string | null;
+  frozen?: boolean | null;
 }
 
 interface VendorListingRow {
@@ -428,6 +434,20 @@ interface ReferralSummary {
   qualifiedReferrals: number;
   pendingEarnings: number;
   paidEarnings: number;
+  totalReferralEarnings?: number;
+  eligibleTradeVolume?: number;
+  settings?: { key: string; value: unknown }[];
+  rewards?: {
+    id?: string;
+    amount: number | string;
+    currency?: string | null;
+    status: string;
+    source_type?: string | null;
+    source_order_id?: string | null;
+    trade_amount_usdt?: number | string | null;
+    rate_percent?: number | string | null;
+    created_at?: string | null;
+  }[];
 }
 
 function tabForScreen(screen: MiniScreen): PrimaryTab {
@@ -513,7 +533,18 @@ function vendorAccountAsPaymentMethod(account: VendorPaymentAccountRow): Payment
     status: account.status ?? "active",
     is_default: account.is_default ?? false,
     verified: true,
+    min_inr: account.min_inr ?? null,
+    max_inr: account.max_inr ?? null,
+    daily_limit_inr: account.daily_limit_inr ?? null,
+    daily_used_inr: 0,
+    frozen: account.frozen ?? false,
   };
+}
+
+function vendorSupportedRails(method: PaymentMethodRow) {
+  if (method.kind === "upi") return ["upi"];
+  const rails = (method.supported_rails ?? []).map((rail) => String(rail).toLowerCase());
+  return rails.length ? rails : ["imps", "neft", "rtgs"];
 }
 
 function directSellAssignmentValue(order: DirectSellOrderRow | null | undefined, key: string) {
@@ -719,7 +750,7 @@ function TelegramMiniApp() {
   const [vendorRail, setVendorRail] = useState<"upi" | "imps" | "neft" | "rtgs">("upi");
   const [createWalletName, setCreateWalletName] = useState("Main Wallet");
   const [createWalletType, setCreateWalletType] = useState<WalletType>("standard");
-  const [createWalletNetwork, setCreateWalletNetwork] = useState<ChainNetwork>("trc20-nile");
+  const [createWalletNetwork, setCreateWalletNetwork] = useState<ChainNetwork>("trc20-mainnet");
   const [importNetworkRequired, setImportNetworkRequired] = useState<{
     reason: "multiple_active" | "no_activity";
     address: string;
@@ -744,7 +775,7 @@ function TelegramMiniApp() {
     bankName: "",
     label: "",
   });
-  const [vendorBankRail, setVendorBankRail] = useState<"imps" | "neft" | "rtgs">("imps");
+  const [vendorBankRail, setVendorBankRail] = useState<"all" | "imps" | "neft" | "rtgs">("all");
   const [vendorAccountLimits, setVendorAccountLimits] = useState({
     minInr: "500",
     maxInr: "50000",
@@ -962,6 +993,9 @@ function TelegramMiniApp() {
         accountType: (verified.accountType ?? null) as WtronAccountType | "admin" | null,
         vendorStatus: (verified.vendorStatus ?? null) as VendorApprovalStatus | null,
       });
+      const safeNextScreen =
+        entryState === "vendor_app" && nextScreen === "p2p" ? "trade" : nextScreen;
+      if (safeNextScreen !== nextScreen) setScreen(safeNextScreen);
       const { data: sessionData } = await supabase.auth.getSession();
       if (entryState === "vendor_pending") {
         setHasSession(false);
@@ -985,7 +1019,7 @@ function TelegramMiniApp() {
         setHasSession(Boolean(sessionData.session && verified.authorized));
       }
       if (!verified.linked || !verified.authorized) return;
-      await loadAuthenticatedData(nextScreen, launch, entryState === "vendor_app");
+      await loadAuthenticatedData(safeNextScreen, launch, entryState === "vendor_app");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Telegram verification failed";
       console.info("[telegram-mini] secure launch diagnostics", {
@@ -1764,9 +1798,10 @@ function TelegramMiniApp() {
     setBusy(true);
     try {
       if (linkedAccountType === "vendor") {
+        const normalizedRail = vendorBankRail === "all" ? "imps" : vendorBankRail;
         await saveVendorPayout({
           data: {
-            rail: vendorBankRail,
+            rail: normalizedRail,
             label: bankForm.label || bankForm.bankName || "Vendor Bank",
             holderName: bankForm.accountHolder,
             accountRef: bankForm.accountNumber,
@@ -1924,6 +1959,7 @@ function TelegramMiniApp() {
         />
         {screen === "home" ? (
           <HomeScreen
+            vendorMode={entryState === "vendor_app"}
             total={totalAssets}
             profile={profile}
             orders={overview?.activeOrders ?? []}
@@ -1978,6 +2014,7 @@ function TelegramMiniApp() {
         ) : null}
         {screen === "wallet" && wallets.length ? (
           <WalletDetailScreen
+            vendorMode={entryState === "vendor_app"}
             wallet={selectedWallet}
             gasfreeWallet={selectedGasfreeWallet ?? null}
             wallets={wallets}
@@ -2006,6 +2043,7 @@ function TelegramMiniApp() {
         ) : null}
         {screen === "wallet-detail" ? (
           <WalletDetailScreen
+            vendorMode={entryState === "vendor_app"}
             wallet={selectedWallet}
             gasfreeWallet={selectedGasfreeWallet ?? null}
             wallets={wallets}
@@ -2183,6 +2221,7 @@ function TelegramMiniApp() {
         ) : null}
         {screen === "p2p" ? (
           <P2pScreen
+            vendorMode={entryState === "vendor_app"}
             tab={p2pTab}
             setTab={setP2pTab}
             ads={ads}
@@ -2539,6 +2578,7 @@ function AuthScreen(props: {
 }
 
 function HomeScreen({
+  vendorMode,
   total,
   profile,
   orders,
@@ -2548,6 +2588,7 @@ function HomeScreen({
   t,
   onNavigate,
 }: {
+  vendorMode?: boolean;
   total: number;
   profile: ProfileSummary | null;
   orders: OrderRow[];
@@ -2615,7 +2656,11 @@ function HomeScreen({
             label="Receive"
             onClick={() => onNavigate("wallet-receive")}
           />
-          <QuickAction icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
+          {vendorMode ? (
+            <QuickAction icon={MiniIcons.trade} label="Trade" onClick={() => onNavigate("trade")} />
+          ) : (
+            <QuickAction icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
+          )}
           <QuickAction icon={MiniIcons.trade} label="Sell" onClick={() => onNavigate("trade")} />
         </div>
       </section>
@@ -2626,15 +2671,17 @@ function HomeScreen({
           <EmptyLine>No active orders. Browse P2P or WTRON Trade.</EmptyLine>
         )}
       </Section>
-      <Section title="Current P2P Orders" action="Market" onAction={() => onNavigate("p2p")}>
-        {ads.length ? (
-          ads
-            .slice(0, 2)
-            .map((ad) => <AdCard key={ad.id} ad={ad} onTake={() => onNavigate("p2p")} />)
-        ) : (
-          <EmptyLine>No live marketplace cards loaded yet.</EmptyLine>
-        )}
-      </Section>
+      {!vendorMode ? (
+        <Section title="Current P2P Orders" action="Market" onAction={() => onNavigate("p2p")}>
+          {ads.length ? (
+            ads
+              .slice(0, 2)
+              .map((ad) => <AdCard key={ad.id} ad={ad} onTake={() => onNavigate("p2p")} />)
+          ) : (
+            <EmptyLine>No live marketplace cards loaded yet.</EmptyLine>
+          )}
+        </Section>
+      ) : null}
       <TransactionList
         title="Recent Activity"
         rows={transactions}
@@ -2779,8 +2826,11 @@ function WalletCreateScreen(props: {
             />
           </div>
         </FormCard>
-        <FormCard title={`3. ${props.t("network")}`}>
-          <NetworkPicker network={props.network} setNetwork={props.setNetwork} t={props.t} />
+        <FormCard title={`3. TRON Mainnet`}>
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-50">
+            Customer wallets use TRON Mainnet in production. Nile remains available only for
+            existing test wallets and internal diagnostics.
+          </div>
         </FormCard>
         <FormCard title={`4. ${props.t("transactionPassword")}`}>
           <div className="space-y-2">
@@ -2845,7 +2895,7 @@ function WalletImportScreen(props: {
             </div>
           </div>
         </FormCard>
-        <FormCard title={props.t("network")}>
+        <FormCard title="TRON Mainnet">
           {props.networkRequired ? (
             <div className="mb-3 rounded-xl border border-yellow-400/30 bg-yellow-400/10 p-3 text-xs text-slate-200">
               <p className="font-semibold text-white">
@@ -2860,7 +2910,10 @@ function WalletImportScreen(props: {
               </p>
             </div>
           ) : null}
-          <NetworkPicker network={props.network} setNetwork={props.setNetwork} t={props.t} />
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-50">
+            Mainnet is selected automatically for production imports. If only Nile testnet activity
+            is detected, WTRON preserves it as a Test Wallet / Nile wallet.
+          </div>
         </FormCard>
         <FormCard title={props.t("recoveryPhrase")}>
           <textarea
@@ -2890,6 +2943,7 @@ function WalletImportScreen(props: {
 }
 
 function WalletDetailScreen({
+  vendorMode,
   wallet,
   gasfreeWallet,
   wallets,
@@ -2908,6 +2962,7 @@ function WalletDetailScreen({
   onRefresh,
   onSetDefault,
 }: {
+  vendorMode?: boolean;
   wallet: WalletRow | null;
   gasfreeWallet: WalletRow | null;
   wallets: WalletRow[];
@@ -3024,7 +3079,11 @@ function WalletDetailScreen({
             label={t("receive")}
             onClick={() => onNavigate("wallet-receive")}
           />
-          <QuickAction icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
+          {vendorMode ? (
+            <QuickAction icon={MiniIcons.trade} label="Sell" onClick={() => onNavigate("trade")} />
+          ) : (
+            <QuickAction icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
+          )}
           <QuickAction
             icon={MiniIcons.history}
             label={t("history")}
@@ -3935,6 +3994,7 @@ function SendScreen({
 }
 
 function P2pScreen(props: {
+  vendorMode?: boolean;
   tab: P2pTab;
   setTab: (tab: P2pTab) => void;
   ads: AdRow[];
@@ -3957,18 +4017,29 @@ function P2pScreen(props: {
   onCreateAd: (event: FormEvent) => void;
 }) {
   return (
-    <Screen title="P2P Market" subtitle="User-to-user USDT trading only">
+    <Screen
+      title={props.vendorMode ? "P2P Sell" : "P2P Market"}
+      subtitle={props.vendorMode ? "Vendor seller tools only" : "User-to-user USDT trading only"}
+    >
       <SegmentedControl
-        value={props.tab}
+        value={props.vendorMode && props.tab === "buy" ? "sell" : props.tab}
         setValue={(value) => props.setTab(value as P2pTab)}
-        items={[
-          ["buy", "Buy"],
-          ["sell", "Sell"],
-          ["myAds", "My Ads"],
-          ["myOrders", "My Orders"],
-        ]}
+        items={
+          props.vendorMode
+            ? [
+                ["sell", "Sell"],
+                ["myAds", "My Ads"],
+                ["myOrders", "My Orders"],
+              ]
+            : [
+                ["buy", "Buy"],
+                ["sell", "Sell"],
+                ["myAds", "My Ads"],
+                ["myOrders", "My Orders"],
+              ]
+        }
       />
-      {props.tab === "buy" ? (
+      {!props.vendorMode && props.tab === "buy" ? (
         <div className="space-y-3">
           <FormField label="USDT amount">
             <Input
@@ -4601,30 +4672,78 @@ function SecurityScreen({
   );
 }
 
+function referralRatePercent(summary: ReferralSummary | null) {
+  const setting = summary?.settings?.find((row) => row.key === "referral_direct_rate_percent");
+  const value = Number(setting?.value ?? 0.2);
+  return Number.isFinite(value) ? value : 0.2;
+}
+
 function ReferralScreen({ summary }: { summary: ReferralSummary | null }) {
+  const rate = referralRatePercent(summary);
   return (
-    <Screen title="Refer & Earn" subtitle="Referral rewards from existing backend">
+    <Screen title="Refer & Earn" subtitle="Earn from users you directly invite">
       <div className="rounded-2xl border border-white/10 bg-white/6 p-3">
         <p className="text-xs uppercase text-slate-400">Referral Code</p>
         <p className="mono mt-2 text-2xl font-semibold">{summary?.referralCode ?? "Loading"}</p>
         <p className="mono mt-2 break-all text-sm text-slate-400">{summary?.referralLink ?? ""}</p>
-        <Button
-          className="mt-4 bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
-          onClick={() =>
-            summary?.referralLink && copyText(summary.referralLink, "Referral link copied")
-          }
-        >
-          Copy
-        </Button>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <Button
+            className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            onClick={() =>
+              summary?.referralLink && copyText(summary.referralLink, "Referral link copied")
+            }
+          >
+            Copy
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              summary?.referralLink &&
+              navigator.share?.({ text: summary.referralLink }).catch(() => undefined)
+            }
+          >
+            Share
+          </Button>
+        </div>
+        <p className="mt-3 text-xs text-slate-300">
+          Earn up to {rate.toFixed(2)}% on eligible trades completed by users you directly refer.
+        </p>
+        <p className="mt-2 text-xs text-slate-400">
+          Rewards apply only to eligible completed P2P and WTRON trades. Wallet transfers do not
+          earn referral commission.
+        </p>
       </div>
       <MetricGrid
         items={[
-          ["Invited users", String(summary?.invitedUsers?.length ?? 0)],
-          ["Qualified", String(summary?.qualifiedReferrals ?? 0)],
+          ["Direct referrals", String(summary?.invitedUsers?.length ?? 0)],
+          ["Qualified referrals", String(summary?.qualifiedReferrals ?? 0)],
+          ["Eligible volume", money(summary?.eligibleTradeVolume)],
           ["Pending earnings", money(summary?.pendingEarnings)],
           ["Paid earnings", money(summary?.paidEarnings)],
+          ["Total earnings", money(summary?.totalReferralEarnings)],
         ]}
       />
+      <Section title="Recent Referral Rewards">
+        {summary?.rewards?.length ? (
+          summary.rewards.slice(0, 10).map((reward, index) => (
+            <div
+              key={reward.id ?? index}
+              className="rounded-xl border border-white/10 bg-white/6 p-3"
+            >
+              <MetricGrid
+                items={[
+                  ["Reward", `${money(reward.amount)} ${reward.currency ?? "USDT"}`],
+                  ["Trade amount", money(reward.trade_amount_usdt)],
+                  ["Rate", `${Number(reward.rate_percent ?? rate).toFixed(2)}%`],
+                  ["Status", reward.status],
+                ]}
+              />
+            </div>
+          ))
+        ) : (
+          <EmptyLine>No referral rewards yet.</EmptyLine>
+        )}
+      </Section>
     </Screen>
   );
 }
@@ -4648,8 +4767,8 @@ function BankAccountsScreen(props: {
     bankName: string;
     label: string;
   }) => void;
-  vendorBankRail: "imps" | "neft" | "rtgs";
-  setVendorBankRail: (rail: "imps" | "neft" | "rtgs") => void;
+  vendorBankRail: "all" | "imps" | "neft" | "rtgs";
+  setVendorBankRail: (rail: "all" | "imps" | "neft" | "rtgs") => void;
   vendorLimits: { minInr: string; maxInr: string; dailyLimitInr: string };
   setVendorLimits: (value: { minInr: string; maxInr: string; dailyLimitInr: string }) => void;
   busy: boolean;
@@ -4663,22 +4782,24 @@ function BankAccountsScreen(props: {
   ) => void;
 }) {
   const limitFields = props.vendorMode ? (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid gap-2">
       {(
         [
-          ["minInr", "Min INR"],
-          ["maxInr", "Max INR"],
-          ["dailyLimitInr", "Daily INR"],
+          ["minInr", "Minimum per transaction (INR)"],
+          ["maxInr", "Maximum per transaction (INR)"],
+          ["dailyLimitInr", "Daily limit (INR)"],
         ] as const
       ).map(([key, label]) => (
-        <Input
-          key={key}
-          value={props.vendorLimits[key as keyof typeof props.vendorLimits]}
-          onChange={(event) =>
-            props.setVendorLimits({ ...props.vendorLimits, [key]: event.target.value })
-          }
-          placeholder={label}
-        />
+        <FormField key={key} label={label}>
+          <Input
+            value={props.vendorLimits[key as keyof typeof props.vendorLimits]}
+            onChange={(event) =>
+              props.setVendorLimits({ ...props.vendorLimits, [key]: event.target.value })
+            }
+            placeholder={label}
+            inputMode="decimal"
+          />
+        </FormField>
       ))}
     </div>
   ) : null;
@@ -4731,9 +4852,12 @@ function BankAccountsScreen(props: {
             className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none"
             value={props.vendorBankRail}
             onChange={(event) =>
-              props.setVendorBankRail(event.target.value as "imps" | "neft" | "rtgs")
+              props.setVendorBankRail(event.target.value as "all" | "imps" | "neft" | "rtgs")
             }
           >
+            <option className="bg-slate-950" value="all">
+              ALL - IMPS + NEFT + RTGS
+            </option>
             <option className="bg-slate-950" value="imps">
               IMPS
             </option>
@@ -4783,6 +4907,30 @@ function BankAccountsScreen(props: {
           props.methods.map((method) => (
             <div key={method.id} className="rounded-xl border border-white/10 bg-white/6 p-3">
               <PaymentMethodSummary method={method} />
+              {props.vendorMode ? (
+                <MetricGrid
+                  items={[
+                    ["Supported rails", vendorSupportedRails(method).join(", ").toUpperCase()],
+                    ["Min per transaction", money(method.min_inr, "INR")],
+                    ["Max per transaction", money(method.max_inr, "INR")],
+                    ["Daily limit", money(method.daily_limit_inr, "INR")],
+                    ["Today's used", money(method.daily_used_inr, "INR")],
+                    [
+                      "Remaining today",
+                      money(
+                        Math.max(
+                          0,
+                          Number(method.daily_limit_inr ?? 0) - Number(method.daily_used_inr ?? 0),
+                        ),
+                        "INR",
+                      ),
+                    ],
+                    ["Status", String(method.status ?? "active")],
+                    ["Default", method.is_default ? "Yes" : "No"],
+                    ["Frozen", method.frozen ? "Yes" : "No"],
+                  ]}
+                />
+              ) : null}
               <p className="mt-2 text-xs text-slate-500">
                 {method.kind.toUpperCase()} {method.is_default ? "- Default" : ""}
               </p>
@@ -6087,11 +6235,11 @@ function VendorBottomNav({
   screen: MiniScreen;
   setScreen: (screen: MiniScreen) => void;
 }) {
-  const items: Array<[MiniScreen, string, MiniIcon]> = [
+  const items: Array<[VendorPrimaryTab, string, MiniIcon]> = [
     ["home", "Home", CircleDollarSign],
     ["trade", "Trade", MiniIcons.swap],
+    ["wallet", "Wallet", MiniIcons.wallet],
     ["orders", "Orders", FileText],
-    ["history", "Transactions", MiniIcons.history],
     ["more", "More", MoreHorizontal],
   ];
   return (

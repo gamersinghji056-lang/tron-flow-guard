@@ -49,7 +49,7 @@ export const NETWORKS: Record<ChainNetwork, NetworkConfig> = {
   },
 };
 
-export const DEFAULT_NETWORK: ChainNetwork = "trc20-nile";
+export const DEFAULT_NETWORK: ChainNetwork = "trc20-mainnet";
 
 export function networkConfig(network: ChainNetwork | null | undefined): NetworkConfig {
   return NETWORKS[network ?? DEFAULT_NETWORK] ?? NETWORKS[DEFAULT_NETWORK];

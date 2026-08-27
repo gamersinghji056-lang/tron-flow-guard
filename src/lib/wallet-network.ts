@@ -8,7 +8,12 @@ export interface NetworkProbe {
 }
 
 export type ImportedWalletNetworkDecision =
-  | { type: "selected"; network: ChainNetwork; reason: "single_active" | "confirmed" }
+  | {
+      type: "selected";
+      network: ChainNetwork;
+      reason: "single_active" | "confirmed" | "production_default" | "mainnet_preferred";
+      warning?: "nile_test_activity_only";
+    }
   | {
       type: "requires_selection";
       reason: "multiple_active" | "no_activity";
@@ -28,10 +33,19 @@ export function decideImportedWalletNetwork(
 
   const active = probes.filter((probe) => probeScore(probe) > 0);
   if (active.length === 1) {
-    return { type: "selected", network: active[0]!.network, reason: "single_active" };
+    const network = active[0]!.network;
+    const decision: ImportedWalletNetworkDecision = {
+      type: "selected",
+      network,
+      reason: "single_active",
+    };
+    if (network === "trc20-nile") decision.warning = "nile_test_activity_only";
+    return decision;
   }
-  if (active.length > 1) return { type: "requires_selection", reason: "multiple_active", probes };
-  return { type: "requires_selection", reason: "no_activity", probes };
+  if (active.length > 1) {
+    return { type: "selected", network: "trc20-mainnet", reason: "mainnet_preferred" };
+  }
+  return { type: "selected", network: "trc20-mainnet", reason: "production_default" };
 }
 
 export function chooseImportedWalletNetwork(requested: ChainNetwork, probes: NetworkProbe[]) {

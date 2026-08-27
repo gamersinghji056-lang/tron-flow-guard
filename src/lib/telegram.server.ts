@@ -31,6 +31,7 @@ const DEFAULT_APP_SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
 const DEFAULT_APP_HANDOFF_TTL_MS = 5 * 60_000;
 const DEFAULT_MAX_FAILED_ATTEMPTS = 5;
 const DEFAULT_LOCK_MS = 15 * 60_000;
+const REFERRAL_CODE_RE = /^[A-Za-z0-9_-]{3,40}$/;
 
 interface TelegramAccountRow {
   id: string;
@@ -748,6 +749,15 @@ async function completeBotRegistration(input: {
     };
   } catch (error) {
     await clearBotAuthState(input.user.id);
+    if (error instanceof Error && /already exists|already registered/i.test(error.message)) {
+      const existing = await handleExistingEmailDuringBotRegistration({
+        user: input.user,
+        chatId: input.chatId,
+        email: input.email,
+        accountType: input.state.account_type ?? "trader",
+      });
+      if (existing) return existing;
+    }
     if (error instanceof TelegramAuthError && error.code === "telegram_already_linked") {
       const linkedState = await readLinkedState(input.user.id);
       return {
@@ -769,6 +779,165 @@ async function completeBotRegistration(input: {
       replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
     };
   }
+}
+
+function parseStartReferralCode(text: string) {
+  const [, raw] = text.trim().split(/\s+/, 2);
+  const code = raw?.trim();
+  if (!code || !REFERRAL_CODE_RE.test(code)) return null;
+  return code;
+}
+
+async function captureTelegramReferralIntent(telegramUserId: number, referralCode: string | null) {
+  if (!referralCode) return;
+  const { error } = await supabaseAdmin.from("telegram_referral_intents" as never).upsert(
+    {
+      telegram_user_id: telegramUserId,
+      referral_code: referralCode,
+      source: "telegram_start",
+      created_at: new Date().toISOString(),
+      consumed_at: null,
+    } as never,
+    { onConflict: "telegram_user_id" },
+  );
+  if (error && error.code !== "42P01") throw new Error(error.message);
+}
+
+async function bindPendingTelegramReferral(input: {
+  telegramUserId: number;
+  userId: string;
+  reason: string;
+}) {
+  const { data: intent, error: intentError } = await supabaseAdmin
+    .from("telegram_referral_intents" as never)
+    .select("referral_code, source, consumed_at")
+    .eq("telegram_user_id", input.telegramUserId as never)
+    .is("consumed_at", null as never)
+    .maybeSingle();
+  if (intentError) {
+    if (intentError.code === "42P01") return;
+    throw new Error(intentError.message);
+  }
+  const referralCode = (intent as { referral_code?: string | null } | null)?.referral_code?.trim();
+  if (!referralCode) return;
+
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("referral_attributions" as never)
+    .select("id")
+    .eq("referred_user_id", input.userId as never)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  if (existing) {
+    await supabaseAdmin
+      .from("telegram_referral_intents" as never)
+      .update({ consumed_at: new Date().toISOString() } as never)
+      .eq("telegram_user_id", input.telegramUserId as never);
+    return;
+  }
+
+  const { data: referrer, error: referrerError } = await supabaseAdmin
+    .from("profiles" as never)
+    .select("id, referral_code")
+    .ilike("referral_code", referralCode as never)
+    .maybeSingle();
+  if (referrerError) throw new Error(referrerError.message);
+  const referrerId = (referrer as { id?: string | null } | null)?.id;
+  if (!referrerId || referrerId === input.userId) {
+    await supabaseAdmin
+      .from("telegram_referral_intents" as never)
+      .update({ consumed_at: new Date().toISOString() } as never)
+      .eq("telegram_user_id", input.telegramUserId as never);
+    return;
+  }
+
+  const insert = await supabaseAdmin.from("referral_attributions" as never).insert({
+    referrer_user_id: referrerId,
+    referred_user_id: input.userId,
+    referral_code: referralCode,
+    source: "telegram_start",
+    status: "pending",
+  } as never);
+  if (insert.error && insert.error.code !== "23505") throw new Error(insert.error.message);
+
+  await supabaseAdmin
+    .from("telegram_referral_intents" as never)
+    .update({ consumed_at: new Date().toISOString() } as never)
+    .eq("telegram_user_id", input.telegramUserId as never);
+  await supabaseAdmin.from("telegram_link_audit").insert({
+    user_id: input.userId,
+    telegram_user_id: input.telegramUserId,
+    action: "telegram.referral.bound",
+    actor_id: input.userId,
+    actor_type: "telegram",
+    metadata: {
+      reason: input.reason,
+      referral_code: referralCode,
+      referrer_user_id: referrerId,
+    } as never,
+  } as never);
+}
+
+async function findAuthUserIdByEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  const perPage = 200;
+  for (let page = 1; page <= 50; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) return null;
+    const match = data.users.find((candidate) => candidate.email?.toLowerCase() === normalized);
+    if (match?.id) return match.id;
+    if (data.users.length < perPage) return null;
+  }
+  return null;
+}
+
+async function handleExistingEmailDuringBotRegistration(input: {
+  user: TelegramWebAppUser;
+  chatId: number;
+  email: string;
+  accountType: WtronAccountType;
+}) {
+  const userId = await findAuthUserIdByEmail(input.email);
+  if (!userId) return null;
+  const { data: linkedToUser } = await supabaseAdmin
+    .from("telegram_accounts")
+    .select("telegram_user_id, status")
+    .eq("user_id", userId as never)
+    .maybeSingle();
+  const linked = linkedToUser as {
+    telegram_user_id?: number | null;
+    status?: string | null;
+  } | null;
+  if (linked?.telegram_user_id && linked.telegram_user_id !== input.user.id) {
+    await clearBotAuthState(input.user.id);
+    return {
+      text: "This account is already linked to another Telegram account. Login was denied to prevent takeover.",
+      replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
+    };
+  }
+  if (linked?.telegram_user_id === input.user.id) {
+    await clearBotAuthState(input.user.id);
+    return {
+      text: "This Telegram account already owns that WTRON account. Please login.",
+      replyMarkup: await menuKeyboardForLinkedState(await readLinkedState(input.user.id)),
+    };
+  }
+  await supabaseAdmin.from("telegram_bot_auth_states" as never).upsert(
+    {
+      telegram_user_id: input.user.id,
+      chat_id: input.chatId,
+      flow: "login",
+      account_type: input.accountType,
+      step: "password",
+      email: input.email.trim().toLowerCase(),
+      attempts: 0,
+      locked_until: null,
+      expires_at: new Date(Date.now() + botAuthTtlMs()).toISOString(),
+    } as never,
+    { onConflict: "telegram_user_id" },
+  );
+  return {
+    text: "This email already has a WTRON account. Enter its password to securely login and link this Telegram account.",
+  };
 }
 
 export async function linkTelegramIdentity(input: {
@@ -831,6 +1000,14 @@ export async function linkTelegramIdentity(input: {
     )
     .single();
   if (error) throw new Error(error.message);
+
+  await bindPendingTelegramReferral({
+    telegramUserId: tg.id,
+    userId: input.userId,
+    reason: input.reason,
+  }).catch((error) => {
+    console.warn("[telegram] pending referral bind failed", error);
+  });
 
   await supabaseAdmin.from("telegram_link_audit").insert({
     user_id: input.userId,
@@ -1255,6 +1432,7 @@ async function openKeyboardForAccount(account: TelegramAccountRow | null, path: 
 export async function handleTelegramCommand(user: TelegramWebAppUser, text: string) {
   const command = text.split(/\s+/, 1)[0]?.toLowerCase() || "/start";
   if (command === "/start") {
+    await captureTelegramReferralIntent(user.id, parseStartReferralCode(text));
     await clearBotAuthState(user.id);
     pendingRegistrationPasswords.delete(user.id);
   }

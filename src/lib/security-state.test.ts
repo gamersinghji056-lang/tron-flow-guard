@@ -12,7 +12,13 @@ import {
 import { assertAdminRegistrationCode } from "./admin-registration.ts";
 import { canTransitionDirectSell } from "./direct-sell-state.ts";
 import { assertVendorDirectSellAccount, directSellPayoutMetadata } from "./direct-sell-policy.ts";
-import { canTransitionP2pOrder, normalizeP2pMarketplaceAd } from "./p2p-state.ts";
+import {
+  canTransitionP2pOrder,
+  normalizeP2pMarketplaceAd,
+  p2pCompletionRate,
+  p2pJoinedDurationDays,
+  p2pRankingTier,
+} from "./p2p-state.ts";
 import {
   calculateP2pSellerFee,
   calculatePercentFee,
@@ -45,7 +51,7 @@ import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
 } from "./tron-personal-wallet.ts";
-import { isTronAddress, parseTokenBalanceHex } from "./chain.ts";
+import { DEFAULT_NETWORK, isTronAddress, parseTokenBalanceHex } from "./chain.ts";
 import { deriveGasFreeAddressFromGeneralAddress } from "./gasfree-address.ts";
 import {
   GASFREE_MAINNET_PROVIDER_BASE_URL,
@@ -637,7 +643,7 @@ describe("imported wallet network detection", () => {
     );
   });
 
-  it("requires user selection when both networks have activity", () => {
+  it("prefers Mainnet when both networks have activity in customer import UX", () => {
     assert.deepEqual(
       decideImportedWalletNetwork(
         "trc20-nile",
@@ -648,17 +654,14 @@ describe("imported wallet network detection", () => {
         false,
       ),
       {
-        type: "requires_selection",
-        reason: "multiple_active",
-        probes: [
-          { network: "trc20-mainnet", trxBalance: 7.954209, usdtBalance: 15, txCount: 4 },
-          { network: "trc20-nile", trxBalance: 1, usdtBalance: 0, txCount: 1 },
-        ],
+        type: "selected",
+        network: "trc20-mainnet",
+        reason: "mainnet_preferred",
       },
     );
   });
 
-  it("requires user selection when no supported network has activity", () => {
+  it("uses Mainnet production default when no supported network has activity", () => {
     const decision = decideImportedWalletNetwork(
       "trc20-nile",
       [
@@ -667,8 +670,11 @@ describe("imported wallet network detection", () => {
       ],
       false,
     );
-    assert.equal(decision.type, "requires_selection");
-    if (decision.type === "requires_selection") assert.equal(decision.reason, "no_activity");
+    assert.deepEqual(decision, {
+      type: "selected",
+      network: "trc20-mainnet",
+      reason: "production_default",
+    });
   });
 
   it("persists an explicitly confirmed imported wallet network", () => {
@@ -1981,5 +1987,105 @@ describe("GasFree transfer service safety", () => {
     assert.notEqual(fa("walletStatus"), "Wallet status");
     assert.notEqual(fa("serviceStatus"), "Service status");
     assert.match(en("gasfreeTransferSetupRequired"), /provider setup/);
+  });
+
+  it("defaults customer wallet creation/import to TRON Mainnet without asking for Nile", () => {
+    assert.equal(DEFAULT_NETWORK, "trc20-mainnet");
+    assert.equal(chooseImportedWalletNetwork("trc20-mainnet", []), "trc20-mainnet");
+    assert.deepEqual(decideImportedWalletNetwork("trc20-mainnet", [], false), {
+      type: "selected",
+      network: "trc20-mainnet",
+      reason: "production_default",
+    });
+    assert.deepEqual(
+      decideImportedWalletNetwork(
+        "trc20-mainnet",
+        [
+          { network: "trc20-mainnet", trxBalance: 0, usdtBalance: 0, txCount: 0 },
+          { network: "trc20-nile", trxBalance: 1, usdtBalance: 0, txCount: 1 },
+        ],
+        false,
+      ),
+      {
+        type: "selected",
+        network: "trc20-nile",
+        reason: "single_active",
+        warning: "nile_test_activity_only",
+      },
+    );
+  });
+
+  it("derives P2P ranking and metrics from real metric inputs", () => {
+    const metrics = {
+      completedTrades: 85,
+      successfulTrades: 95,
+      totalTrades: 100,
+      totalUsdtVolume: 90_000,
+      openDisputes: 0,
+      resolvedDisputes: 2,
+      reportsReceived: 0,
+      joinedAt: "2026-01-01T00:00:00.000Z",
+      now: "2026-08-27T00:00:00.000Z",
+    };
+    assert.equal(p2pCompletionRate(metrics), 95);
+    assert.equal(p2pJoinedDurationDays(metrics), 238);
+    assert.equal(p2pRankingTier(metrics), "Experienced");
+    assert.equal(
+      p2pRankingTier({ ...metrics, completedTrades: 0, successfulTrades: 0, totalTrades: 0 }),
+      "Active",
+    );
+  });
+
+  it("ships one-level referral reward SQL with exactly-once source idempotency", () => {
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260827154343_final_vendor_referral_p2p_wallet_readiness.sql",
+      ),
+      "utf8",
+    );
+    assert.match(sql, /referral_direct_rate_percent/);
+    assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS referral_rewards_source_once_idx/);
+    assert.match(sql, /ON CONFLICT \(idempotency_key\) DO NOTHING/);
+    assert.match(sql, /record_direct_referral_reward/);
+    assert.match(sql, /_source_type = 'p2p_order'/);
+    assert.match(sql, /_source_type = 'direct_sell_order'/);
+    assert.doesNotMatch(sql, /wallet.*referral.*reward/i);
+  });
+
+  it("ships protected P2P chat attachment and read-state schema", () => {
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260827154343_final_vendor_referral_p2p_wallet_readiness.sql",
+      ),
+      "utf8",
+    );
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.p2p_message_attachments/);
+    assert.match(sql, /mime_type IN \('image\/jpeg','image\/png','image\/webp'\)/);
+    assert.match(sql, /file_size_bytes <= 5242880/);
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.p2p_message_reads/);
+    assert.match(sql, /buyer_user_id = auth\.uid\(\) OR o\.seller_id = auth\.uid\(\)/);
+  });
+
+  it("captures Telegram referral deep-links and binds after account link", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/lib/telegram.server.ts"), "utf8");
+    assert.match(source, /parseStartReferralCode/);
+    assert.match(
+      source,
+      /captureTelegramReferralIntent\(user\.id, parseStartReferralCode\(text\)\)/,
+    );
+    assert.match(source, /bindPendingTelegramReferral/);
+    assert.match(source, /Self-referral|referrerId === input\.userId/);
+    assert.match(source, /This email already has a WTRON account/);
+  });
+
+  it("keeps vendor Mini App buy paths hidden and server-denied", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
+    assert.match(mini, /VendorPrimaryTab = "home" \| "trade" \| "wallet" \| "orders" \| "more"/);
+    assert.match(mini, /vendorMode && props\.tab === "buy" \? "sell" : props\.tab/);
+    assert.match(mini, /entryState === "vendor_app" && nextScreen === "p2p" \? "trade"/);
+    assert.match(p2p, /Vendor accounts use Vendor Trade, not Trader P2P/);
   });
 });

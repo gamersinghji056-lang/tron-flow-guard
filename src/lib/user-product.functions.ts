@@ -219,7 +219,9 @@ export const fetchReferralSummary = createServerFn({ method: "GET" })
         .limit(100),
       context.supabase
         .from("referral_rewards" as never)
-        .select("amount, currency, status, created_at, paid_at")
+        .select(
+          "id, amount, currency, status, source_type, source_order_id, trade_amount_usdt, rate_percent, created_at, paid_at",
+        )
         .eq("user_id", context.userId as never)
         .order("created_at", { ascending: false })
         .limit(100),
@@ -231,12 +233,19 @@ export const fetchReferralSummary = createServerFn({ method: "GET" })
           "referral_reward_type",
           "referral_reward_amount",
           "referral_qualification_condition",
+          "referral_direct_rate_percent",
+          "referral_eligible_p2p_enabled",
+          "referral_eligible_direct_sell_enabled",
         ]),
     ]);
     for (const result of [profile, invited, rewards, settings]) {
       if (result.error) throw new Error(result.error.message);
     }
-    const rewardRows = (rewards.data ?? []) as { amount: number | string; status: string }[];
+    const rewardRows = (rewards.data ?? []) as {
+      amount: number | string;
+      status: string;
+      trade_amount_usdt?: number | string | null;
+    }[];
     return {
       referralCode:
         (profile.data as { referral_code?: string | null } | null)?.referral_code ?? code,
@@ -253,6 +262,8 @@ export const fetchReferralSummary = createServerFn({ method: "GET" })
         (row) => row.amount,
       ),
       totalReferralEarnings: sumRows(rewardRows, (row) => row.amount),
+      eligibleTradeVolume: sumRows(rewardRows, (row) => row.trade_amount_usdt ?? 0),
+      rewards: rewards.data ?? [],
       settings: settings.data ?? [],
     };
   });

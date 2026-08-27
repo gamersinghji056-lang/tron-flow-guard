@@ -69,3 +69,42 @@ export function normalizeP2pMarketplaceAd(row: P2pMarketplaceAdInput) {
     terms: row.terms ?? null,
   };
 }
+
+export interface P2pParticipantMetricsInput {
+  completedTrades: number;
+  successfulTrades: number;
+  totalTrades: number;
+  totalUsdtVolume: number;
+  openDisputes: number;
+  resolvedDisputes: number;
+  reportsReceived: number;
+  joinedAt: string | Date;
+  now?: string | Date;
+}
+
+export function p2pCompletionRate(metrics: P2pParticipantMetricsInput) {
+  if (metrics.totalTrades <= 0) return 0;
+  return Math.round((metrics.successfulTrades / metrics.totalTrades) * 10_000) / 100;
+}
+
+export function p2pJoinedDurationDays(metrics: P2pParticipantMetricsInput) {
+  const joined = new Date(metrics.joinedAt).getTime();
+  const now = metrics.now ? new Date(metrics.now).getTime() : Date.now();
+  if (!Number.isFinite(joined) || !Number.isFinite(now) || now <= joined) return 0;
+  return Math.floor((now - joined) / 86_400_000);
+}
+
+export function p2pRankingTier(metrics: P2pParticipantMetricsInput) {
+  const completion = p2pCompletionRate(metrics);
+  const disputePenalty = metrics.openDisputes * 5 + metrics.reportsReceived * 3;
+  const score =
+    Math.min(metrics.completedTrades, 100) * 0.35 +
+    Math.min(metrics.totalUsdtVolume / 1000, 100) * 0.3 +
+    completion * 0.25 +
+    Math.min(p2pJoinedDurationDays(metrics) / 30, 24) * 0.1 -
+    disputePenalty;
+  if (score >= 85 && completion >= 95) return "Top Trader";
+  if (score >= 55 && completion >= 90) return "Experienced";
+  if (score >= 20) return "Active";
+  return "New";
+}
