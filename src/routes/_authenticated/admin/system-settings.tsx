@@ -41,9 +41,29 @@ interface GasFreeProviderTestResult {
   network: string;
   asset: string;
   tokenAddress: string | null;
+  envNames?: readonly string[];
   credentialState: "CONFIGURED" | "INCOMPLETE" | "MISSING";
   serviceProvider: string;
   message: string;
+}
+
+interface GasFreeDiagnosticsResult {
+  mainnet: GasFreeProviderTestResult;
+  nile: GasFreeProviderTestResult;
+  transferEnabled: boolean;
+  mainnetEnabled: boolean;
+  killSwitch: boolean;
+  productionReadiness: "PRODUCTION_ENABLED" | "TECHNICALLY_READY" | "NOT_READY" | string;
+  lastProviderRequest?: {
+    id?: string | null;
+    network?: string | null;
+    providerRequestId?: string | null;
+    status?: string | null;
+    txid?: string | null;
+    failureCode?: string | null;
+    failureReason?: string | null;
+    updatedAt?: string | null;
+  } | null;
 }
 
 const SETTINGS_LINKS: Array<[string, string]> = [
@@ -67,7 +87,7 @@ function SystemSettingsPage() {
   const [wallets, setWallets] = useState<WalletOption[]>([]);
   const [pendingFees, setPendingFees] = useState(0);
   const [sweepAmount, setSweepAmount] = useState("");
-  const [gasfreeTest, setGasfreeTest] = useState<GasFreeProviderTestResult | null>(null);
+  const [gasfreeTest, setGasfreeTest] = useState<GasFreeDiagnosticsResult | null>(null);
   const [pending, setPending] = useState(false);
   const [gasfreeTestPending, setGasfreeTestPending] = useState(false);
 
@@ -177,10 +197,11 @@ function SystemSettingsPage() {
   async function testGasFreeConnection() {
     setGasfreeTestPending(true);
     try {
-      const result = (await runGasFreeProviderTest()) as unknown as GasFreeProviderTestResult;
+      const result = (await runGasFreeProviderTest()) as unknown as GasFreeDiagnosticsResult;
       setGasfreeTest(result);
-      if (result.connected) toast.success("GasFree provider connected");
-      else toast.warning(result.message);
+      if (result.mainnet.connected || result.nile.connected)
+        toast.success("GasFree diagnostics updated");
+      else toast.warning("GasFree providers are not reachable");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not test GasFree provider");
     } finally {
@@ -390,15 +411,30 @@ function SystemSettingsPage() {
             />
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <Metric label="Provider" value="GasFree OpenAPI" />
-            <Metric label="Provider Status" value={gasfreeTest?.message ?? "Not tested"} />
-            <Metric label="API Credentials" value={gasfreeTest?.credentialState ?? "Missing"} />
-            <Metric label="Provider URL" value="GASFREE_PROVIDER_BASE_URL: Configured/Missing" />
+            <Metric label="Mainnet Provider" value={gasfreeTest?.mainnet.message ?? "Not tested"} />
             <Metric
-              label="Service Provider"
-              value={gasfreeTest?.serviceProvider ?? "Auto-discovered / pinned"}
+              label="Mainnet Credentials"
+              value={gasfreeTest?.mainnet.credentialState ?? "Missing"}
             />
-            <Metric label="Supported Network" value="TRON Mainnet" />
+            <Metric label="Mainnet Env" value="GASFREE_PROVIDER_BASE_URL / GASFREE_API_KEY" />
+            <Metric label="Nile Provider" value={gasfreeTest?.nile.message ?? "Not tested"} />
+            <Metric
+              label="Nile Credentials"
+              value={gasfreeTest?.nile.credentialState ?? "Missing"}
+            />
+            <Metric
+              label="Nile Env"
+              value="GASFREE_NILE_PROVIDER_BASE_URL / GASFREE_NILE_API_KEY"
+            />
+            <Metric
+              label="Mainnet Service Provider"
+              value={gasfreeTest?.mainnet.serviceProvider ?? "Auto-discovered / pinned"}
+            />
+            <Metric
+              label="Nile Service Provider"
+              value={gasfreeTest?.nile.serviceProvider ?? "Auto-discovered / pinned"}
+            />
+            <Metric label="Supported Network" value="Mainnet production / Nile diagnostics" />
             <Metric label="Supported Asset" value="USDT TRC20" />
             <Metric
               label="GasFree Transfer"
@@ -409,12 +445,33 @@ function SystemSettingsPage() {
                   : "Disabled"
               }
             />
+            <Metric
+              label="Readiness"
+              value={gasfreeTest?.productionReadiness?.replaceAll("_", " ") ?? "Not tested"}
+            />
+            <Metric
+              label="Last Provider Request"
+              value={gasfreeTest?.lastProviderRequest?.providerRequestId ?? "-"}
+            />
+            <Metric
+              label="Last Provider Error"
+              value={gasfreeTest?.lastProviderRequest?.failureReason ?? "-"}
+            />
             <Metric label="Secrets" value="GASFREE_API_KEY / GASFREE_API_SECRET: server env only" />
-            {gasfreeTest?.providerAddress ? (
-              <Metric label="Provider Address" value={gasfreeTest.providerAddress} />
+            {gasfreeTest?.mainnet.providerAddress ? (
+              <Metric
+                label="Mainnet Provider Address"
+                value={gasfreeTest.mainnet.providerAddress}
+              />
             ) : null}
-            {gasfreeTest?.tokenAddress ? (
-              <Metric label="Token Contract" value={gasfreeTest.tokenAddress} />
+            {gasfreeTest?.nile.providerAddress ? (
+              <Metric label="Nile Provider Address" value={gasfreeTest.nile.providerAddress} />
+            ) : null}
+            {gasfreeTest?.mainnet.tokenAddress ? (
+              <Metric label="Mainnet Token Contract" value={gasfreeTest.mainnet.tokenAddress} />
+            ) : null}
+            {gasfreeTest?.nile.tokenAddress ? (
+              <Metric label="Nile Token Contract" value={gasfreeTest.nile.tokenAddress} />
             ) : null}
           </div>
         </div>

@@ -55,15 +55,21 @@ import { DEFAULT_NETWORK, isTronAddress, parseTokenBalanceHex } from "./chain.ts
 import { deriveGasFreeAddressFromGeneralAddress } from "./gasfree-address.ts";
 import {
   GASFREE_MAINNET_PROVIDER_BASE_URL,
+  GASFREE_MAINNET_ENV_NAMES,
   GASFREE_NILE_PROVIDER_BASE_URL,
+  GASFREE_NILE_ENV_NAMES,
   GASFREE_ENV_NAMES,
   GASFREE_PROVIDER_NAME,
+  classifyTransactionPasswordAuthorizationError,
   gasFreeApiCredentialsState,
   gasFreeApiSigningPath,
+  gasFreeAccountState,
   gasFreeProviderBaseUrl,
   gasFreeRequiresTransactionPassword,
   gasFreeServiceReadiness,
   isGasFreeTransferExecutable,
+  providerTxidForPersistence,
+  resolveGasFreeProviderConfig,
   validateGasFreeReplay,
 } from "./gasfree-transfer-policy.ts";
 import GasFreeSdk from "@gasfree/gasfree-sdk";
@@ -1868,6 +1874,33 @@ describe("GasFree transfer service safety", () => {
     assert.equal(
       gasFreeServiceReadiness({
         ...base,
+        network: "trc20-nile",
+        asset: "USDT",
+        amount: 10,
+        allowTestnet: true,
+      }).status,
+      "AVAILABLE",
+    );
+    assert.equal(
+      gasFreeServiceReadiness({
+        ...base,
+        settings: {
+          enabled: false,
+          mainnetEnabled: false,
+          killSwitch: true,
+          supportedAsset: "USDT",
+          perTxMaxUsdt: 0,
+        },
+        network: "trc20-nile",
+        asset: "USDT",
+        amount: 10,
+        allowTestnet: true,
+      }).status,
+      "AVAILABLE",
+    );
+    assert.equal(
+      gasFreeServiceReadiness({
+        ...base,
         network: "trc20-mainnet",
         asset: "TRX",
         amount: 10,
@@ -1890,6 +1923,29 @@ describe("GasFree transfer service safety", () => {
     assert.equal(gasFreeRequiresTransactionPassword("ACTIVATION_REQUIRED"), true);
     assert.equal(gasFreeRequiresTransactionPassword("DISABLED"), false);
     assert.equal(gasFreeRequiresTransactionPassword("NOT_CONFIGURED"), false);
+  });
+
+  it("classifies GasFree transaction password authorization outcomes without logging secrets", () => {
+    assert.equal(
+      classifyTransactionPasswordAuthorizationError(new Error("Transaction password is required")),
+      "PASSWORD_NOT_PROVIDED",
+    );
+    assert.equal(
+      classifyTransactionPasswordAuthorizationError(
+        new Error("Set a transaction password before using this wallet action"),
+      ),
+      "PASSWORD_NOT_CONFIGURED",
+    );
+    assert.equal(
+      classifyTransactionPasswordAuthorizationError(new Error("Transaction password is incorrect")),
+      "WRONG_PASSWORD",
+    );
+    assert.equal(
+      classifyTransactionPasswordAuthorizationError(
+        new Error("Transaction password is temporarily locked. Try again later."),
+      ),
+      "PASSWORD_LOCKED",
+    );
   });
 
   it("protects GasFree authorization from replay and stale deadlines", () => {
@@ -1925,10 +1981,74 @@ describe("GasFree transfer service safety", () => {
     assert.equal(GASFREE_PROVIDER_NAME, "gasfree_open_api");
     assert.deepEqual(
       GASFREE_ENV_NAMES.filter((name) => name.includes("SECRET") || name.includes("KEY")),
-      ["GASFREE_API_KEY", "GASFREE_API_SECRET"],
+      ["GASFREE_API_KEY", "GASFREE_API_SECRET", "GASFREE_NILE_API_KEY", "GASFREE_NILE_API_SECRET"],
     );
+    assert.deepEqual(GASFREE_MAINNET_ENV_NAMES, [
+      "GASFREE_PROVIDER_BASE_URL",
+      "GASFREE_SERVICE_PROVIDER_ADDRESS",
+      "GASFREE_API_KEY",
+      "GASFREE_API_SECRET",
+      "GASFREE_REQUEST_TIMEOUT_MS",
+    ]);
+    assert.deepEqual(GASFREE_NILE_ENV_NAMES, [
+      "GASFREE_NILE_PROVIDER_BASE_URL",
+      "GASFREE_NILE_SERVICE_PROVIDER_ADDRESS",
+      "GASFREE_NILE_API_KEY",
+      "GASFREE_NILE_API_SECRET",
+      "GASFREE_REQUEST_TIMEOUT_MS",
+    ]);
     assert.equal(WTRON_OFFICIAL_LOGO_PATH, "/branding/wtron-logo.svg");
     assert.equal(WTRON_OFFICIAL_MARK_PATH, "/branding/wtron-mark.svg");
+  });
+
+  it("keeps GasFree Nile and Mainnet provider credentials isolated", () => {
+    const env = {
+      GASFREE_PROVIDER_BASE_URL: "https://mainnet.example/tron",
+      GASFREE_SERVICE_PROVIDER_ADDRESS: "TMainnetProviderAddress111111111111",
+      GASFREE_API_KEY: "mainnet-key",
+      GASFREE_API_SECRET: "mainnet-secret",
+      GASFREE_NILE_PROVIDER_BASE_URL: "https://nile.example/nile",
+      GASFREE_NILE_SERVICE_PROVIDER_ADDRESS: "TNileProviderAddress1111111111111",
+      GASFREE_NILE_API_KEY: "nile-key",
+      GASFREE_NILE_API_SECRET: "nile-secret",
+    };
+    const mainnet = resolveGasFreeProviderConfig("trc20-mainnet", env);
+    const nile = resolveGasFreeProviderConfig("trc20-nile", env);
+    assert.equal(mainnet.providerBaseUrl, "https://mainnet.example/tron");
+    assert.equal(mainnet.apiKey, "mainnet-key");
+    assert.equal(mainnet.apiSecret, "mainnet-secret");
+    assert.deepEqual(mainnet.envNames, GASFREE_MAINNET_ENV_NAMES);
+    assert.equal(nile.providerBaseUrl, "https://nile.example/nile");
+    assert.equal(nile.apiKey, "nile-key");
+    assert.equal(nile.apiSecret, "nile-secret");
+    assert.deepEqual(nile.envNames, GASFREE_NILE_ENV_NAMES);
+  });
+
+  it("models real GasFree activation and TXID persistence states", () => {
+    assert.equal(
+      gasFreeAccountState({
+        active: false,
+        allowSubmit: true,
+        serviceStatus: "AVAILABLE",
+        testFundsSufficient: true,
+      }),
+      "ACTIVATION_REQUIRED",
+    );
+    assert.equal(
+      gasFreeAccountState({ active: false, allowSubmit: false, serviceStatus: "AVAILABLE" }),
+      "ACTIVATING",
+    );
+    assert.equal(gasFreeAccountState({ active: true, serviceStatus: "AVAILABLE" }), "ACTIVE");
+    assert.equal(
+      gasFreeAccountState({
+        active: false,
+        serviceStatus: "AVAILABLE",
+        testFundsSufficient: false,
+      }),
+      "INSUFFICIENT_TEST_FUNDS",
+    );
+    assert.equal(providerTxidForPersistence({ txnHash: null }), null);
+    assert.equal(providerTxidForPersistence({ txnHash: "abc123" }), "abc123");
   });
 
   it("keeps large GasFree history pagination bounded and duplicate-safe", async () => {
@@ -1987,6 +2107,27 @@ describe("GasFree transfer service safety", () => {
     assert.notEqual(fa("walletStatus"), "Wallet status");
     assert.notEqual(fa("serviceStatus"), "Service status");
     assert.match(en("gasfreeTransferSetupRequired"), /provider setup/);
+  });
+
+  it("renders precise GasFree Mini App and admin diagnostic states", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const admin = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/system-settings.tsx"),
+      "utf8",
+    );
+    const adminFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/admin.functions.ts"),
+      "utf8",
+    );
+    assert.match(mini, /Ready - Transfers Disabled by Admin/);
+    assert.match(mini, /Activation Required/);
+    assert.match(mini, /Provider Unavailable/);
+    assert.match(mini, /Insufficient Test Funds/);
+    assert.match(admin, /Mainnet Provider/);
+    assert.match(admin, /Nile Provider/);
+    assert.match(admin, /TECHNICALLY_READY/);
+    assert.match(admin, /PRODUCTION_ENABLED/);
+    assert.match(adminFunctions, /getAdminGasFreeDiagnostics/);
   });
 
   it("defaults customer wallet creation/import to TRON Mainnet without asking for Nile", () => {

@@ -3546,14 +3546,18 @@ function WalletGasFreeScreen({
   const transferStatus = readiness?.status ?? (discovered ? "NOT_CONFIGURED" : "DISABLED");
   const transferLabel =
     transferStatus === "AVAILABLE"
-      ? t("available")
+      ? "Active"
       : transferStatus === "NOT_CONFIGURED"
-        ? t("setupRequired")
+        ? "Ready - Transfers Disabled by Admin"
         : transferStatus === "PROVIDER_ERROR"
-          ? t("checkFailed")
+          ? "Provider Unavailable"
           : transferStatus === "LIMIT_REACHED"
-            ? t("limitReached")
-            : t("disabled");
+            ? "Insufficient Test Funds"
+            : transferStatus === "PENDING"
+              ? "Pending"
+              : transferStatus === "ACTIVATION_REQUIRED"
+                ? "Activation Required"
+                : "Ready - Transfers Disabled by Admin";
   const rawStatus = discovered
     ? "available"
     : gasfreeCapabilityStatus(wallet.gas_sponsorship_status);

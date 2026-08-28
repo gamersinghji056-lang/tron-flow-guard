@@ -9,11 +9,13 @@ import {
   gasfreeChainIdForNetwork,
 } from "@/lib/gasfree-address";
 import {
-  GASFREE_ENV_NAMES,
   GASFREE_PROVIDER_NAME,
   GASFREE_SUPPORTED_ASSET,
+  classifyTransactionPasswordAuthorizationError,
   gasFreeServiceReadiness,
   isGasFreeTransferExecutable,
+  providerTxidForPersistence,
+  resolveGasFreeProviderConfig,
   validateGasFreeReplay,
   type GasFreeServiceStatus,
 } from "@/lib/gasfree-transfer-policy";
@@ -138,13 +140,6 @@ function usdtBaseUnits(amount: number, decimals = 6) {
   return String(Math.round(amount * factor));
 }
 
-function networkBaseUrl(network: ChainNetwork, override?: string | null) {
-  if (override) return override.replace(/\/+$/, "");
-  return network === "trc20-mainnet"
-    ? "https://open.gasfree.io/tron"
-    : "https://open-test.gasfree.io/nile";
-}
-
 function apiPath(baseUrl: string, endpoint: string) {
   const base = new URL(baseUrl);
   const basePath = base.pathname.replace(/\/+$/, "");
@@ -183,19 +178,7 @@ async function readSettings() {
 }
 
 function readProviderConfig(network: ChainNetwork) {
-  const providerBaseUrl = networkBaseUrl(network, process.env["GASFREE_PROVIDER_BASE_URL"]);
-  const serviceProviderAddress = process.env["GASFREE_SERVICE_PROVIDER_ADDRESS"]?.trim() || null;
-  const apiKey = process.env["GASFREE_API_KEY"]?.trim() || null;
-  const apiSecret = process.env["GASFREE_API_SECRET"]?.trim() || null;
-  return {
-    providerBaseUrl,
-    serviceProviderAddress,
-    apiKey,
-    apiSecret,
-    apiKeyConfigured: Boolean(apiKey),
-    apiSecretConfigured: Boolean(apiSecret),
-    timeoutMs: parseNumber(process.env["GASFREE_REQUEST_TIMEOUT_MS"] ?? null, 8_000),
-  };
+  return resolveGasFreeProviderConfig(network);
 }
 
 function signedHeaders(input: {
@@ -449,6 +432,7 @@ export async function getGasFreeTransferReadiness(input: {
   asset?: string;
   amount?: number;
   generalAddress?: string;
+  allowTestnet?: boolean;
 }): Promise<GasFreeTransferReadiness> {
   const settings = await readSettings();
   const providerConfig = readProviderConfig(input.network);
@@ -463,6 +447,7 @@ export async function getGasFreeTransferReadiness(input: {
     network: input.network,
     asset: input.asset ?? GASFREE_SUPPORTED_ASSET,
     ...(input.amount === undefined ? {} : { amount: input.amount }),
+    allowTestnet: input.allowTestnet === true,
   });
   const base = {
     provider: settings.provider || GASFREE_PROVIDER_NAME,
@@ -471,7 +456,7 @@ export async function getGasFreeTransferReadiness(input: {
     network: input.network,
     asset: (input.asset ?? GASFREE_SUPPORTED_ASSET).toUpperCase(),
     configured: staticReadiness.status !== "NOT_CONFIGURED",
-    envNames: GASFREE_ENV_NAMES,
+    envNames: providerConfig.envNames,
     serviceProviderConfigured: Boolean(providerConfig.serviceProviderAddress),
     apiKeyConfigured: providerConfig.apiKeyConfigured,
     apiSecretConfigured: providerConfig.apiSecretConfigured,
@@ -511,7 +496,11 @@ export async function getGasFreeTransferReadiness(input: {
 }
 
 export async function checkGasFreeProviderHealth(network: ChainNetwork = "trc20-mainnet") {
-  const readiness = await getGasFreeTransferReadiness({ network, asset: GASFREE_SUPPORTED_ASSET });
+  const readiness = await getGasFreeTransferReadiness({
+    network,
+    asset: GASFREE_SUPPORTED_ASSET,
+    allowTestnet: network === "trc20-nile",
+  });
   await writeServiceHeartbeat({
     service: "GASFREE",
     status: readiness.status === "AVAILABLE" ? "HEALTHY" : "DISABLED",
@@ -541,7 +530,11 @@ export async function testGasFreeProviderConnection(network: ChainNetwork = "trc
       status: "DEGRADED",
       message: "GasFree provider test failed.",
       errorCode: "PROVIDER_ERROR",
-      metadata: { network, error: message, env_names: GASFREE_ENV_NAMES },
+      metadata: {
+        network,
+        error: message,
+        env_names: resolveGasFreeProviderConfig(network).envNames,
+      },
     }).catch(() => undefined);
     return {
       connected: false,
@@ -553,6 +546,7 @@ export async function testGasFreeProviderConnection(network: ChainNetwork = "trc
       tokenAddress: null,
       baseUrlConfigured: false,
       credentialState: "MISSING" as const,
+      envNames: resolveGasFreeProviderConfig(network).envNames,
       serviceProvider: "Auto-discovery pending",
       message: "Provider authentication or health check failed.",
     };
@@ -574,6 +568,7 @@ export async function testGasFreeProviderConnection(network: ChainNetwork = "trc
     tokenAddress: readiness.tokenAddress ?? null,
     baseUrlConfigured: readiness.configured,
     credentialState,
+    envNames: readiness.envNames,
     serviceProvider: readiness.providerAddress
       ? "Auto-discovered"
       : readiness.serviceProviderConfigured
@@ -586,6 +581,79 @@ export async function testGasFreeProviderConnection(network: ChainNetwork = "trc
         : readiness.status === "NOT_CONFIGURED"
           ? "GasFree provider environment is not configured."
           : readiness.reason,
+  };
+}
+
+export async function getAdminGasFreeDiagnostics() {
+  const [mainnetResult, nileResult, settings, recent] = await Promise.all([
+    testGasFreeProviderConnection("trc20-mainnet").catch((error: unknown) => ({
+      connected: false,
+      status: "PROVIDER_ERROR" as const,
+      provider: "GasFree",
+      providerAddress: null,
+      network: "trc20-mainnet" as const,
+      asset: GASFREE_SUPPORTED_ASSET,
+      tokenAddress: null,
+      baseUrlConfigured: false,
+      credentialState: "MISSING" as const,
+      envNames: resolveGasFreeProviderConfig("trc20-mainnet").envNames,
+      serviceProvider: "Unavailable",
+      message: safeErrorMessage(error),
+    })),
+    testGasFreeProviderConnection("trc20-nile").catch((error: unknown) => ({
+      connected: false,
+      status: "PROVIDER_ERROR" as const,
+      provider: "GasFree",
+      providerAddress: null,
+      network: "trc20-nile" as const,
+      asset: GASFREE_SUPPORTED_ASSET,
+      tokenAddress: null,
+      baseUrlConfigured: false,
+      credentialState: "MISSING" as const,
+      envNames: resolveGasFreeProviderConfig("trc20-nile").envNames,
+      serviceProvider: "Unavailable",
+      message: safeErrorMessage(error),
+    })),
+    readSettings(),
+    supabaseAdmin
+      .from("gasfree_transfer_requests" as never)
+      .select(
+        "id, network, provider_request_id, status, txid, failure_code, failure_reason, created_at, updated_at",
+      )
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const lastRequest = recent.error ? null : recent.data;
+  return {
+    mainnet: mainnetResult,
+    nile: nileResult,
+    transferEnabled: settings.enabled,
+    mainnetEnabled: settings.mainnetEnabled,
+    killSwitch: settings.killSwitch,
+    productionReadiness:
+      mainnetResult.connected &&
+      settings.enabled === true &&
+      settings.mainnetEnabled === true &&
+      settings.killSwitch === false
+        ? "PRODUCTION_ENABLED"
+        : mainnetResult.connected
+          ? "TECHNICALLY_READY"
+          : "NOT_READY",
+    lastProviderRequest: lastRequest
+      ? {
+          id: (lastRequest as { id?: string }).id ?? null,
+          network: (lastRequest as { network?: string }).network ?? null,
+          providerRequestId:
+            (lastRequest as { provider_request_id?: string | null }).provider_request_id ?? null,
+          status: (lastRequest as { status?: string | null }).status ?? null,
+          txid: (lastRequest as { txid?: string | null }).txid ?? null,
+          failureCode: (lastRequest as { failure_code?: string | null }).failure_code ?? null,
+          failureReason: (lastRequest as { failure_reason?: string | null }).failure_reason ?? null,
+          updatedAt: (lastRequest as { updated_at?: string | null }).updated_at ?? null,
+        }
+      : null,
   };
 }
 
@@ -628,6 +696,24 @@ async function loadGeneralSecret(input: {
   return derived.privateKeyHex;
 }
 
+export async function verifyGasFreeTransactionPassword(input: {
+  userId: string;
+  walletId: string;
+  transactionPassword?: string | null;
+}) {
+  void input.walletId;
+  if (!input.transactionPassword) {
+    return { ok: false, state: "PASSWORD_NOT_PROVIDED" as const };
+  }
+  try {
+    const { verifyTransactionPasswordOrThrow } = await import("@/lib/wallet-security.server");
+    await verifyTransactionPasswordOrThrow(input.userId, input.transactionPassword);
+    return { ok: true, state: "PASSWORD_VERIFIED" as const };
+  } catch (error) {
+    return { ok: false, state: classifyTransactionPasswordAuthorizationError(error) };
+  }
+}
+
 function mapProviderState(state?: string | null) {
   if (state === "SUCCEED") return "CONFIRMED";
   if (state === "CONFIRMING") return "CONFIRMING";
@@ -650,7 +736,7 @@ export async function reconcileGasFreeTransferRequest(requestId: string) {
   } | null;
   if (!row?.provider_request_id || !row.network) throw new Error("GasFree trace ID is unavailable");
   const status = await getTransferStatus(row.network, row.provider_request_id);
-  const txid = status.txnHash ?? null;
+  const txid = providerTxidForPersistence(status);
   await supabaseAdmin
     .from("gasfree_transfer_requests" as never)
     .update({
@@ -864,7 +950,7 @@ export async function createGasFreeTransferRequest(input: {
       .from("gasfree_transfer_requests" as never)
       .update({
         provider_request_id: submitted.id,
-        txid: submitted.txnHash ?? null,
+        txid: providerTxidForPersistence(submitted),
         status: mapProviderState(submitted.state),
         submitted_at: new Date().toISOString(),
         failure_code: null,

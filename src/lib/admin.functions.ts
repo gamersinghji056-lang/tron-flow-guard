@@ -133,9 +133,8 @@ export const testGasFreeProviderConnection = createServerFn({ method: "POST" })
     const { requirePermission } = await import("@/lib/access.server");
     const { PERMISSIONS } = await import("@/lib/rbac");
     await requirePermission(context.supabase, context.userId, PERMISSIONS.SETTINGS_MANAGE);
-    const { testGasFreeProviderConnection: runProviderTest } =
-      await import("@/lib/gasfree-provider.server");
-    return runProviderTest("trc20-mainnet");
+    const { getAdminGasFreeDiagnostics } = await import("@/lib/gasfree-provider.server");
+    return getAdminGasFreeDiagnostics();
   });
 
 export const getAdminDashboard = createServerFn({ method: "GET" })

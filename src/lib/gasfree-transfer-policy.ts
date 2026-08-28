@@ -5,13 +5,23 @@ export const GASFREE_SUPPORTED_ASSET = "USDT";
 export const GASFREE_MAINNET_PROVIDER_BASE_URL = "https://open.gasfree.io/tron";
 export const GASFREE_NILE_PROVIDER_BASE_URL = "https://open-test.gasfree.io/nile";
 
-export const GASFREE_ENV_NAMES = [
+export const GASFREE_MAINNET_ENV_NAMES = [
   "GASFREE_PROVIDER_BASE_URL",
   "GASFREE_SERVICE_PROVIDER_ADDRESS",
   "GASFREE_API_KEY",
   "GASFREE_API_SECRET",
   "GASFREE_REQUEST_TIMEOUT_MS",
 ] as const;
+
+export const GASFREE_NILE_ENV_NAMES = [
+  "GASFREE_NILE_PROVIDER_BASE_URL",
+  "GASFREE_NILE_SERVICE_PROVIDER_ADDRESS",
+  "GASFREE_NILE_API_KEY",
+  "GASFREE_NILE_API_SECRET",
+  "GASFREE_REQUEST_TIMEOUT_MS",
+] as const;
+
+export const GASFREE_ENV_NAMES = [...GASFREE_MAINNET_ENV_NAMES, ...GASFREE_NILE_ENV_NAMES] as const;
 
 export type GasFreeServiceStatus =
   | "NOT_CONFIGURED"
@@ -23,6 +33,22 @@ export type GasFreeServiceStatus =
   | "LIMIT_REACHED"
   | "DISABLED"
   | "PROVIDER_ERROR";
+
+export type GasFreeAccountState =
+  | "READY"
+  | "ACTIVATION_REQUIRED"
+  | "ACTIVATING"
+  | "ACTIVE"
+  | "PROVIDER_UNAVAILABLE"
+  | "DISABLED_BY_ADMIN"
+  | "INSUFFICIENT_TEST_FUNDS";
+
+export type TransactionPasswordAuthorizationState =
+  | "PASSWORD_NOT_PROVIDED"
+  | "WRONG_PASSWORD"
+  | "PASSWORD_NOT_CONFIGURED"
+  | "PASSWORD_LOCKED"
+  | "PASSWORD_VERIFIED";
 
 export type GasFreeTransferStatus =
   | "CREATED"
@@ -52,6 +78,17 @@ export interface GasFreeProviderConfigLike {
   apiSecretConfigured?: boolean;
 }
 
+export interface GasFreeProviderRuntimeConfig {
+  providerBaseUrl: string;
+  serviceProviderAddress: string | null;
+  apiKey: string | null;
+  apiSecret: string | null;
+  apiKeyConfigured: boolean;
+  apiSecretConfigured: boolean;
+  timeoutMs: number;
+  envNames: readonly string[];
+}
+
 export function gasFreeProviderBaseUrl(network: ChainNetwork, override?: string | null) {
   if (override?.trim()) return override.trim().replace(/\/+$/, "");
   return network === "trc20-mainnet"
@@ -74,12 +111,53 @@ export function gasFreeApiCredentialsState(input: {
   return "incomplete" as const;
 }
 
+function parseTimeout(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function resolveGasFreeProviderConfig(
+  network: ChainNetwork,
+  env: Pick<NodeJS.ProcessEnv, string> = process.env,
+): GasFreeProviderRuntimeConfig {
+  if (network === "trc20-nile") {
+    const providerBaseUrl = gasFreeProviderBaseUrl(network, env["GASFREE_NILE_PROVIDER_BASE_URL"]);
+    const apiKey = env["GASFREE_NILE_API_KEY"]?.trim() || null;
+    const apiSecret = env["GASFREE_NILE_API_SECRET"]?.trim() || null;
+    return {
+      providerBaseUrl,
+      serviceProviderAddress: env["GASFREE_NILE_SERVICE_PROVIDER_ADDRESS"]?.trim() || null,
+      apiKey,
+      apiSecret,
+      apiKeyConfigured: Boolean(apiKey),
+      apiSecretConfigured: Boolean(apiSecret),
+      timeoutMs: parseTimeout(env["GASFREE_REQUEST_TIMEOUT_MS"], 8_000),
+      envNames: GASFREE_NILE_ENV_NAMES,
+    };
+  }
+
+  const providerBaseUrl = gasFreeProviderBaseUrl(network, env["GASFREE_PROVIDER_BASE_URL"]);
+  const apiKey = env["GASFREE_API_KEY"]?.trim() || null;
+  const apiSecret = env["GASFREE_API_SECRET"]?.trim() || null;
+  return {
+    providerBaseUrl,
+    serviceProviderAddress: env["GASFREE_SERVICE_PROVIDER_ADDRESS"]?.trim() || null,
+    apiKey,
+    apiSecret,
+    apiKeyConfigured: Boolean(apiKey),
+    apiSecretConfigured: Boolean(apiSecret),
+    timeoutMs: parseTimeout(env["GASFREE_REQUEST_TIMEOUT_MS"], 8_000),
+    envNames: GASFREE_MAINNET_ENV_NAMES,
+  };
+}
+
 export function gasFreeServiceReadiness(input: {
   settings: GasFreeSettingsLike;
   provider: GasFreeProviderConfigLike;
   network: ChainNetwork;
   asset: string;
   amount?: number;
+  allowTestnet?: boolean;
 }) {
   const asset = input.asset.toUpperCase();
   if (asset !== (input.settings.supportedAsset ?? GASFREE_SUPPORTED_ASSET).toUpperCase()) {
@@ -103,19 +181,25 @@ export function gasFreeServiceReadiness(input: {
       reason: "GasFree API credentials are required by the provider.",
     };
   }
+  if (input.network !== "trc20-mainnet" && input.allowTestnet === true) {
+    return {
+      status: "AVAILABLE" as const,
+      reason: "GasFree provider is configured for TRON Nile USDT diagnostics.",
+    };
+  }
   if (input.settings.killSwitch !== false) {
     return { status: "DISABLED" as const, reason: "Emergency kill switch is enabled." };
   }
   if (input.settings.enabled !== true) {
     return { status: "DISABLED" as const, reason: "GasFree transfer service is disabled." };
   }
-  if (input.network !== "trc20-mainnet") {
+  if (input.network !== "trc20-mainnet" && input.allowTestnet !== true) {
     return {
       status: "TEMPORARILY_UNAVAILABLE" as const,
       reason: "Only TRON Mainnet USDT is supported.",
     };
   }
-  if (input.settings.mainnetEnabled !== true) {
+  if (input.network === "trc20-mainnet" && input.settings.mainnetEnabled !== true) {
     return { status: "DISABLED" as const, reason: "GasFree Mainnet transfers are disabled." };
   }
   const max = Number(input.settings.perTxMaxUsdt ?? 0);
@@ -132,6 +216,37 @@ export function gasFreeServiceReadiness(input: {
     status: "AVAILABLE" as const,
     reason: "GasFree provider is configured for TRON Mainnet USDT.",
   };
+}
+
+export function gasFreeAccountState(input: {
+  active?: boolean | null;
+  allowSubmit?: boolean | null;
+  serviceStatus: GasFreeServiceStatus;
+  testFundsSufficient?: boolean | null;
+}) {
+  if (input.serviceStatus === "DISABLED") return "DISABLED_BY_ADMIN" as const;
+  if (input.serviceStatus === "PROVIDER_ERROR" || input.serviceStatus === "NOT_CONFIGURED") {
+    return "PROVIDER_UNAVAILABLE" as const;
+  }
+  if (input.testFundsSufficient === false) return "INSUFFICIENT_TEST_FUNDS" as const;
+  if (input.active === true) return "ACTIVE" as const;
+  if (input.allowSubmit === false) return "ACTIVATING" as const;
+  return "ACTIVATION_REQUIRED" as const;
+}
+
+export function classifyTransactionPasswordAuthorizationError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (!message) return "WRONG_PASSWORD" as const;
+  if (/temporarily locked/i.test(message)) return "PASSWORD_LOCKED" as const;
+  if (/set a transaction password/i.test(message)) return "PASSWORD_NOT_CONFIGURED" as const;
+  if (/required/i.test(message) && /password/i.test(message))
+    return "PASSWORD_NOT_PROVIDED" as const;
+  if (/incorrect|authenticate|unsupported state/i.test(message)) return "WRONG_PASSWORD" as const;
+  return "WRONG_PASSWORD" as const;
+}
+
+export function providerTxidForPersistence(input: { txnHash?: string | null }) {
+  return input.txnHash?.trim() || null;
 }
 
 export function isGasFreeTransferExecutable(status: GasFreeServiceStatus) {
