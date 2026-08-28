@@ -12,6 +12,8 @@ import {
   GASFREE_PROVIDER_NAME,
   GASFREE_SUPPORTED_ASSET,
   classifyTransactionPasswordAuthorizationError,
+  gasFreeAccountState,
+  gasFreeOperationalState,
   gasFreeServiceReadiness,
   isGasFreeTransferExecutable,
   providerTxidForPersistence,
@@ -105,6 +107,12 @@ export interface GasFreeTransferReadiness {
   transferFee?: number | null;
   activateFee?: number | null;
   defaultDeadlineSeconds?: number | null;
+  accountStatus?: string | null;
+  activationState?: string | null;
+  accountActive?: boolean | null;
+  accountAllowSubmit?: boolean | null;
+  accountNonce?: string | null;
+  quoteAvailable?: boolean | null;
 }
 
 export interface GasFreePermitTransferInput {
@@ -279,7 +287,10 @@ export async function getSupportedTokens(network: ChainNetwork) {
     network,
     "/api/v1/config/token/all",
   );
-  return (data?.tokens ?? []).filter((row) => row.supported !== false).map(validateToken);
+  return (data?.tokens ?? [])
+    .filter((row) => row.supported !== false)
+    .filter((row) => String(row.symbol ?? "").toUpperCase() === GASFREE_SUPPORTED_ASSET)
+    .map(validateToken);
 }
 
 export async function getAccountInfo(network: ChainNetwork, generalAddress: string) {
@@ -463,7 +474,11 @@ export async function getGasFreeTransferReadiness(input: {
     apiCredentialsRequired: true,
     chainId: gasfreeChainIdForNetwork(input.network),
   };
-  if (!isGasFreeTransferExecutable(staticReadiness.status)) return base;
+  const canProbeAccount =
+    Boolean(input.generalAddress) &&
+    Boolean(providerConfig.providerBaseUrl) &&
+    providerConfig.apiKeyConfigured === true &&
+    providerConfig.apiSecretConfigured === true;
   try {
     const [provider, tokens] = await Promise.all([
       getProviderConfig(input.network),
@@ -473,24 +488,80 @@ export async function getGasFreeTransferReadiness(input: {
       (row) => String(row.symbol).toUpperCase() === GASFREE_SUPPORTED_ASSET,
     );
     if (!token) {
-      return { ...base, status: "TEMPORARILY_UNAVAILABLE", reason: "GasFree USDT is unsupported." };
+      return {
+        ...base,
+        provider: provider.name || GASFREE_PROVIDER_NAME,
+        providerAddress: provider.address,
+        status: "TEMPORARILY_UNAVAILABLE",
+        reason: "GasFree USDT is unsupported.",
+        quoteAvailable: false,
+      };
     }
-    return {
+    const account = canProbeAccount
+      ? await getAccountInfo(input.network, input.generalAddress as string)
+      : null;
+    const asset = account?.assets?.find(
+      (row) =>
+        row.tokenAddress === token.tokenAddress ||
+        String(row.tokenSymbol ?? "").toUpperCase() === GASFREE_SUPPORTED_ASSET,
+    );
+    const activateFee = parseNumber(asset?.activateFee ?? token.activateFee, 0);
+    const transferFee = parseNumber(asset?.transferFee ?? token.transferFee, 0);
+    const accountActive = account ? account.active === true : null;
+    const allowSubmit = account ? (account.allowSubmit ?? account.allow_submit ?? false) : null;
+    const accountStatus = account
+      ? gasFreeAccountState({
+          discovered: true,
+          active: accountActive,
+          allowSubmit,
+          serviceStatus: staticReadiness.status,
+        })
+      : null;
+    const activationState =
+      accountStatus === "ACTIVE"
+        ? "ACTIVE"
+        : accountStatus === "ACTIVATING"
+          ? "ACTIVATING"
+          : account
+            ? "ACTIVATION_REQUIRED"
+            : null;
+    const enrichedBase = {
       ...base,
       provider: provider.name || GASFREE_PROVIDER_NAME,
       providerAddress: provider.address,
+      tokenAddress: token.tokenAddress,
+      transferFee,
+      activateFee: accountActive ? 0 : activateFee,
+      defaultDeadlineSeconds: parseNumber(provider.config?.defaultDeadlineDuration, 180),
+      accountStatus:
+        account && accountActive
+          ? gasFreeOperationalState({
+              discovered: true,
+              accountActive,
+              serviceStatus: staticReadiness.status,
+              tokenSupported: true,
+            })
+          : accountStatus,
+      activationState,
+      accountActive,
+      accountAllowSubmit: allowSubmit,
+      accountNonce: account?.nonce == null ? null : String(account.nonce),
+      quoteAvailable: Boolean(account && token),
+    };
+    if (!isGasFreeTransferExecutable(staticReadiness.status)) return enrichedBase;
+    return {
+      ...enrichedBase,
       status: "AVAILABLE",
       reason: "GasFree provider is available for TRON USDT.",
-      tokenAddress: token.tokenAddress,
-      transferFee: parseNumber(token.transferFee, 0),
-      activateFee: parseNumber(token.activateFee, 0),
-      defaultDeadlineSeconds: parseNumber(provider.config?.defaultDeadlineDuration, 180),
+      accountStatus: account && accountActive ? "READY" : accountStatus,
     };
   } catch (error) {
     return {
       ...base,
       status: "PROVIDER_ERROR",
       reason: safeErrorMessage(error),
+      accountStatus: canProbeAccount ? "PROVIDER_UNAVAILABLE" : null,
+      quoteAvailable: false,
     };
   }
 }
@@ -655,6 +726,167 @@ export async function getAdminGasFreeDiagnostics() {
         }
       : null,
   };
+}
+
+export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
+  const cappedLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  const { data: wallets, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select(
+      "id, user_id, name, address, network, wallet_type, wallet_role, parent_wallet_id, onchain_balance, onchain_trx_balance, onchain_checked_at, gas_sponsorship_status, gasfree_capability_checked_at, gasfree_capability_error, created_at",
+    )
+    .eq("wallet_role", "gasfree" as never)
+    .eq("wallet_type", "gasfree" as never)
+    .eq("is_archived", false as never)
+    .order("created_at", { ascending: false })
+    .limit(cappedLimit);
+  if (error) throw new Error(error.message);
+
+  const rows = (wallets ?? []) as Array<{
+    id: string;
+    user_id?: string | null;
+    name?: string | null;
+    address?: string | null;
+    network?: ChainNetwork | null;
+    parent_wallet_id?: string | null;
+    onchain_balance?: number | string | null;
+    onchain_trx_balance?: number | string | null;
+    onchain_checked_at?: string | null;
+    gas_sponsorship_status?: string | null;
+    gasfree_capability_checked_at?: string | null;
+    gasfree_capability_error?: string | null;
+  }>;
+  const parentIds = Array.from(new Set(rows.map((row) => row.parent_wallet_id).filter(Boolean)));
+  const userIds = Array.from(new Set(rows.map((row) => row.user_id).filter(Boolean)));
+
+  const [parentsRes, profilesRes, passwordRes, requestRes] = await Promise.all([
+    parentIds.length
+      ? supabaseAdmin
+          .from("user_wallets" as never)
+          .select("id, address, network, is_archived")
+          .in("id", parentIds as never)
+      : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? supabaseAdmin
+          .from("profiles" as never)
+          .select("id, email, full_name")
+          .in("id", userIds as never)
+      : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? supabaseAdmin
+          .from("transaction_passwords" as never)
+          .select("user_id, locked_until")
+          .in("user_id", userIds as never)
+      : Promise.resolve({ data: [], error: null }),
+    rows.length
+      ? supabaseAdmin
+          .from("gasfree_transfer_requests" as never)
+          .select(
+            "id, wallet_id, network, provider_request_id, status, txid, failure_code, failure_reason, provider_fee, created_at, updated_at",
+          )
+          .in("wallet_id", rows.map((row) => row.id) as never)
+          .order("created_at", { ascending: false })
+          .limit(200)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  for (const result of [parentsRes, profilesRes, passwordRes, requestRes]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
+  const parents = new Map(
+    (
+      (parentsRes.data ?? []) as Array<{
+        id: string;
+        address?: string | null;
+        network?: ChainNetwork | null;
+        is_archived?: boolean | null;
+      }>
+    ).map((row) => [row.id, row]),
+  );
+  const profiles = new Map(
+    (
+      (profilesRes.data ?? []) as Array<{
+        id: string;
+        email?: string | null;
+        full_name?: string | null;
+      }>
+    ).map((row) => [row.id, row]),
+  );
+  const passwords = new Map(
+    (
+      (passwordRes.data ?? []) as Array<{
+        user_id?: string | null;
+        locked_until?: string | null;
+      }>
+    ).map((row) => [row.user_id, row]),
+  );
+  const lastRequestByWallet = new Map<string, Record<string, unknown>>();
+  for (const request of (requestRes.data ?? []) as Array<Record<string, unknown>>) {
+    const walletId = String(request["wallet_id"] ?? "");
+    if (walletId && !lastRequestByWallet.has(walletId)) lastRequestByWallet.set(walletId, request);
+  }
+
+  const diagnostics = [];
+  for (const wallet of rows) {
+    const parent = wallet.parent_wallet_id ? parents.get(wallet.parent_wallet_id) : null;
+    const profile = wallet.user_id ? profiles.get(wallet.user_id) : null;
+    const password = wallet.user_id ? passwords.get(wallet.user_id) : null;
+    let readiness: GasFreeTransferReadiness | null = null;
+    let lastError = wallet.gasfree_capability_error ?? null;
+    if (
+      wallet.network &&
+      wallet.address &&
+      parent?.address &&
+      parent.network === wallet.network &&
+      parent.is_archived !== true
+    ) {
+      readiness = await getGasFreeTransferReadiness({
+        network: wallet.network,
+        asset: GASFREE_SUPPORTED_ASSET,
+        amount: 0.000001,
+        generalAddress: parent.address,
+        allowTestnet: wallet.network === "trc20-nile",
+      });
+      if (readiness.status === "PROVIDER_ERROR") lastError = readiness.reason;
+    }
+    const lastRequest = lastRequestByWallet.get(wallet.id);
+    diagnostics.push({
+      walletId: wallet.id,
+      userId: wallet.user_id ?? null,
+      user: profile?.email ?? profile?.full_name ?? wallet.user_id ?? "Unknown",
+      walletName: wallet.name ?? "GasFree Wallet",
+      generalWalletAddress: parent?.address ?? null,
+      gasFreeAddress: wallet.address ?? null,
+      network: wallet.network ?? null,
+      usdtBalance: Number(wallet.onchain_balance ?? 0),
+      trxBalance: Number(wallet.onchain_trx_balance ?? 0),
+      gasFreeState: readiness?.accountStatus ?? (wallet.address ? "DISCOVERED" : "ERROR"),
+      activationStatus: readiness?.activationState ?? null,
+      nonce: readiness?.accountNonce ?? null,
+      provider: readiness?.provider ?? GASFREE_PROVIDER_NAME,
+      providerStatus: readiness?.status ?? "NOT_CONFIGURED",
+      lastProviderCheck: wallet.gasfree_capability_checked_at ?? wallet.onchain_checked_at ?? null,
+      lastSuccessfulQuote: readiness?.quoteAvailable
+        ? `${readiness.activateFee ?? 0} activation / ${readiness.transferFee ?? 0} transfer`
+        : null,
+      lastGasFreeTransaction: lastRequest
+        ? {
+            providerRequestId: lastRequest["provider_request_id"] ?? null,
+            status: lastRequest["status"] ?? null,
+            txid: lastRequest["txid"] ?? null,
+            network: lastRequest["network"] ?? null,
+            updatedAt: lastRequest["updated_at"] ?? null,
+          }
+        : null,
+      lastError,
+      transactionPasswordConfigured: Boolean(password),
+      transactionPasswordLocked: Boolean(
+        password?.locked_until && Date.parse(password.locked_until) > Date.now(),
+      ),
+      adminAction: "User authorization required",
+    });
+  }
+  return diagnostics;
 }
 
 async function loadGeneralSecret(input: {

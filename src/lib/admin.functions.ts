@@ -75,6 +75,12 @@ const companyWalletDefaultInput = z.object({
   network: z.enum(["trc20-mainnet", "trc20-nile"]),
 });
 
+const gasfreeWalletDiagnosticsInput = z
+  .object({
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .optional();
+
 export const listTraders = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -135,6 +141,18 @@ export const testGasFreeProviderConnection = createServerFn({ method: "POST" })
     await requirePermission(context.supabase, context.userId, PERMISSIONS.SETTINGS_MANAGE);
     const { getAdminGasFreeDiagnostics } = await import("@/lib/gasfree-provider.server");
     return getAdminGasFreeDiagnostics();
+  });
+
+export const getAdminGasFreeWalletDiagnostics = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => gasfreeWalletDiagnosticsInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_READ);
+    const { getAdminGasFreeWalletDiagnostics: getDiagnostics } =
+      await import("@/lib/gasfree-provider.server");
+    return getDiagnostics(data?.limit ?? 50);
   });
 
 export const getAdminDashboard = createServerFn({ method: "GET" })

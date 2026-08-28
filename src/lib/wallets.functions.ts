@@ -203,18 +203,44 @@ export const getGasFreeSendReadiness = createServerFn({ method: "POST" })
     const { getGasFreeTransferReadiness } = await import("@/lib/gasfree-provider.server");
     const { data: wallet, error } = await supabaseAdmin
       .from("user_wallets" as never)
-      .select("id, user_id, network, is_archived")
+      .select("id, user_id, network, wallet_type, wallet_role, parent_wallet_id, is_archived")
       .eq("id", data.walletId as never)
       .maybeSingle();
     if (error) throw new Error(error.message);
     const row = wallet as {
       user_id?: string | null;
       network?: "trc20-mainnet" | "trc20-nile" | null;
+      wallet_type?: string | null;
+      wallet_role?: string | null;
+      parent_wallet_id?: string | null;
       is_archived?: boolean | null;
     } | null;
     if (!row || row.user_id !== context.userId || row.is_archived)
       throw new Error("Wallet not found");
-    return getGasFreeTransferReadiness({ network: row.network ?? "trc20-mainnet", asset: "USDT" });
+    const { data: parent, error: parentError } =
+      row.wallet_role === "gasfree" && row.parent_wallet_id
+        ? await supabaseAdmin
+            .from("user_wallets" as never)
+            .select("id, user_id, address, network, is_archived")
+            .eq("id", row.parent_wallet_id as never)
+            .maybeSingle()
+        : { data: null, error: null };
+    if (parentError) throw new Error(parentError.message);
+    const parentRow = parent as {
+      user_id?: string | null;
+      address?: string | null;
+      network?: "trc20-mainnet" | "trc20-nile" | null;
+      is_archived?: boolean | null;
+    } | null;
+    const generalAddress =
+      parentRow?.user_id === context.userId && parentRow.is_archived !== true && parentRow.address
+        ? parentRow.address
+        : undefined;
+    return getGasFreeTransferReadiness({
+      network: row.network ?? "trc20-mainnet",
+      asset: "USDT",
+      ...(generalAddress ? { generalAddress } : {}),
+    });
   });
 
 export const createGasFreeTransfer = createServerFn({ method: "POST" })

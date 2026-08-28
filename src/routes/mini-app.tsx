@@ -359,6 +359,14 @@ interface GasFreeReadiness {
   serviceProviderConfigured: boolean;
   apiKeyConfigured: boolean;
   apiSecretConfigured: boolean;
+  accountStatus?: string | null;
+  activationState?: string | null;
+  accountActive?: boolean | null;
+  accountAllowSubmit?: boolean | null;
+  accountNonce?: string | null;
+  quoteAvailable?: boolean | null;
+  transferFee?: number | null;
+  activateFee?: number | null;
 }
 
 interface PaymentMethodRow {
@@ -3542,22 +3550,33 @@ function WalletGasFreeScreen({
   }
   const discovered = Boolean(gasfreeWallet?.address);
   const walletAddress = safeAddress(gasfreeWallet?.address);
-  const status = discovered ? t("gasfreeWalletReady") : t("notDiscovered");
+  const accountState = readiness?.accountStatus ?? (discovered ? "DISCOVERED" : "ERROR");
+  const activationState = readiness?.activationState ?? null;
+  const status =
+    accountState === "READY"
+      ? t("gasfreeWalletReady")
+      : accountState === "ACTIVE" || readiness?.accountActive === true
+        ? "GasFree Wallet Active"
+        : accountState === "ACTIVATION_REQUIRED" || activationState === "ACTIVATION_REQUIRED"
+          ? "Activation Required"
+          : discovered
+            ? "GasFree Wallet Discovered"
+            : t("notDiscovered");
   const transferStatus = readiness?.status ?? (discovered ? "NOT_CONFIGURED" : "DISABLED");
   const transferLabel =
-    transferStatus === "AVAILABLE"
-      ? "Active"
+    transferStatus === "AVAILABLE" && accountState === "READY"
+      ? "Transfers Ready"
       : transferStatus === "NOT_CONFIGURED"
-        ? "Ready - Transfers Disabled by Admin"
+        ? "Transfers Disabled by Admin"
         : transferStatus === "PROVIDER_ERROR"
           ? "Provider Unavailable"
           : transferStatus === "LIMIT_REACHED"
             ? "Insufficient Test Funds"
             : transferStatus === "PENDING"
               ? "Pending"
-              : transferStatus === "ACTIVATION_REQUIRED"
+              : accountState === "ACTIVATION_REQUIRED" || transferStatus === "ACTIVATION_REQUIRED"
                 ? "Activation Required"
-                : "Ready - Transfers Disabled by Admin";
+                : "Transfers Disabled by Admin";
   const rawStatus = discovered
     ? "available"
     : gasfreeCapabilityStatus(wallet.gas_sponsorship_status);
@@ -3577,13 +3596,21 @@ function WalletGasFreeScreen({
         ? "warning"
         : "muted";
   const transferTone =
-    transferStatus === "AVAILABLE"
+    transferStatus === "AVAILABLE" && accountState === "READY"
       ? "success"
       : transferStatus === "NOT_CONFIGURED" || transferStatus === "PROVIDER_ERROR"
         ? "warning"
         : "muted";
+  const disabledReason =
+    transferStatus === "DISABLED" || transferStatus === "NOT_CONFIGURED"
+      ? "Send unavailable: Mainnet GasFree transfers are currently disabled by WTRON."
+      : accountState === "ACTIVATION_REQUIRED"
+        ? "Send unavailable: GasFree account activation is required first."
+        : transferStatus === "PROVIDER_ERROR"
+          ? "Send unavailable: GasFree provider is currently unavailable."
+          : readiness?.reason;
   const explanation = discovered
-    ? (readiness?.reason ?? t("gasfreeTransferSetupRequired"))
+    ? (disabledReason ?? t("gasfreeTransferSetupRequired"))
     : t("gasfreeUnavailableConfirmedMessage");
   const usdtBalance = walletDisplayBalance(gasfreeWallet);
   const trxBalance = Number(gasfreeWallet?.onchain_trx_balance ?? 0);
@@ -3638,14 +3665,13 @@ function WalletGasFreeScreen({
         <section className="space-y-2">
           <SectionTitle>{t("serviceStatus")}</SectionTitle>
           <div className="divide-y divide-white/10 border-y border-white/10 text-sm">
-            <StatusRow
-              label={t("walletStatus")}
-              value={discovered ? t("discovered") : t("notDiscovered")}
-            />
+            <StatusRow label={t("walletStatus")} value={discovered ? status : t("notDiscovered")} />
+            <StatusRow label="Activation state" value={activationState ?? accountState} />
             <StatusRow
               label={t("gasfreeTransfers")}
               value={<StatusPill label={transferLabel} tone={transferTone} />}
             />
+            <StatusRow label="Nonce" value={readiness?.accountNonce ?? "-"} mono />
             <StatusRow label={t("supportedAssets")} value="USDT" />
             <StatusRow label={t("provider")} value={providerName} />
             <StatusRow label={t("lastChecked")} value={checkedAt} mono />

@@ -64,6 +64,7 @@ import {
   gasFreeApiCredentialsState,
   gasFreeApiSigningPath,
   gasFreeAccountState,
+  gasFreeOperationalState,
   gasFreeProviderBaseUrl,
   gasFreeRequiresTransactionPassword,
   gasFreeServiceReadiness,
@@ -2027,6 +2028,7 @@ describe("GasFree transfer service safety", () => {
   it("models real GasFree activation and TXID persistence states", () => {
     assert.equal(
       gasFreeAccountState({
+        discovered: true,
         active: false,
         allowSubmit: true,
         serviceStatus: "AVAILABLE",
@@ -2039,6 +2041,27 @@ describe("GasFree transfer service safety", () => {
       "ACTIVATING",
     );
     assert.equal(gasFreeAccountState({ active: true, serviceStatus: "AVAILABLE" }), "ACTIVE");
+    assert.equal(
+      gasFreeAccountState({ discovered: true, active: null, serviceStatus: "AVAILABLE" }),
+      "DISCOVERED",
+    );
+    assert.equal(
+      gasFreeOperationalState({
+        discovered: true,
+        accountActive: true,
+        serviceStatus: "DISABLED",
+      }),
+      "TRANSFERS_DISABLED",
+    );
+    assert.equal(
+      gasFreeOperationalState({
+        discovered: true,
+        accountActive: true,
+        serviceStatus: "AVAILABLE",
+        tokenSupported: true,
+      }),
+      "READY",
+    );
     assert.equal(
       gasFreeAccountState({
         active: false,
@@ -2119,7 +2142,18 @@ describe("GasFree transfer service safety", () => {
       resolve(process.cwd(), "src/lib/admin.functions.ts"),
       "utf8",
     );
-    assert.match(mini, /Ready - Transfers Disabled by Admin/);
+    const adminWallets = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/user-wallets.tsx"),
+      "utf8",
+    );
+    const providerServer = readFileSync(
+      resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
+      "utf8",
+    );
+    assert.match(mini, /GasFree Wallet Discovered/);
+    assert.match(mini, /GasFree Wallet Active/);
+    assert.match(mini, /Transfers Disabled by Admin/);
+    assert.match(mini, /Send unavailable: Mainnet GasFree transfers are currently disabled/);
     assert.match(mini, /Activation Required/);
     assert.match(mini, /Provider Unavailable/);
     assert.match(mini, /Insufficient Test Funds/);
@@ -2128,6 +2162,14 @@ describe("GasFree transfer service safety", () => {
     assert.match(admin, /TECHNICALLY_READY/);
     assert.match(admin, /PRODUCTION_ENABLED/);
     assert.match(adminFunctions, /getAdminGasFreeDiagnostics/);
+    assert.match(adminFunctions, /getAdminGasFreeWalletDiagnostics/);
+    assert.match(adminWallets, /User Wallet GasFree Diagnostics/);
+    assert.match(adminWallets, /user authorization is required/i);
+    assert.match(adminWallets, /Nile Testnet/);
+    assert.match(providerServer, /getAdminGasFreeWalletDiagnostics/);
+    assert.match(providerServer, /transactionPasswordConfigured/);
+    assert.doesNotMatch(adminWallets, /encrypted_mnemonic|privateKey|password_hash/);
+    assert.match(providerServer, /String\(row\.symbol/);
   });
 
   it("defaults customer wallet creation/import to TRON Mainnet without asking for Nile", () => {

@@ -35,13 +35,17 @@ export type GasFreeServiceStatus =
   | "PROVIDER_ERROR";
 
 export type GasFreeAccountState =
+  | "DISCOVERED"
   | "READY"
   | "ACTIVATION_REQUIRED"
   | "ACTIVATING"
   | "ACTIVE"
+  | "TRANSFERS_DISABLED"
   | "PROVIDER_UNAVAILABLE"
   | "DISABLED_BY_ADMIN"
-  | "INSUFFICIENT_TEST_FUNDS";
+  | "INSUFFICIENT_BALANCE"
+  | "INSUFFICIENT_TEST_FUNDS"
+  | "ERROR";
 
 export type TransactionPasswordAuthorizationState =
   | "PASSWORD_NOT_PROVIDED"
@@ -219,19 +223,46 @@ export function gasFreeServiceReadiness(input: {
 }
 
 export function gasFreeAccountState(input: {
+  discovered?: boolean | null;
   active?: boolean | null;
   allowSubmit?: boolean | null;
   serviceStatus: GasFreeServiceStatus;
   testFundsSufficient?: boolean | null;
+  balanceSufficient?: boolean | null;
 }) {
   if (input.serviceStatus === "DISABLED") return "DISABLED_BY_ADMIN" as const;
   if (input.serviceStatus === "PROVIDER_ERROR" || input.serviceStatus === "NOT_CONFIGURED") {
     return "PROVIDER_UNAVAILABLE" as const;
   }
   if (input.testFundsSufficient === false) return "INSUFFICIENT_TEST_FUNDS" as const;
+  if (input.balanceSufficient === false) return "INSUFFICIENT_BALANCE" as const;
   if (input.active === true) return "ACTIVE" as const;
   if (input.allowSubmit === false) return "ACTIVATING" as const;
+  if (input.discovered === true && input.active == null) return "DISCOVERED" as const;
   return "ACTIVATION_REQUIRED" as const;
+}
+
+export function gasFreeOperationalState(input: {
+  discovered?: boolean | null;
+  accountActive?: boolean | null;
+  serviceStatus: GasFreeServiceStatus;
+  tokenSupported?: boolean | null;
+}) {
+  if (!input.discovered) return "ERROR" as const;
+  if (input.accountActive !== true) {
+    return gasFreeAccountState({
+      discovered: true,
+      active: input.accountActive ?? null,
+      serviceStatus: input.serviceStatus,
+    });
+  }
+  if (input.serviceStatus === "AVAILABLE" && input.tokenSupported !== false)
+    return "READY" as const;
+  if (input.serviceStatus === "DISABLED") return "TRANSFERS_DISABLED" as const;
+  if (input.serviceStatus === "PROVIDER_ERROR" || input.serviceStatus === "NOT_CONFIGURED") {
+    return "PROVIDER_UNAVAILABLE" as const;
+  }
+  return "ACTIVE" as const;
 }
 
 export function classifyTransactionPasswordAuthorizationError(error: unknown) {
