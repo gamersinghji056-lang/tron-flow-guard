@@ -51,7 +51,7 @@ import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
 } from "./tron-personal-wallet.ts";
-import { DEFAULT_NETWORK, isTronAddress, parseTokenBalanceHex } from "./chain.ts";
+import { DEFAULT_NETWORK, NETWORKS, isTronAddress, parseTokenBalanceHex } from "./chain.ts";
 import { deriveGasFreeAddressFromGeneralAddress } from "./gasfree-address.ts";
 import {
   GASFREE_MAINNET_PROVIDER_BASE_URL,
@@ -2066,6 +2066,12 @@ describe("GasFree transfer service safety", () => {
     assert.equal(nile.apiKey, "nile-key");
     assert.equal(nile.apiSecret, "nile-secret");
     assert.deepEqual(nile.envNames, GASFREE_NILE_ENV_NAMES);
+  });
+
+  it("keeps Mainnet USDT and GasFree Nile test USDT contracts isolated", () => {
+    assert.equal(NETWORKS["trc20-mainnet"].usdtContract, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
+    assert.equal(NETWORKS["trc20-nile"].usdtContract, "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf");
+    assert.notEqual(NETWORKS["trc20-mainnet"].usdtContract, NETWORKS["trc20-nile"].usdtContract);
   });
 
   it("models real GasFree activation and TXID persistence states", () => {

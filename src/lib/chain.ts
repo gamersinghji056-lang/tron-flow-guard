@@ -40,7 +40,7 @@ export const NETWORKS: Record<ChainNetwork, NetworkConfig> = {
     label: "TRON Nile Testnet (TRC20)",
     shortLabel: "TRC20 Nile",
     apiBase: "https://nile.trongrid.io",
-    usdtContract: "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+    usdtContract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
     tokenSymbol: "USDT",
     tokenDecimals: 6,
     explorerTx: (txid) => `https://nile.tronscan.org/#/transaction/${txid}`,
