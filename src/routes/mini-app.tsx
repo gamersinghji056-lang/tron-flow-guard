@@ -775,6 +775,7 @@ function TelegramMiniApp() {
   const [walletCurrentPassword, setWalletCurrentPassword] = useState("");
   const [walletPasswordConfirm, setWalletPasswordConfirm] = useState("");
   const [transactionPasswordEnabled, setTransactionPasswordEnabled] = useState(false);
+  const [nileTestWalletEnabled, setNileTestWalletEnabled] = useState(false);
   const [transactionPasswordChangeOpen, setTransactionPasswordChangeOpen] = useState(false);
   const [importPhrase, setImportPhrase] = useState("");
   const [backupPassword, setBackupPassword] = useState("");
@@ -953,6 +954,7 @@ function TelegramMiniApp() {
     if (referralResult.status === "fulfilled") setReferral(referralResult.value as ReferralSummary);
     if (securityResult.status === "fulfilled") {
       setTransactionPasswordEnabled(Boolean(securityResult.value.transactionPasswordEnabled));
+      setNileTestWalletEnabled(Boolean(securityResult.value.nileTestWalletEnabled));
       setTransactionPasswordChangeOpen(false);
     }
     if (isVendorApp) {
@@ -2011,6 +2013,7 @@ function TelegramMiniApp() {
             confirm={walletPasswordConfirm}
             setConfirm={setWalletPasswordConfirm}
             busy={busy}
+            nileTestWalletEnabled={nileTestWalletEnabled}
             t={t}
             onSubmit={submitCreateWallet}
           />
@@ -2813,6 +2816,7 @@ function WalletCreateScreen(props: {
   confirm: string;
   setConfirm: (value: string) => void;
   busy: boolean;
+  nileTestWalletEnabled: boolean;
   t: MiniT;
   onSubmit: (event: FormEvent) => void;
 }) {
@@ -2846,9 +2850,48 @@ function WalletCreateScreen(props: {
           </div>
         </FormCard>
         <FormCard title={`3. TRON Mainnet`}>
-          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-50">
-            Customer wallets use TRON Mainnet in production. Nile remains available only for
-            existing test wallets and internal diagnostics.
+          <div className="space-y-2">
+            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-50">
+              Customer wallets use TRON Mainnet in production.
+            </div>
+            {props.nileTestWalletEnabled ? (
+              <div className="grid gap-2">
+                <button
+                  type="button"
+                  className={`w-full rounded-xl border p-3 text-left text-sm transition ${
+                    props.network === "trc20-mainnet"
+                      ? "border-emerald-300 bg-emerald-300/15 text-emerald-50"
+                      : "border-slate-700 bg-slate-900/70 text-slate-300"
+                  }`}
+                  onClick={() => props.setNetwork("trc20-mainnet")}
+                >
+                  <span className="block font-semibold">Create Mainnet Wallet</span>
+                  <span className="mt-1 block text-xs text-slate-400">
+                    Production TRON Mainnet wallet.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`w-full rounded-xl border p-3 text-left text-sm transition ${
+                    props.network === "trc20-nile"
+                      ? "border-amber-300 bg-amber-300/15 text-amber-50"
+                      : "border-slate-700 bg-slate-900/70 text-slate-300"
+                  }`}
+                  onClick={() => props.setNetwork("trc20-nile")}
+                >
+                  <span className="block font-semibold">Create Nile Test Wallet</span>
+                  <span className="mt-1 block text-xs text-slate-400">
+                    NILE TESTNET only. Uses the same encrypted wallet and GasFree discovery
+                    pipeline.
+                  </span>
+                </button>
+              </div>
+            ) : null}
+            {props.network === "trc20-nile" ? (
+              <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-xs font-semibold text-amber-100">
+                NILE TESTNET
+              </div>
+            ) : null}
           </div>
         </FormCard>
         <FormCard title={`4. ${props.t("transactionPassword")}`}>

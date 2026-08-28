@@ -18,6 +18,8 @@ import {
 import {
   resolveTelegramStateKind,
   telegramLinkDecision,
+  telegramLoginSessionUser,
+  telegramRegistrationDecision,
   telegramStartMenuLabels,
   type VendorApprovalStatus,
   type WtronAccountType,
@@ -72,6 +74,15 @@ interface TelegramAppHandoffRow {
   user_id: string;
   telegram_user_id: number;
   status: "pending" | "used" | "expired" | "revoked";
+  expires_at: string;
+}
+
+interface TelegramAppSessionRow {
+  id: string;
+  telegram_account_id: string;
+  user_id: string;
+  telegram_user_id: number;
+  status: "active" | "expired" | "revoked";
   expires_at: string;
 }
 
@@ -212,7 +223,12 @@ export async function requireLinkedTelegramUser(initData: string) {
   if (!authorized) {
     throw new TelegramAuthError("telegram_session_required", "Telegram login is required");
   }
-  return { verified, account, userId: account.user_id };
+  const activeSession = await readLatestActiveTelegramSession(account.telegram_user_id);
+  const userId = telegramLoginSessionUser({
+    permanentOwnerUserId: account.user_id,
+    activeSessionUserId: activeSession?.user_id ?? null,
+  });
+  return { verified, account, userId };
 }
 
 export async function linkTelegramUser(input: { initData: string; userId: string }) {
@@ -238,7 +254,38 @@ export async function hasActiveTelegramSession(telegramUserId: number) {
   return Boolean(data?.length);
 }
 
+async function readLatestActiveTelegramSession(telegramUserId: number) {
+  await supabaseAdmin.rpc("expire_telegram_app_sessions" as never);
+  const { data, error } = await supabaseAdmin
+    .from("telegram_app_sessions" as never)
+    .select("id, telegram_account_id, user_id, telegram_user_id, status, expires_at")
+    .eq("telegram_user_id", telegramUserId as never)
+    .eq("status", "active" as never)
+    .gt("expires_at", new Date().toISOString() as never)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as TelegramAppSessionRow | null;
+}
+
+async function revokeTelegramLoginArtifacts(telegramUserId: number) {
+  await Promise.all([
+    supabaseAdmin
+      .from("telegram_app_sessions" as never)
+      .update({ status: "revoked" } as never)
+      .eq("telegram_user_id", telegramUserId as never)
+      .eq("status", "active" as never),
+    supabaseAdmin
+      .from("telegram_app_handoffs" as never)
+      .update({ status: "revoked" } as never)
+      .eq("telegram_user_id", telegramUserId as never)
+      .eq("status", "pending" as never),
+  ]);
+}
+
 export async function createTelegramAppSession(account: TelegramAccountRow, reason: string) {
+  await revokeTelegramLoginArtifacts(account.telegram_user_id);
   const rawSecret = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + appSessionTtlMs()).toISOString();
   const { error } = await supabaseAdmin.from("telegram_app_sessions" as never).insert({
@@ -261,14 +308,82 @@ export async function createTelegramAppSession(account: TelegramAccountRow, reas
   } as never);
 }
 
-export async function createTelegramAppHandoff(account: TelegramAccountRow, reason: string) {
+async function createTelegramLoginSession(input: {
+  account: TelegramAccountRow;
+  userId: string;
+  reason: string;
+}) {
+  await revokeTelegramLoginArtifacts(input.account.telegram_user_id);
+  const rawSecret = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + appSessionTtlMs()).toISOString();
+  const { error } = await supabaseAdmin.from("telegram_app_sessions" as never).insert({
+    telegram_account_id: input.account.id,
+    user_id: input.userId,
+    telegram_user_id: input.account.telegram_user_id,
+    session_hash: sessionHash(rawSecret),
+    status: "active",
+    expires_at: expiresAt,
+  } as never);
+  if (error) throw new Error(error.message);
+  await supabaseAdmin.from("telegram_link_audit").insert({
+    user_id: input.userId,
+    telegram_account_id: input.account.id,
+    telegram_user_id: input.account.telegram_user_id,
+    action: "telegram.session.created",
+    actor_id: input.userId,
+    actor_type: "telegram",
+    metadata: { reason: input.reason, expires_at: expiresAt } as never,
+  } as never);
+}
+
+async function readTelegramAccountByTelegramUser(user: TelegramWebAppUser) {
+  const { data, error } = await supabaseAdmin
+    .from("telegram_accounts")
+    .select(
+      "id, user_id, telegram_user_id, chat_id, username, first_name, last_name, status, linked_at",
+    )
+    .eq("telegram_user_id", user.id as never)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const account = data as TelegramAccountRow | null;
+  if (account) {
+    await supabaseAdmin
+      .from("telegram_accounts")
+      .update({
+        last_seen_at: new Date().toISOString(),
+        username: user.username ?? null,
+        first_name: user.first_name ?? null,
+        last_name: user.last_name ?? null,
+        language_code: user.language_code ?? null,
+      } as never)
+      .eq("id", account.id as never);
+  }
+  return account;
+}
+
+async function telegramAccountForExistingLogin(user: TelegramWebAppUser, userId: string) {
+  const existing = await readTelegramAccountByTelegramUser(user);
+  if (existing) {
+    if (existing.status !== "active") {
+      throw new TelegramAuthError("telegram_disabled", "Telegram access is disabled");
+    }
+    return existing;
+  }
+  return linkTelegramIdentity({ user, userId, reason: "first_existing_account_login" });
+}
+
+export async function createTelegramAppHandoff(
+  account: TelegramAccountRow,
+  reason: string,
+  userId = account.user_id,
+) {
   await supabaseAdmin.rpc("expire_telegram_app_handoffs" as never);
   const token = randomBytes(32).toString("base64url");
   const nonce = randomBytes(16).toString("base64url");
   const expiresAt = new Date(Date.now() + appHandoffTtlMs()).toISOString();
   const { error } = await supabaseAdmin.from("telegram_app_handoffs" as never).insert({
     telegram_account_id: account.id,
-    user_id: account.user_id,
+    user_id: userId,
     telegram_user_id: account.telegram_user_id,
     token_hash: sessionHash(token),
     nonce,
@@ -277,11 +392,11 @@ export async function createTelegramAppHandoff(account: TelegramAccountRow, reas
   } as never);
   if (error) throw new Error(error.message);
   await supabaseAdmin.from("telegram_link_audit").insert({
-    user_id: account.user_id,
+    user_id: userId,
     telegram_account_id: account.id,
     telegram_user_id: account.telegram_user_id,
     action: "telegram.handoff.created",
-    actor_id: account.user_id,
+    actor_id: userId,
     actor_type: "telegram",
     metadata: { reason, expires_at: expiresAt } as never,
   } as never);
@@ -291,7 +406,7 @@ export async function createTelegramAppHandoff(account: TelegramAccountRow, reas
 async function consumeTelegramAppHandoff(input: {
   token: string;
   telegramUserId: number;
-  userId: string;
+  userId?: string;
 }) {
   await supabaseAdmin.rpc("expire_telegram_app_handoffs" as never);
   const now = new Date().toISOString();
@@ -300,7 +415,6 @@ async function consumeTelegramAppHandoff(input: {
     .update({ status: "used", used_at: now } as never)
     .eq("token_hash", sessionHash(input.token) as never)
     .eq("telegram_user_id", input.telegramUserId as never)
-    .eq("user_id", input.userId as never)
     .eq("status", "pending" as never)
     .gt("expires_at", now as never)
     .select("id, telegram_account_id, user_id, telegram_user_id, status, expires_at")
@@ -309,7 +423,9 @@ async function consumeTelegramAppHandoff(input: {
   if (!data) {
     return null;
   }
-  return data as TelegramAppHandoffRow;
+  const row = data as TelegramAppHandoffRow;
+  if (input.userId && row.user_id !== input.userId) return null;
+  return row;
 }
 
 export async function authenticateAndLinkTelegramMiniApp(input: {
@@ -332,12 +448,8 @@ export async function authenticateAndLinkTelegramMiniApp(input: {
   if ((input.accountType ?? "trader") === "trader" && roleState.accountType === "vendor") {
     throw new Error("Use Vendor login for this account.");
   }
-  const account = await linkTelegramIdentity({
-    user: verified.telegramUser,
-    userId,
-    reason: "mini_app_login",
-  });
-  await createTelegramAppSession(account, "mini_app_login");
+  const account = await telegramAccountForExistingLogin(verified.telegramUser, userId);
+  await createTelegramLoginSession({ account, userId, reason: "mini_app_login" });
   await supabaseAdmin.from("telegram_link_audit").insert({
     user_id: userId,
     telegram_account_id: account.id,
@@ -359,6 +471,7 @@ export async function registerAndLinkTelegramMiniApp(input: {
 }) {
   const verified = verifyTelegramLaunch(input.initData);
   const accountType = input.accountType ?? "trader";
+  await assertTelegramCanRegister(verified.telegramUser, "");
   let result: { userId: string; canSignInNow: boolean; emailVerificationRequired: boolean };
   if (accountType === "vendor") {
     const { registerVendorApplicationFromTelegram } = await import("@/lib/vendor.functions");
@@ -383,10 +496,16 @@ export async function registerAndLinkTelegramMiniApp(input: {
       fullName: verified.telegramUser.first_name || "WTRON User",
     });
   }
+  await assertTelegramCanRegister(verified.telegramUser, result.userId);
   const account = await linkTelegramIdentity({
     user: verified.telegramUser,
     userId: result.userId,
     reason: "mini_app_register",
+  });
+  await recordTelegramRegistrationOwner({
+    user: verified.telegramUser,
+    userId: result.userId,
+    accountType,
   });
   await supabaseAdmin.from("telegram_link_audit").insert({
     user_id: result.userId,
@@ -411,22 +530,34 @@ export async function issueTelegramSupabaseSession(initData: string, handoffToke
   if (account.status !== "active") {
     throw new TelegramAuthError("telegram_disabled", "Telegram access is disabled");
   }
-  const userId = account.user_id;
+  let userId = account.user_id;
+  let handoffConsumed = false;
+  if (handoffToken) {
+    const handoff = await consumeTelegramAppHandoff({
+      token: handoffToken,
+      telegramUserId: verified.telegramUser.id,
+    });
+    if (handoff) {
+      userId = telegramLoginSessionUser({
+        permanentOwnerUserId: account.user_id,
+        handoffUserId: handoff.user_id,
+      });
+      handoffConsumed = true;
+    }
+  }
+  if (!handoffConsumed) {
+    const activeSession = await readLatestActiveTelegramSession(verified.telegramUser.id);
+    userId = telegramLoginSessionUser({
+      permanentOwnerUserId: account.user_id,
+      activeSessionUserId: activeSession?.user_id ?? null,
+    });
+  }
   const roleState = await readPlatformRoleState(userId);
   if (roleState.accountType === "vendor" && roleState.vendorStatus !== "approved") {
     throw new TelegramAuthError(
       "vendor_pending_approval",
       "Vendor application is pending approval.",
     );
-  }
-  let handoffConsumed = false;
-  if (handoffToken) {
-    const handoff = await consumeTelegramAppHandoff({
-      token: handoffToken,
-      telegramUserId: verified.telegramUser.id,
-      userId,
-    });
-    handoffConsumed = Boolean(handoff);
   }
   const hasActiveSession = await hasActiveTelegramSession(verified.telegramUser.id);
   if (!handoffConsumed && !hasActiveSession) {
@@ -459,11 +590,11 @@ export async function issueTelegramSupabaseSession(initData: string, handoffToke
     .eq("status", "active" as never);
 
   await supabaseAdmin.from("telegram_link_audit").insert({
-    user_id: account.user_id,
+    user_id: userId,
     telegram_account_id: account.id,
     telegram_user_id: verified.telegramUser.id,
     action: handoffConsumed ? "telegram.handoff.consumed" : "telegram.session.used",
-    actor_id: account.user_id,
+    actor_id: userId,
     actor_type: "telegram",
   } as never);
 
@@ -498,10 +629,12 @@ async function beginBotAuthFlow(input: {
   accountType: WtronAccountType;
 }) {
   const linkedState = await readLinkedState(input.user.id);
-  if (input.flow === "register" && linkedState.linked) {
+  const registrationOwner =
+    input.flow === "register" ? await readTelegramRegistrationOwner(input.user.id) : null;
+  if (input.flow === "register" && registrationOwner?.user_id) {
     await clearBotAuthState(input.user.id);
     return {
-      text: "This Telegram account is already linked. Continue with the linked account.",
+      text: "This Telegram account has already registered a WTRON account. Login instead.",
       replyMarkup: await menuKeyboardForLinkedState(linkedState),
     };
   }
@@ -596,6 +729,63 @@ async function authenticatePlatformUser(email: string, password: string) {
   return data.user.id;
 }
 
+async function readTelegramRegistrationOwner(telegramUserId: number) {
+  const { data, error } = await supabaseAdmin
+    .from("telegram_registration_owners" as never)
+    .select("telegram_user_id, user_id")
+    .eq("telegram_user_id", telegramUserId as never)
+    .maybeSingle();
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") {
+      const { data: fallback } = await supabaseAdmin
+        .from("telegram_accounts")
+        .select("user_id")
+        .eq("telegram_user_id", telegramUserId as never)
+        .maybeSingle();
+      return fallback as { user_id?: string | null } | null;
+    }
+    throw new Error(error.message);
+  }
+  return data as { user_id?: string | null } | null;
+}
+
+async function assertTelegramCanRegister(user: TelegramWebAppUser, targetUserId: string) {
+  const owner = await readTelegramRegistrationOwner(user.id);
+  const decision = telegramRegistrationDecision({
+    existingOwnerUserId: owner?.user_id ?? null,
+    targetUserId,
+  });
+  if (decision === "telegram_registration_taken") {
+    throw new TelegramAuthError(
+      "telegram_already_registered",
+      "This Telegram account has already registered a WTRON account. Login instead.",
+    );
+  }
+}
+
+async function recordTelegramRegistrationOwner(input: {
+  user: TelegramWebAppUser;
+  userId: string;
+  accountType: WtronAccountType;
+}) {
+  const { error } = await supabaseAdmin.from("telegram_registration_owners" as never).insert({
+    telegram_user_id: input.user.id,
+    user_id: input.userId,
+    account_type: input.accountType,
+    username: input.user.username ?? null,
+    first_name: input.user.first_name ?? null,
+    last_name: input.user.last_name ?? null,
+  } as never);
+  if (error) {
+    if (error.code === "23505") {
+      await assertTelegramCanRegister(input.user, input.userId);
+      return;
+    }
+    if (error.code === "42P01" || error.code === "42703") return;
+    throw new Error(error.message);
+  }
+}
+
 export async function readPlatformRoleState(userId: string) {
   const [{ data: roles }, { data: vendor }] = await Promise.all([
     supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
@@ -639,9 +829,9 @@ async function completeBotLogin(input: {
     if (expected === "trader" && roleState.accountType === "vendor") {
       throw new Error("Use Vendor login for this account.");
     }
-    const account = await linkTelegramIdentity({ user: input.user, userId, reason: "bot_login" });
-    await createTelegramAppSession(account, "bot_login");
-    const handoff = await createTelegramAppHandoff(account, "bot_login");
+    const account = await telegramAccountForExistingLogin(input.user, userId);
+    await createTelegramLoginSession({ account, userId, reason: "bot_login" });
+    const handoff = await createTelegramAppHandoff(account, "bot_login", userId);
     await clearBotAuthState(input.user.id);
     await supabaseAdmin.from("telegram_link_audit").insert({
       user_id: userId,
@@ -701,6 +891,7 @@ async function completeBotRegistration(input: {
 }) {
   try {
     const accountType = input.state.account_type ?? "trader";
+    await assertTelegramCanRegister(input.user, "");
     let result: { userId: string; emailVerificationRequired?: boolean };
     if (accountType === "vendor") {
       const { registerVendorApplicationFromTelegram } = await import("@/lib/vendor.functions");
@@ -721,10 +912,16 @@ async function completeBotRegistration(input: {
         fullName: input.user.first_name || "WTRON User",
       });
     }
+    await assertTelegramCanRegister(input.user, result.userId);
     const account = await linkTelegramIdentity({
       user: input.user,
       userId: result.userId,
       reason: "bot_register",
+    });
+    await recordTelegramRegistrationOwner({
+      user: input.user,
+      userId: result.userId,
+      accountType,
     });
     await clearBotAuthState(input.user.id);
     await supabaseAdmin.from("telegram_link_audit").insert({
@@ -1391,9 +1588,16 @@ export async function resolveTelegramRoleState(telegramUserId: number) {
     .maybeSingle();
   const row = account as TelegramAccountRow | null;
   const linked = row?.status === "active";
-  const authorized = linked ? await hasActiveTelegramSession(telegramUserId) : false;
-  const roleState = row?.user_id
-    ? await readPlatformRoleState(row.user_id)
+  const activeSession = linked ? await readLatestActiveTelegramSession(telegramUserId) : null;
+  const authorized = Boolean(activeSession);
+  const currentUserId = row?.user_id
+    ? telegramLoginSessionUser({
+        permanentOwnerUserId: row.user_id,
+        activeSessionUserId: activeSession?.user_id ?? null,
+      })
+    : null;
+  const roleState = currentUserId
+    ? await readPlatformRoleState(currentUserId)
     : ({ accountType: null, vendorStatus: null } as const);
   const resolved = { account: row, linked, authorized, authenticated: authorized, ...roleState };
   return { ...resolved, state: resolveTelegramStateKind(resolved) };

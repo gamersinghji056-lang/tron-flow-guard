@@ -730,13 +730,12 @@ export async function getAdminGasFreeDiagnostics() {
 
 export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
   const cappedLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  const since24h = Date.now() - 24 * 60 * 60_000;
   const { data: wallets, error } = await supabaseAdmin
     .from("user_wallets" as never)
     .select(
-      "id, user_id, name, address, network, wallet_type, wallet_role, parent_wallet_id, onchain_balance, onchain_trx_balance, onchain_checked_at, gas_sponsorship_status, gasfree_capability_checked_at, gasfree_capability_error, created_at",
+      "id, user_id, name, address, network, wallet_type, wallet_role, parent_wallet_id, wallet_group_id, custody, backup_status, onchain_balance, onchain_trx_balance, onchain_checked_at, gas_sponsorship_status, gasfree_capability_checked_at, gasfree_capability_error, created_at",
     )
-    .eq("wallet_role", "gasfree" as never)
-    .eq("wallet_type", "gasfree" as never)
     .eq("is_archived", false as never)
     .order("created_at", { ascending: false })
     .limit(cappedLimit);
@@ -748,35 +747,87 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
     name?: string | null;
     address?: string | null;
     network?: ChainNetwork | null;
+    wallet_type?: string | null;
+    wallet_role?: string | null;
     parent_wallet_id?: string | null;
+    wallet_group_id?: string | null;
+    custody?: string | null;
+    backup_status?: string | null;
     onchain_balance?: number | string | null;
     onchain_trx_balance?: number | string | null;
     onchain_checked_at?: string | null;
     gas_sponsorship_status?: string | null;
     gasfree_capability_checked_at?: string | null;
     gasfree_capability_error?: string | null;
+    created_at?: string | null;
   }>;
   const parentIds = Array.from(new Set(rows.map((row) => row.parent_wallet_id).filter(Boolean)));
   const userIds = Array.from(new Set(rows.map((row) => row.user_id).filter(Boolean)));
 
-  const [parentsRes, profilesRes, passwordRes, requestRes] = await Promise.all([
+  const [
+    parentsRes,
+    childrenRes,
+    profilesRes,
+    rolesRes,
+    telegramRes,
+    passwordRes,
+    secretRes,
+    txRes,
+    requestRes,
+    nileAccessRes,
+  ] = await Promise.all([
     parentIds.length
       ? supabaseAdmin
           .from("user_wallets" as never)
           .select("id, address, network, is_archived")
           .in("id", parentIds as never)
       : Promise.resolve({ data: [], error: null }),
+    rows.length
+      ? supabaseAdmin
+          .from("user_wallets" as never)
+          .select("id, parent_wallet_id, address, network, wallet_type, wallet_role, is_archived")
+          .in("parent_wallet_id", rows.map((row) => row.id) as never)
+          .eq("wallet_role", "gasfree" as never)
+          .eq("wallet_type", "gasfree" as never)
+          .eq("is_archived", false as never)
+      : Promise.resolve({ data: [], error: null }),
     userIds.length
       ? supabaseAdmin
           .from("profiles" as never)
-          .select("id, email, full_name")
+          .select("id, email, full_name, username")
           .in("id", userIds as never)
+      : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? supabaseAdmin
+          .from("user_roles" as never)
+          .select("user_id, role")
+          .in("user_id", userIds as never)
+      : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? supabaseAdmin
+          .from("telegram_accounts" as never)
+          .select("user_id, telegram_user_id, username, status")
+          .in("user_id", userIds as never)
       : Promise.resolve({ data: [], error: null }),
     userIds.length
       ? supabaseAdmin
           .from("transaction_passwords" as never)
           .select("user_id, locked_until")
           .in("user_id", userIds as never)
+      : Promise.resolve({ data: [], error: null }),
+    rows.length
+      ? supabaseAdmin
+          .from("personal_wallet_secrets" as never)
+          .select("wallet_id, user_id")
+          .in("wallet_id", rows.map((row) => row.id) as never)
+      : Promise.resolve({ data: [], error: null }),
+    rows.length
+      ? supabaseAdmin
+          .from("wallet_transactions" as never)
+          .select("wallet_id, direction, currency, amount, fee, status, created_at, txid")
+          .in("wallet_id", rows.map((row) => row.id) as never)
+          .order("created_at", { ascending: false })
+          .limit(1000)
       : Promise.resolve({ data: [], error: null }),
     rows.length
       ? supabaseAdmin
@@ -788,8 +839,25 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
           .order("created_at", { ascending: false })
           .limit(200)
       : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? supabaseAdmin
+          .from("nile_test_wallet_users" as never)
+          .select("user_id, enabled")
+          .in("user_id", userIds as never)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  for (const result of [parentsRes, profilesRes, passwordRes, requestRes]) {
+  for (const result of [
+    parentsRes,
+    childrenRes,
+    profilesRes,
+    rolesRes,
+    telegramRes,
+    passwordRes,
+    secretRes,
+    txRes,
+    requestRes,
+    nileAccessRes,
+  ]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -809,8 +877,29 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
         id: string;
         email?: string | null;
         full_name?: string | null;
+        username?: string | null;
       }>
     ).map((row) => [row.id, row]),
+  );
+  const rolesByUser = new Map<string, string[]>();
+  for (const row of (rolesRes.data ?? []) as Array<{
+    user_id?: string | null;
+    role?: string | null;
+  }>) {
+    if (!row.user_id || !row.role) continue;
+    rolesByUser.set(row.user_id, [...(rolesByUser.get(row.user_id) ?? []), row.role]);
+  }
+  const telegramByUser = new Map(
+    (
+      (telegramRes.data ?? []) as Array<{
+        user_id?: string | null;
+        telegram_user_id?: number | null;
+        username?: string | null;
+        status?: string | null;
+      }>
+    )
+      .filter((row) => row.user_id)
+      .map((row) => [row.user_id as string, row]),
   );
   const passwords = new Map(
     (
@@ -820,6 +909,32 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
       }>
     ).map((row) => [row.user_id, row]),
   );
+  const secretWalletIds = new Set(
+    ((secretRes.data ?? []) as Array<{ wallet_id?: string | null }>).map((row) => row.wallet_id),
+  );
+  const nileAccess = new Set(
+    ((nileAccessRes.data ?? []) as Array<{ user_id?: string | null; enabled?: boolean | null }>)
+      .filter((row) => row.user_id && row.enabled)
+      .map((row) => row.user_id),
+  );
+  const gasfreeChildByParent = new Map(
+    (
+      (childrenRes.data ?? []) as Array<{
+        id: string;
+        parent_wallet_id?: string | null;
+        address?: string | null;
+        network?: ChainNetwork | null;
+      }>
+    )
+      .filter((row) => row.parent_wallet_id)
+      .map((row) => [row.parent_wallet_id as string, row]),
+  );
+  const txByWallet = new Map<string, Array<Record<string, unknown>>>();
+  for (const transaction of (txRes.data ?? []) as Array<Record<string, unknown>>) {
+    const walletId = String(transaction["wallet_id"] ?? "");
+    if (!walletId) continue;
+    txByWallet.set(walletId, [...(txByWallet.get(walletId) ?? []), transaction]);
+  }
   const lastRequestByWallet = new Map<string, Record<string, unknown>>();
   for (const request of (requestRes.data ?? []) as Array<Record<string, unknown>>) {
     const walletId = String(request["wallet_id"] ?? "");
@@ -829,22 +944,35 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
   const diagnostics = [];
   for (const wallet of rows) {
     const parent = wallet.parent_wallet_id ? parents.get(wallet.parent_wallet_id) : null;
+    const child = gasfreeChildByParent.get(wallet.id);
     const profile = wallet.user_id ? profiles.get(wallet.user_id) : null;
+    const telegram = wallet.user_id ? telegramByUser.get(wallet.user_id) : null;
     const password = wallet.user_id ? passwords.get(wallet.user_id) : null;
+    const userRoles = wallet.user_id ? (rolesByUser.get(wallet.user_id) ?? []) : [];
+    const walletTx = txByWallet.get(wallet.id) ?? [];
+    const successfulUsdt = walletTx.filter(
+      (row) => row["status"] === "completed" && row["currency"] === "USDT",
+    );
+    const successfulUsdt24h = successfulUsdt.filter(
+      (row) => typeof row["created_at"] === "string" && Date.parse(row["created_at"]) >= since24h,
+    );
+    const lastTx = walletTx[0];
     let readiness: GasFreeTransferReadiness | null = null;
     let lastError = wallet.gasfree_capability_error ?? null;
+    const gasfreeAddress = wallet.wallet_role === "gasfree" ? wallet.address : child?.address;
+    const generalAddress = wallet.wallet_role === "gasfree" ? parent?.address : wallet.address;
     if (
       wallet.network &&
-      wallet.address &&
-      parent?.address &&
-      parent.network === wallet.network &&
-      parent.is_archived !== true
+      gasfreeAddress &&
+      generalAddress &&
+      (wallet.wallet_role !== "gasfree" ||
+        (parent?.network === wallet.network && parent.is_archived !== true))
     ) {
       readiness = await getGasFreeTransferReadiness({
         network: wallet.network,
         asset: GASFREE_SUPPORTED_ASSET,
         amount: 0.000001,
-        generalAddress: parent.address,
+        generalAddress,
         allowTestnet: wallet.network === "trc20-nile",
       });
       if (readiness.status === "PROVIDER_ERROR") lastError = readiness.reason;
@@ -853,14 +981,28 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
     diagnostics.push({
       walletId: wallet.id,
       userId: wallet.user_id ?? null,
-      user: profile?.email ?? profile?.full_name ?? wallet.user_id ?? "Unknown",
-      walletName: wallet.name ?? "GasFree Wallet",
-      generalWalletAddress: parent?.address ?? null,
-      gasFreeAddress: wallet.address ?? null,
+      user:
+        profile?.email ?? profile?.full_name ?? profile?.username ?? wallet.user_id ?? "Unknown",
+      accountRole: userRoles.includes("vendor") ? "Vendor" : "Trader",
+      telegramUsername: telegram?.username ? `@${telegram.username}` : null,
+      telegramUserId: telegram?.telegram_user_id ?? null,
+      walletName: wallet.name ?? "Wallet",
+      walletType: wallet.wallet_type ?? "standard",
+      walletRole: wallet.wallet_role ?? "general",
+      custody: wallet.custody ?? null,
+      backupStatus: wallet.backup_status ?? null,
+      generatedImported:
+        wallet.backup_status === "imported"
+          ? "Imported"
+          : wallet.custody === "non_custodial"
+            ? "Generated"
+            : "Not available",
+      generalWalletAddress: generalAddress ?? null,
+      gasFreeAddress: gasfreeAddress ?? null,
       network: wallet.network ?? null,
-      usdtBalance: Number(wallet.onchain_balance ?? 0),
-      trxBalance: Number(wallet.onchain_trx_balance ?? 0),
-      gasFreeState: readiness?.accountStatus ?? (wallet.address ? "DISCOVERED" : "ERROR"),
+      usdtBalance: wallet.onchain_balance == null ? null : Number(wallet.onchain_balance),
+      trxBalance: wallet.onchain_trx_balance == null ? null : Number(wallet.onchain_trx_balance),
+      gasFreeState: readiness?.accountStatus ?? (gasfreeAddress ? "DISCOVERED" : "Not available"),
       activationStatus: readiness?.activationState ?? null,
       nonce: readiness?.accountNonce ?? null,
       provider: readiness?.provider ?? GASFREE_PROVIDER_NAME,
@@ -879,14 +1021,62 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
           }
         : null,
       lastError,
+      signerAvailable:
+        wallet.wallet_role === "general" ? secretWalletIds.has(wallet.id) : Boolean(parent?.id),
       transactionPasswordConfigured: Boolean(password),
       transactionPasswordLocked: Boolean(
         password?.locked_until && Date.parse(password.locked_until) > Date.now(),
       ),
+      successfulTransferCount: successfulUsdt.length,
+      successfulTransferCount24h: successfulUsdt24h.length,
+      totalUsdtSent: successfulUsdt
+        .filter((row) => row["direction"] === "out")
+        .reduce((sum, row) => sum + Number(row["amount"] ?? 0), 0),
+      totalUsdtReceived: successfulUsdt
+        .filter((row) => row["direction"] === "in")
+        .reduce((sum, row) => sum + Number(row["amount"] ?? 0), 0),
+      totalUsdtVolume24h: successfulUsdt24h.reduce(
+        (sum, row) => sum + Number(row["amount"] ?? 0),
+        0,
+      ),
+      totalFees:
+        walletTx.length > 0
+          ? walletTx.reduce((sum, row) => sum + Number(row["fee"] ?? 0), 0)
+          : null,
+      gasfreeTransferCount: (requestRes.data ?? []).filter(
+        (row) => (row as { wallet_id?: string }).wallet_id === wallet.id,
+      ).length,
+      createdAt: wallet.created_at ?? null,
+      lastTransaction: lastTx
+        ? {
+            status: lastTx["status"] ?? null,
+            txid: lastTx["txid"] ?? null,
+            createdAt: lastTx["created_at"] ?? null,
+          }
+        : null,
+      lastBlockchainSync: wallet.onchain_checked_at ?? null,
+      nileTestWalletEnabled: wallet.user_id ? nileAccess.has(wallet.user_id) : false,
       adminAction: "User authorization required",
     });
   }
-  return diagnostics;
+  const summary = {
+    totalWallets: diagnostics.length,
+    mainnetWallets: diagnostics.filter((row) => row.network === "trc20-mainnet").length,
+    nileWallets: diagnostics.filter((row) => row.network === "trc20-nile").length,
+    gasfreeWallets: diagnostics.filter((row) => row.walletType === "gasfree").length,
+    activationRequired: diagnostics.filter((row) => row.activationStatus === "ACTIVATION_REQUIRED")
+      .length,
+    trackedUsdt: diagnostics.reduce(
+      (sum, row) => sum + (typeof row.usdtBalance === "number" ? row.usdtBalance : 0),
+      0,
+    ),
+    successfulTransfers24h: diagnostics.reduce(
+      (sum, row) => sum + row.successfulTransferCount24h,
+      0,
+    ),
+    transferVolume24h: diagnostics.reduce((sum, row) => sum + row.totalUsdtVolume24h, 0),
+  };
+  return { summary, rows: diagnostics };
 }
 
 async function loadGeneralSecret(input: {

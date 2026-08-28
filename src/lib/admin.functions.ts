@@ -81,6 +81,12 @@ const gasfreeWalletDiagnosticsInput = z
   })
   .optional();
 
+const nileTestWalletAccessInput = z.object({
+  userId: z.string().uuid(),
+  enabled: z.boolean(),
+  reason: z.string().trim().max(160).optional(),
+});
+
 export const listTraders = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -153,6 +159,36 @@ export const getAdminGasFreeWalletDiagnostics = createServerFn({ method: "POST" 
     const { getAdminGasFreeWalletDiagnostics: getDiagnostics } =
       await import("@/lib/gasfree-provider.server");
     return getDiagnostics(data?.limit ?? 50);
+  });
+
+export const setNileTestWalletAccess = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => nileTestWalletAccessInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("nile_test_wallet_users" as never).upsert(
+      {
+        user_id: data.userId,
+        enabled: data.enabled,
+        enabled_by: context.userId,
+        reason: data.reason ?? null,
+        enabled_at: new Date().toISOString(),
+      } as never,
+      { onConflict: "user_id" },
+    );
+    if (error) throw new Error(error.message);
+    await supabaseAdmin.from("audit_logs").insert({
+      actor_id: context.userId,
+      actor_type: "admin",
+      action: data.enabled ? "nile_test_wallet.enabled" : "nile_test_wallet.disabled",
+      entity_type: "user",
+      entity_id: data.userId,
+      metadata: { reason: data.reason ?? null } as never,
+    });
+    return { ok: true };
   });
 
 export const getAdminDashboard = createServerFn({ method: "GET" })

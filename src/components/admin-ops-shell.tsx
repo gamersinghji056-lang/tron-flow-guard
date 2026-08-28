@@ -16,7 +16,6 @@ import {
   Radio,
   Receipt,
   ShieldAlert,
-  SlidersHorizontal,
   UserRoundCog,
   Users,
   Wallet2,
@@ -63,14 +62,13 @@ const adminLinks = [
       { to: "/admin/deposits", label: "Deposits", icon: Receipt },
       { to: "/admin/withdrawals", label: "Withdrawals", icon: Wallet2 },
       { to: "/admin/blockchain-monitor", label: "Blockchain Monitor", icon: Blocks },
-      { to: "/admin/user-wallets", label: "GasFree", icon: Zap },
+      { to: "/admin/user-wallets", label: "Wallet Monitor", icon: Zap },
     ],
   },
   {
     section: "Finance",
     links: [
       { to: "/admin/ledger", label: "Ledger", icon: BookOpenText },
-      { to: "/admin/fees", label: "Fees", icon: SlidersHorizontal },
       { to: "/admin/payment-methods", label: "Fee Liabilities", icon: BadgeDollarSign },
     ],
   },
@@ -89,11 +87,7 @@ const adminLinks = [
     section: "Settings",
     links: [
       { to: "/admin/system-settings", label: "General", icon: UserRoundCog },
-      { to: "/admin/system-settings", label: "Trading", icon: SlidersHorizontal },
-      { to: "/admin/fees", label: "Fees", icon: SlidersHorizontal },
-      { to: "/admin/system-settings", label: "GasFree", icon: Zap },
       { to: "/admin/employees", label: "Roles & Permissions", icon: UserRoundCog },
-      { to: "/admin/system-settings", label: "Profile", icon: Users },
     ],
   },
 ];

@@ -93,3 +93,20 @@ export function telegramLinkDecision(input: {
   }
   return "new_link" as const;
 }
+
+export function telegramRegistrationDecision(input: {
+  existingOwnerUserId?: string | null;
+  targetUserId: string;
+}) {
+  if (!input.existingOwnerUserId) return "allow" as const;
+  if (input.existingOwnerUserId === input.targetUserId) return "idempotent_owner" as const;
+  return "telegram_registration_taken" as const;
+}
+
+export function telegramLoginSessionUser(input: {
+  permanentOwnerUserId: string;
+  handoffUserId?: string | null;
+  activeSessionUserId?: string | null;
+}) {
+  return input.handoffUserId ?? input.activeSessionUserId ?? input.permanentOwnerUserId;
+}

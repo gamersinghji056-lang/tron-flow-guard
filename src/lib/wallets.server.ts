@@ -35,6 +35,27 @@ async function readSetting(key: string): Promise<unknown> {
   return data?.value ?? null;
 }
 
+export async function hasNileTestWalletAccess(userId: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("nile_test_wallet_users" as never)
+    .select("enabled")
+    .eq("user_id", userId as never)
+    .eq("enabled", true as never)
+    .maybeSingle();
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return false;
+    throw new Error(error.message);
+  }
+  return Boolean(data);
+}
+
+async function assertWalletNetworkCreationAllowed(userId: string, network: ChainNetwork) {
+  if (network !== "trc20-nile") return;
+  if (await hasNileTestWalletAccess(userId)) return;
+  throw new Error("Nile test wallet creation is restricted to authorized test users.");
+}
+
 export async function provisionWallet(params: {
   userId: string;
   name: string;
@@ -434,6 +455,7 @@ export async function provisionPersonalWallet(params: {
   const { encryptMnemonic, ensureTransactionPasswordForWalletAction } =
     await import("@/lib/wallet-security.server");
 
+  await assertWalletNetworkCreationAllowed(params.userId, params.network);
   await ensureTransactionPasswordForWalletAction(params.userId, params.transactionPassword);
 
   const mnemonic = createPersonalWalletMnemonic();

@@ -139,6 +139,8 @@ import {
   miniAppEntryState,
   resolveTelegramStateKind,
   telegramLinkDecision,
+  telegramLoginSessionUser,
+  telegramRegistrationDecision,
   telegramStartMenuLabels,
 } from "./role-auth-policy.ts";
 import {
@@ -1641,6 +1643,47 @@ describe("Telegram bot auth flow", () => {
       "platform_linked_to_different_telegram",
     );
   });
+
+  it("separates one-time Telegram registration ownership from repeated login switching", () => {
+    assert.equal(
+      telegramRegistrationDecision({ existingOwnerUserId: null, targetUserId: "user-a" }),
+      "allow",
+    );
+    assert.equal(
+      telegramRegistrationDecision({ existingOwnerUserId: "user-a", targetUserId: "user-a" }),
+      "idempotent_owner",
+    );
+    assert.equal(
+      telegramRegistrationDecision({ existingOwnerUserId: "user-a", targetUserId: "user-b" }),
+      "telegram_registration_taken",
+    );
+    assert.equal(
+      telegramLoginSessionUser({
+        permanentOwnerUserId: "user-a",
+        activeSessionUserId: "user-b",
+      }),
+      "user-b",
+    );
+    assert.equal(
+      telegramLoginSessionUser({
+        permanentOwnerUserId: "user-a",
+        handoffUserId: "user-c",
+        activeSessionUserId: "user-b",
+      }),
+      "user-c",
+    );
+  });
+
+  it("uses switchable Telegram sessions for login without mutating registration ownership", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/lib/telegram.server.ts"), "utf8");
+    assert.match(source, /telegram_registration_owners/);
+    assert.match(source, /telegramAccountForExistingLogin/);
+    assert.match(source, /createTelegramLoginSession/);
+    assert.match(source, /revokeTelegramLoginArtifacts/);
+    assert.match(source, /telegramLoginSessionUser/);
+    assert.match(source, /reason: "bot_login"/);
+    assert.match(source, /reason: "mini_app_login"/);
+  });
 });
 
 describe("Telegram Mini App runtime safety", () => {
@@ -2163,7 +2206,7 @@ describe("GasFree transfer service safety", () => {
     assert.match(admin, /PRODUCTION_ENABLED/);
     assert.match(adminFunctions, /getAdminGasFreeDiagnostics/);
     assert.match(adminFunctions, /getAdminGasFreeWalletDiagnostics/);
-    assert.match(adminWallets, /User Wallet GasFree Diagnostics/);
+    assert.match(adminWallets, /Wallet Monitor/);
     assert.match(adminWallets, /user authorization is required/i);
     assert.match(adminWallets, /Nile Testnet/);
     assert.match(providerServer, /getAdminGasFreeWalletDiagnostics/);
@@ -2196,6 +2239,45 @@ describe("GasFree transfer service safety", () => {
         warning: "nile_test_activity_only",
       },
     );
+  });
+
+  it("keeps Nile test wallet creation restricted while using the secure wallet pipeline", () => {
+    const walletServer = readFileSync(resolve(process.cwd(), "src/lib/wallets.server.ts"), "utf8");
+    const walletFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/wallets.functions.ts"),
+      "utf8",
+    );
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    assert.match(walletServer, /hasNileTestWalletAccess/);
+    assert.match(walletServer, /assertWalletNetworkCreationAllowed/);
+    assert.match(walletServer, /Nile test wallet creation is restricted/);
+    assert.match(walletServer, /encryptMnemonic/);
+    assert.match(walletServer, /ensureGasFreeChildWalletForGeneral/);
+    assert.match(walletFunctions, /nileTestWalletEnabled/);
+    assert.match(mini, /Create Nile Test Wallet/);
+    assert.match(mini, /NILE TESTNET/);
+  });
+
+  it("ships a non-secret Admin Wallet Monitor with owner, Telegram and real wallet metrics", () => {
+    const adminWallets = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/user-wallets.tsx"),
+      "utf8",
+    );
+    const providerServer = readFileSync(
+      resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
+      "utf8",
+    );
+    assert.match(adminWallets, /Wallet Monitor/);
+    assert.match(adminWallets, /telegramUsername/);
+    assert.match(adminWallets, /telegramUserId/);
+    assert.match(adminWallets, /successfulTransferCount/);
+    assert.match(adminWallets, /totalUsdtSent/);
+    assert.match(adminWallets, /totalUsdtReceived/);
+    assert.match(adminWallets, /Enable Nile Test/);
+    assert.match(providerServer, /personal_wallet_secrets/);
+    assert.match(providerServer, /wallet_transactions/);
+    assert.match(providerServer, /nile_test_wallet_users/);
+    assert.doesNotMatch(adminWallets, /encrypted_mnemonic|privateKey|password_hash/);
   });
 
   it("derives P2P ranking and metrics from real metric inputs", () => {

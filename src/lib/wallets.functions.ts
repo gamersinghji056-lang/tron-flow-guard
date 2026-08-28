@@ -118,7 +118,11 @@ export const getWalletSecurityStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { hasTransactionPassword } = await import("@/lib/wallet-security.server");
-    return { transactionPasswordEnabled: await hasTransactionPassword(context.userId) };
+    const { hasNileTestWalletAccess } = await import("@/lib/wallets.server");
+    return {
+      transactionPasswordEnabled: await hasTransactionPassword(context.userId),
+      nileTestWalletEnabled: await hasNileTestWalletAccess(context.userId),
+    };
   });
 
 export const revealRecoveryPhrase = createServerFn({ method: "POST" })
