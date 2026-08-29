@@ -1,6 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
 import * as GasFreeSdk from "@gasfree/gasfree-sdk";
-import { TronWeb } from "tronweb";
 import type { ChainNetwork } from "@/lib/chain";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isTronAddress } from "@/lib/chain";
@@ -21,6 +20,7 @@ import {
   validateGasFreeReplay,
   type GasFreeServiceStatus,
 } from "@/lib/gasfree-transfer-policy";
+import { signGasFreePermitTypedData } from "@/lib/gasfree-signing";
 import { safeErrorMessage, writeServiceHeartbeat } from "@/lib/system-health.server";
 
 const gasfreeSdkModule =
@@ -1312,22 +1312,12 @@ export async function createGasFreeTransferRequest(input: {
     transactionPassword: input.transactionPassword,
     expectedAddress: general.address,
   });
-  const tronTypedDataSigner = TronWeb as unknown as {
-    Trx: {
-      _signTypedData: (
-        domain: unknown,
-        types: unknown,
-        message: unknown,
-        privateKey: string,
-      ) => string;
-    };
-  };
-  const sig = tronTypedDataSigner.Trx._signTypedData(
-    prepared.typedData.domain,
-    prepared.typedData.types,
-    prepared.typedData.message,
+  const sig = signGasFreePermitTypedData({
+    domain: prepared.typedData.domain,
+    types: prepared.typedData.types,
+    message: prepared.typedData.message,
     privateKeyHex,
-  ).replace(/^0x/, "");
+  });
 
   const { data: request, error: insertError } = await supabaseAdmin
     .from("gasfree_transfer_requests" as never)

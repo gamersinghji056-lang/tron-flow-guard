@@ -53,6 +53,7 @@ import {
 } from "./tron-personal-wallet.ts";
 import { DEFAULT_NETWORK, NETWORKS, isTronAddress, parseTokenBalanceHex } from "./chain.ts";
 import { deriveGasFreeAddressFromGeneralAddress } from "./gasfree-address.ts";
+import { signGasFreePermitTypedData } from "./gasfree-signing.ts";
 import {
   GASFREE_MAINNET_PROVIDER_BASE_URL,
   GASFREE_MAINNET_ENV_NAMES,
@@ -1781,6 +1782,52 @@ describe("GasFree transfer service safety", () => {
     assert.notEqual(typedData.message.user, gasfree);
     assert.equal(typedData.domain.verifyingContract, "THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdc");
     assert.equal(typedData.message.serviceProvider, "TQ6qStrS2ZJ96gieZJC8AurTxwqJETmjfp");
+  });
+
+  it("signs GasFree TIP-712 data with the installed TronWeb v6 signer API", () => {
+    const mnemonic =
+      "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const general = deriveTronWalletFromMnemonic(mnemonic);
+    const sdk = new TronGasFree({ chainId: Number("0xcd8690dc") });
+    const typedData = sdk.assembleGasFreeTransactionJson({
+      token: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+      serviceProvider: "TQ6qStrS2ZJ96gieZJC8AurTxwqJETmjfp",
+      user: general.address,
+      receiver: "TR64RNprzMzjvbTAbUjLDkAbkbW3QzazeL",
+      value: "1",
+      maxFee: "1300000",
+      deadline: "1787513600",
+      version: "1",
+      nonce: "0",
+    });
+    const signature = signGasFreePermitTypedData({
+      domain: typedData.domain,
+      types: typedData.types,
+      message: typedData.message,
+      privateKeyHex: general.privateKeyHex,
+    });
+    const providerServer = readFileSync(
+      resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
+      "utf8",
+    );
+
+    assert.equal(typedData.domain.chainId, Number("0xcd8690dc"));
+    assert.equal(typedData.message.user, general.address);
+    assert.match(signature, /^[0-9a-fA-F]{130}$/);
+    assert.match(providerServer, /signGasFreePermitTypedData/);
+    assert.doesNotMatch(providerServer, /TronWeb as unknown as/);
+    assert.doesNotMatch(providerServer, /TronWeb\.Trx\._signTypedData/);
+    const transferFunction = providerServer.slice(
+      providerServer.indexOf("export async function createGasFreeTransferRequest"),
+    );
+    assert.ok(
+      transferFunction.indexOf("verifyTransactionPasswordOrThrow(input.userId") <
+        transferFunction.indexOf("loadGeneralSecret"),
+    );
+    assert.ok(
+      transferFunction.indexOf("loadGeneralSecret") <
+        transferFunction.indexOf("signGasFreePermitTypedData"),
+    );
   });
 
   it("keeps GasFree transfers not configured by default even when the wallet address is discovered", () => {
