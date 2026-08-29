@@ -139,13 +139,14 @@ export async function getEnergyOrderStatus(orderId: string): Promise<EnergyOrder
     id?: string | number;
     order_id?: string | number;
     status?: string;
+    txid?: string | null;
     delegate_txid?: string | null;
   }>(`/orders/${encodeURIComponent(orderId)}`);
   return {
     provider: "tronrental",
     providerOrderId: String(data.id ?? data.order_id ?? orderId),
     status: String(data.status ?? "unknown"),
-    delegateTxid: data.delegate_txid ?? null,
+    delegateTxid: data.delegate_txid ?? data.txid ?? null,
     raw: data,
   };
 }
