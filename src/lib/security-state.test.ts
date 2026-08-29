@@ -2184,12 +2184,21 @@ describe("GasFree transfer service safety", () => {
     );
 
     assert.match(providerServer, /recordGasFreePlatformFeeLiability/);
+    assert.match(providerServer, /assertGasFreePlatformFeeCollectible/);
+    assert.match(
+      providerServer,
+      /GasFree WTRON fee collection wallet is not configured for this network\./,
+    );
     assert.match(providerServer, /gasfree-transfer:\$\{input\.requestId\}:platform-fee/);
     assert.match(providerServer, /fee_type: "gasfree_transfer_platform_fee"/);
     assert.match(providerServer, /error\.code !== "23505"/);
     assert.match(providerServer, /destinationWalletId \? "PENDING_SWEEP" : "ACCRUED"/);
     assert.match(reconcileFunction, /status\.state === "SUCCEED"/);
     assert.match(createFunction, /submitted\.state === "SUCCEED"/);
+    assert.ok(
+      createFunction.indexOf("assertGasFreePlatformFeeCollectible") <
+        createFunction.indexOf("loadGeneralSecret"),
+    );
     assert.ok(
       createFunction.indexOf("submitPermitTransfer") <
         createFunction.indexOf("recordGasFreePlatformFeeLiability"),

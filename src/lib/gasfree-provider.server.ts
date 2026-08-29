@@ -1195,6 +1195,14 @@ async function recordGasFreePlatformFeeLiability(input: {
   if (error && error.code !== "23505") throw new Error(error.message);
 }
 
+async function assertGasFreePlatformFeeCollectible(network: ChainNetwork, platformFee: number) {
+  if (!Number.isFinite(platformFee) || platformFee <= 0) return;
+  const destinationWalletId = await gasFreeFeeDestinationForNetwork(network);
+  if (!destinationWalletId) {
+    throw new Error("GasFree WTRON fee collection wallet is not configured for this network.");
+  }
+}
+
 export async function reconcileGasFreeTransferRequest(requestId: string) {
   const { data: request, error } = await supabaseAdmin
     .from("gasfree_transfer_requests" as never)
@@ -1330,6 +1338,7 @@ export async function createGasFreeTransferRequest(input: {
   });
   if (!quote.allowSubmit) throw new Error("GasFree account has a pending transfer.");
   const platformFee = await readTransferFee();
+  await assertGasFreePlatformFeeCollectible(network, platformFee);
   const totalDebit = input.amount + platformFee + quote.maxFee / 10 ** quote.decimals;
   if (Number(row.onchain_balance ?? 0) < totalDebit) {
     throw new Error("Insufficient GasFree USDT balance");
