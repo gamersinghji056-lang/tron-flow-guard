@@ -205,6 +205,7 @@ export const getGasFreeSendReadiness = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { getGasFreeTransferReadiness } = await import("@/lib/gasfree-provider.server");
+    const { hasNileTestWalletAccess } = await import("@/lib/wallets.server");
     const { data: wallet, error } = await supabaseAdmin
       .from("user_wallets" as never)
       .select("id, user_id, network, wallet_type, wallet_role, parent_wallet_id, is_archived")
@@ -240,10 +241,13 @@ export const getGasFreeSendReadiness = createServerFn({ method: "POST" })
       parentRow?.user_id === context.userId && parentRow.is_archived !== true && parentRow.address
         ? parentRow.address
         : undefined;
+    const nileTestAuthorized =
+      row.network === "trc20-nile" ? await hasNileTestWalletAccess(context.userId) : false;
     return getGasFreeTransferReadiness({
       network: row.network ?? "trc20-mainnet",
       asset: "USDT",
       ...(generalAddress ? { generalAddress } : {}),
+      allowTestnet: nileTestAuthorized,
     });
   });
 

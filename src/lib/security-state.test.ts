@@ -2264,6 +2264,23 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /NILE TESTNET/);
   });
 
+  it("requires per-user Nile authorization before enabling GasFree Send", () => {
+    const walletFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/wallets.functions.ts"),
+      "utf8",
+    );
+    const providerServer = readFileSync(
+      resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
+      "utf8",
+    );
+    assert.match(walletFunctions, /hasNileTestWalletAccess/);
+    assert.match(walletFunctions, /allowTestnet: nileTestAuthorized/);
+    assert.match(providerServer, /hasNileTestWalletAccess/);
+    assert.match(providerServer, /network === "trc20-nile"/);
+    assert.match(providerServer, /allowTestnet: nileTestAuthorized/);
+    assert.match(providerServer, /Nile GasFree testing is not enabled for this account/);
+  });
+
   it("ships a non-secret Admin Wallet Monitor with owner, Telegram and real wallet metrics", () => {
     const adminWallets = readFileSync(
       resolve(process.cwd(), "src/routes/_authenticated/admin/user-wallets.tsx"),

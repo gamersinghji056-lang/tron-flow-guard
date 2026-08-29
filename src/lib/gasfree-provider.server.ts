@@ -1187,7 +1187,7 @@ export async function createGasFreeTransferRequest(input: {
   idempotencyKey: string;
 }) {
   const { verifyTransactionPasswordOrThrow } = await import("@/lib/wallet-security.server");
-  const { readTransferFee } = await import("@/lib/wallets.server");
+  const { hasNileTestWalletAccess, readTransferFee } = await import("@/lib/wallets.server");
 
   if (!isTronAddress(input.recipient)) throw new Error("Enter a valid TRON address");
   if (!Number.isFinite(input.amount) || input.amount <= 0) {
@@ -1219,11 +1219,22 @@ export async function createGasFreeTransferRequest(input: {
   }
 
   const network = row.network as ChainNetwork;
+  const nileTestAuthorized =
+    network === "trc20-nile" ? await hasNileTestWalletAccess(input.userId) : false;
   const readiness = await getGasFreeTransferReadiness({
     network,
     asset: GASFREE_SUPPORTED_ASSET,
     amount: input.amount,
+    allowTestnet: nileTestAuthorized,
   });
+  if (network === "trc20-nile" && !nileTestAuthorized) {
+    return {
+      ok: false,
+      status: "DISABLED",
+      message: "Nile GasFree testing is not enabled for this account.",
+      readiness,
+    };
+  }
   if (!isGasFreeTransferExecutable(readiness.status)) {
     return { ok: false, status: readiness.status, message: readiness.reason, readiness };
   }
