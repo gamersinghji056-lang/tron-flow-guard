@@ -2170,6 +2170,32 @@ describe("GasFree transfer service safety", () => {
     assert.equal(providerTxidForPersistence({ txnHash: "abc123" }), "abc123");
   });
 
+  it("records GasFree WTRON platform fee liability only after provider success", () => {
+    const providerServer = readFileSync(
+      resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
+      "utf8",
+    );
+    const reconcileFunction = providerServer.slice(
+      providerServer.indexOf("export async function reconcileGasFreeTransferRequest"),
+      providerServer.indexOf("export async function createGasFreeTransferRequest"),
+    );
+    const createFunction = providerServer.slice(
+      providerServer.indexOf("export async function createGasFreeTransferRequest"),
+    );
+
+    assert.match(providerServer, /recordGasFreePlatformFeeLiability/);
+    assert.match(providerServer, /gasfree-transfer:\$\{input\.requestId\}:platform-fee/);
+    assert.match(providerServer, /fee_type: "gasfree_transfer_platform_fee"/);
+    assert.match(providerServer, /error\.code !== "23505"/);
+    assert.match(providerServer, /destinationWalletId \? "PENDING_SWEEP" : "ACCRUED"/);
+    assert.match(reconcileFunction, /status\.state === "SUCCEED"/);
+    assert.match(createFunction, /submitted\.state === "SUCCEED"/);
+    assert.ok(
+      createFunction.indexOf("submitPermitTransfer") <
+        createFunction.indexOf("recordGasFreePlatformFeeLiability"),
+    );
+  });
+
   it("keeps large GasFree history pagination bounded and duplicate-safe", async () => {
     const pages = [
       {

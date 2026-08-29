@@ -1144,21 +1144,82 @@ function mapProviderState(state?: string | null) {
   return "SUBMITTED_TO_PROVIDER";
 }
 
+async function gasFreeFeeDestinationForNetwork(network: ChainNetwork) {
+  const { data: walletId, error: walletIdError } = await supabaseAdmin.rpc(
+    "current_fee_collection_wallet_id" as never,
+  );
+  if (walletIdError || !walletId) return null;
+  const { data: wallet, error } = await supabaseAdmin
+    .from("wallets" as never)
+    .select("id, network, is_active, purpose")
+    .eq("id", walletId as never)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const row = wallet as {
+    id?: string | null;
+    network?: ChainNetwork | null;
+    is_active?: boolean | null;
+    purpose?: string | null;
+  } | null;
+  if (
+    !row?.id ||
+    row.network !== network ||
+    row.is_active !== true ||
+    row.purpose !== "FEE_COLLECTION"
+  ) {
+    return null;
+  }
+  return row.id;
+}
+
+async function recordGasFreePlatformFeeLiability(input: {
+  requestId: string;
+  userId: string;
+  network: ChainNetwork;
+  platformFee: number;
+}) {
+  if (!Number.isFinite(input.platformFee) || input.platformFee <= 0) return;
+  const destinationWalletId = await gasFreeFeeDestinationForNetwork(input.network);
+  const { error } = await supabaseAdmin.from("fee_liabilities" as never).insert({
+    source: "gasfree_transfer_request",
+    order_id: null,
+    user_id: input.userId,
+    vendor_id: null,
+    fee_type: "gasfree_transfer_platform_fee",
+    amount: input.platformFee,
+    currency: "USDT",
+    destination_wallet_id: destinationWalletId,
+    status: destinationWalletId ? "PENDING_SWEEP" : "ACCRUED",
+    idempotency_key: `gasfree-transfer:${input.requestId}:platform-fee`,
+  } as never);
+  if (error && error.code !== "23505") throw new Error(error.message);
+}
+
 export async function reconcileGasFreeTransferRequest(requestId: string) {
   const { data: request, error } = await supabaseAdmin
     .from("gasfree_transfer_requests" as never)
-    .select("id, network, provider_request_id")
+    .select("id, user_id, network, provider_request_id, platform_fee")
     .eq("id", requestId as never)
     .maybeSingle();
   if (error) throw new Error(error.message);
   const row = request as {
     id: string;
+    user_id?: string | null;
     network?: ChainNetwork | null;
     provider_request_id?: string | null;
+    platform_fee?: number | string | null;
   } | null;
   if (!row?.provider_request_id || !row.network) throw new Error("GasFree trace ID is unavailable");
   const status = await getTransferStatus(row.network, row.provider_request_id);
   const txid = providerTxidForPersistence(status);
+  if (status.state === "SUCCEED" && row.user_id) {
+    await recordGasFreePlatformFeeLiability({
+      requestId: row.id,
+      userId: row.user_id,
+      network: row.network,
+      platformFee: Number(row.platform_fee ?? 0),
+    });
+  }
   await supabaseAdmin
     .from("gasfree_transfer_requests" as never)
     .update({
@@ -1369,6 +1430,14 @@ export async function createGasFreeTransferRequest(input: {
       ...prepared.message,
       sig,
     });
+    if (submitted.state === "SUCCEED") {
+      await recordGasFreePlatformFeeLiability({
+        requestId,
+        userId: input.userId,
+        network,
+        platformFee,
+      });
+    }
     await supabaseAdmin
       .from("gasfree_transfer_requests" as never)
       .update({
