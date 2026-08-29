@@ -2281,6 +2281,20 @@ describe("GasFree transfer service safety", () => {
     assert.match(providerServer, /Nile GasFree testing is not enabled for this account/);
   });
 
+  it("wires Mini App GasFree Send to the real transfer flow without fake TXIDs", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    assert.match(mini, /createGasFreeTransfer/);
+    assert.match(mini, /openGasfreeSend/);
+    assert.match(mini, /onSubmitGasfree=\{submitGasfreeSend\}/);
+    assert.match(mini, /NILE TESTNET GasFree USDT/);
+    assert.match(mini, /Activation fee/);
+    assert.match(mini, /GasFree provider fee/);
+    assert.match(mini, /WTRON fee/);
+    assert.match(mini, /gasfreeSendIdempotencyKey/);
+    assert.match(mini, /txid \? \(/);
+    assert.doesNotMatch(mini, /fake.*txid|mock.*txid/i);
+  });
+
   it("ships a non-secret Admin Wallet Monitor with owner, Telegram and real wallet metrics", () => {
     const adminWallets = readFileSync(
       resolve(process.cwd(), "src/routes/_authenticated/admin/user-wallets.tsx"),
