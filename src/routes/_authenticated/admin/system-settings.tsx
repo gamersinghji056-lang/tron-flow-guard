@@ -138,6 +138,11 @@ function SystemSettingsPage() {
           directSellFeePercent: Number(settings["direct_sell_fee_percent"] ?? 0),
           withdrawalFeeUsdt: Number(settings["withdrawal_fee_usdt"] ?? 0),
           feeCollectionWalletId: settings["fee_collection_wallet_id"] || null,
+          feeCollectionWalletIdMainnet:
+            settings["fee_collection_wallet_id_trc20_mainnet"] ||
+            settings["fee_collection_wallet_id"] ||
+            null,
+          feeCollectionWalletIdNile: settings["fee_collection_wallet_id_trc20_nile"] || null,
           onChainSendEnabled: settings["on_chain_send_enabled"] === "true",
           tronSigningMainnetEnabled: settings["tron_signing_mainnet_enabled"] === "true",
           feeSweepEnabled: settings["fee_sweep_enabled"] === "true",
@@ -213,6 +218,17 @@ function SystemSettingsPage() {
     (wallet) => wallet.id === settings["fee_collection_wallet_id"],
   );
   const feeWallets = wallets.filter((wallet) => wallet.purpose === "FEE_COLLECTION");
+  const mainnetFeeWallets = feeWallets.filter((wallet) => wallet.network === "trc20-mainnet");
+  const nileFeeWallets = feeWallets.filter((wallet) => wallet.network === "trc20-nile");
+  const selectedMainnetFeeWallet =
+    wallets.find(
+      (wallet) =>
+        wallet.id ===
+        (settings["fee_collection_wallet_id_trc20_mainnet"] ||
+          settings["fee_collection_wallet_id"]),
+    ) ?? null;
+  const selectedNileFeeWallet =
+    wallets.find((wallet) => wallet.id === settings["fee_collection_wallet_id_trc20_nile"]) ?? null;
 
   return (
     <div className="space-y-6">
@@ -290,16 +306,40 @@ function SystemSettingsPage() {
           onChange={(value) => setSettings({ ...settings, fee_sweep_minimum_usdt: value })}
         />
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Fee collection wallet</label>
+          <label className="text-sm font-medium">Mainnet fee collection wallet</label>
           <select
             className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            value={settings["fee_collection_wallet_id"] ?? ""}
+            value={
+              settings["fee_collection_wallet_id_trc20_mainnet"] ||
+              settings["fee_collection_wallet_id"] ||
+              ""
+            }
             onChange={(event) =>
-              setSettings({ ...settings, fee_collection_wallet_id: event.target.value })
+              setSettings({
+                ...settings,
+                fee_collection_wallet_id_trc20_mainnet: event.target.value,
+              })
             }
           >
-            <option value="">No on-chain sweep wallet selected</option>
-            {feeWallets.map((wallet) => (
+            <option value="">No Mainnet fee wallet selected</option>
+            {mainnetFeeWallets.map((wallet) => (
+              <option key={wallet.id} value={wallet.id}>
+                {wallet.name} - {wallet.address}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Nile testnet fee collection wallet</label>
+          <select
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            value={settings["fee_collection_wallet_id_trc20_nile"] ?? ""}
+            onChange={(event) =>
+              setSettings({ ...settings, fee_collection_wallet_id_trc20_nile: event.target.value })
+            }
+          >
+            <option value="">No Nile fee wallet selected</option>
+            {nileFeeWallets.map((wallet) => (
               <option key={wallet.id} value={wallet.id}>
                 {wallet.name} - {wallet.address}
               </option>
@@ -313,13 +353,16 @@ function SystemSettingsPage() {
             when a signing-capable source wallet exists. No fake TXID is created.
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <Metric label="Selected Wallet" value={selectedWallet?.name ?? "None"} />
-            <Metric label="Address" value={selectedWallet?.address ?? "-"} />
+            <Metric label="Legacy Wallet" value={selectedWallet?.name ?? "None"} />
+            <Metric label="Mainnet Wallet" value={selectedMainnetFeeWallet?.name ?? "None"} />
+            <Metric label="Nile Wallet" value={selectedNileFeeWallet?.name ?? "None"} />
+            <Metric label="Mainnet Address" value={selectedMainnetFeeWallet?.address ?? "-"} />
+            <Metric label="Nile Address" value={selectedNileFeeWallet?.address ?? "-"} />
             <Metric
               label="Balance"
-              value={`${Number(selectedWallet?.onchain_usdt_balance ?? 0)} USDT / ${Number(
-                selectedWallet?.onchain_trx_balance ?? 0,
-              )} TRX`}
+              value={`${Number(
+                selectedMainnetFeeWallet?.onchain_usdt_balance ?? 0,
+              )} USDT / ${Number(selectedMainnetFeeWallet?.onchain_trx_balance ?? 0)} TRX`}
             />
             <Metric label="Pending Fee Liability" value={`${pendingFees.toLocaleString()} USDT`} />
           </div>

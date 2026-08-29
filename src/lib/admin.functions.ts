@@ -20,6 +20,8 @@ const settingsInput = z.object({
     .optional(),
   onchainBroadcast: z.boolean().optional(),
   feeCollectionWalletId: z.string().uuid().nullable().optional(),
+  feeCollectionWalletIdMainnet: z.string().uuid().nullable().optional(),
+  feeCollectionWalletIdNile: z.string().uuid().nullable().optional(),
   vendorBuyerFeePercent: z.number().min(0).max(20).optional(),
   vendorSellerFeePercent: z.number().min(0).max(20).optional(),
   wtronBuyRateInr: z.number().min(0).optional(),

@@ -104,6 +104,8 @@ export async function writeSettings(input: {
   feeWalletAddress?: string | undefined;
   onchainBroadcast?: boolean | undefined;
   feeCollectionWalletId?: string | null | undefined;
+  feeCollectionWalletIdMainnet?: string | null | undefined;
+  feeCollectionWalletIdNile?: string | null | undefined;
   vendorBuyerFeePercent?: number | undefined;
   vendorSellerFeePercent?: number | undefined;
   wtronBuyRateInr?: number | undefined;
@@ -143,6 +145,18 @@ export async function writeSettings(input: {
   }
   if (input.feeCollectionWalletId !== undefined) {
     rows.push({ key: "fee_collection_wallet_id", value: input.feeCollectionWalletId });
+  }
+  if (input.feeCollectionWalletIdMainnet !== undefined) {
+    rows.push({
+      key: "fee_collection_wallet_id_trc20_mainnet",
+      value: input.feeCollectionWalletIdMainnet,
+    });
+  }
+  if (input.feeCollectionWalletIdNile !== undefined) {
+    rows.push({
+      key: "fee_collection_wallet_id_trc20_nile",
+      value: input.feeCollectionWalletIdNile,
+    });
   }
   if (input.vendorBuyerFeePercent !== undefined) {
     rows.push({ key: "vendor_buyer_fee_percent", value: input.vendorBuyerFeePercent });

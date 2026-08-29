@@ -1144,32 +1144,55 @@ function mapProviderState(state?: string | null) {
   return "SUBMITTED_TO_PROVIDER";
 }
 
-async function gasFreeFeeDestinationForNetwork(network: ChainNetwork) {
-  const { data: walletId, error: walletIdError } = await supabaseAdmin.rpc(
-    "current_fee_collection_wallet_id" as never,
-  );
-  if (walletIdError || !walletId) return null;
-  const { data: wallet, error } = await supabaseAdmin
-    .from("wallets" as never)
-    .select("id, network, is_active, purpose")
-    .eq("id", walletId as never)
+function feeCollectionWalletSettingKeys(network: ChainNetwork) {
+  if (network === "trc20-nile") {
+    return ["fee_collection_wallet_id_trc20_nile", "fee_collection_wallet_id"] as const;
+  }
+  return ["fee_collection_wallet_id_trc20_mainnet", "fee_collection_wallet_id"] as const;
+}
+
+function parseFeeCollectionWalletSetting(value: unknown) {
+  if (typeof value === "string") return value.replace(/^"|"$/g, "") || null;
+  if (value == null) return null;
+  return String(value).replace(/^"|"$/g, "") || null;
+}
+
+async function readFeeCollectionWalletSetting(key: string) {
+  const { data, error } = await supabaseAdmin
+    .from("system_settings" as never)
+    .select("value")
+    .eq("key", key as never)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  const row = wallet as {
-    id?: string | null;
-    network?: ChainNetwork | null;
-    is_active?: boolean | null;
-    purpose?: string | null;
-  } | null;
-  if (
-    !row?.id ||
-    row.network !== network ||
-    row.is_active !== true ||
-    row.purpose !== "FEE_COLLECTION"
-  ) {
-    return null;
+  return parseFeeCollectionWalletSetting((data as { value?: unknown } | null)?.value);
+}
+
+async function gasFreeFeeDestinationForNetwork(network: ChainNetwork) {
+  for (const settingKey of feeCollectionWalletSettingKeys(network)) {
+    const walletId = await readFeeCollectionWalletSetting(settingKey);
+    if (!walletId) continue;
+    const { data: wallet, error } = await supabaseAdmin
+      .from("wallets" as never)
+      .select("id, network, is_active, purpose")
+      .eq("id", walletId as never)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const row = wallet as {
+      id?: string | null;
+      network?: ChainNetwork | null;
+      is_active?: boolean | null;
+      purpose?: string | null;
+    } | null;
+    if (
+      row?.id &&
+      row.network === network &&
+      row.is_active === true &&
+      row.purpose === "FEE_COLLECTION"
+    ) {
+      return row.id;
+    }
   }
-  return row.id;
+  return null;
 }
 
 async function recordGasFreePlatformFeeLiability(input: {

@@ -2185,6 +2185,11 @@ describe("GasFree transfer service safety", () => {
 
     assert.match(providerServer, /recordGasFreePlatformFeeLiability/);
     assert.match(providerServer, /assertGasFreePlatformFeeCollectible/);
+    assert.match(providerServer, /fee_collection_wallet_id_trc20_nile/);
+    assert.match(providerServer, /fee_collection_wallet_id_trc20_mainnet/);
+    assert.match(providerServer, /fee_collection_wallet_id/);
+    assert.match(providerServer, /row\.network === network/);
+    assert.match(providerServer, /row\.purpose === "FEE_COLLECTION"/);
     assert.match(
       providerServer,
       /GasFree WTRON fee collection wallet is not configured for this network\./,
