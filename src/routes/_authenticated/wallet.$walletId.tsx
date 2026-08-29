@@ -15,7 +15,12 @@ import {
 import QRCode from "qrcode";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { refreshWalletBalance, revealRecoveryPhrase, sendTransfer } from "@/lib/wallets.functions";
+import {
+  previewTransfer,
+  refreshWalletBalance,
+  revealRecoveryPhrase,
+  sendTransfer,
+} from "@/lib/wallets.functions";
 import { formatUsdt, isTronAddress, networkConfig, shortenHash } from "@/lib/chain";
 import type { ChainNetwork } from "@/lib/chain";
 import { onChainSendEnabled, walletDisplayBalance } from "@/lib/wallet-state";
@@ -66,11 +71,24 @@ interface LedgerRow {
   created_at: string;
 }
 
+interface TransferPreview {
+  customerFee: number;
+  customerFeeCurrency: "USDT" | "TRX";
+  totalDebit: number;
+  estimatedEnergy?: number | null;
+  providerCostUsdt?: number | null;
+  providerCostTrx?: number | null;
+  networkCostTrx?: number | null;
+  blocked?: boolean;
+  blockCode?: string | null;
+}
+
 function WalletDetailPage() {
   const { walletId } = Route.useParams();
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
   const send = useServerFn(sendTransfer);
+  const previewSend = useServerFn(previewTransfer);
   const reveal = useServerFn(revealRecoveryPhrase);
   const refreshBalance = useServerFn(refreshWalletBalance);
 
@@ -86,6 +104,9 @@ function WalletDetailPage() {
   const [revealPassword, setRevealPassword] = useState("");
   const [recoveryPhrase, setRecoveryPhrase] = useState("");
   const [sending, setSending] = useState(false);
+  const [preview, setPreview] = useState<TransferPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [refreshingBalance, setRefreshingBalance] = useState(false);
   const [activityPage, setActivityPage] = useState(0);
   const pageSize = 25;
@@ -157,8 +178,12 @@ function WalletDetailPage() {
 
   const config = networkConfig(wallet?.network);
   const parsedAmount = Number(amount);
-  const estimatedNetworkTrx = asset === "USDT" ? 30 : 0.1;
-  const total = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0;
+  const total =
+    preview && !preview.blocked
+      ? Number(preview.totalDebit)
+      : Number.isFinite(parsedAmount) && parsedAmount > 0
+        ? parsedAmount
+        : 0;
   const sendEnabled = onChainSendEnabled(wallet);
   const displayBalance =
     asset === "USDT" ? walletDisplayBalance(wallet) : Number(wallet?.onchain_trx_balance ?? 0);
@@ -170,8 +195,54 @@ function WalletDetailPage() {
     parsedAmount > 0 &&
     Boolean(transactionPassword) &&
     !!wallet &&
+    !!preview &&
+    !preview.blocked &&
+    !previewLoading &&
+    !previewError &&
     total <= displayBalance &&
     !sending;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (
+      !wallet ||
+      !isTronAddress(toAddress) ||
+      !Number.isFinite(parsedAmount) ||
+      parsedAmount <= 0
+    ) {
+      setPreview(null);
+      setPreviewError(null);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    const timer = window.setTimeout(() => {
+      void previewSend({
+        data: {
+          walletId: wallet.id,
+          asset,
+          toAddress: toAddress.trim(),
+          amount: parsedAmount,
+        },
+      })
+        .then((result) => {
+          if (!cancelled) setPreview(result as unknown as TransferPreview);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setPreview(null);
+            setPreviewError(error instanceof Error ? error.message : "Fee preview unavailable");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setPreviewLoading(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [asset, parsedAmount, previewSend, toAddress, wallet]);
 
   async function submitSend(event: React.FormEvent) {
     event.preventDefault();
@@ -431,15 +502,30 @@ function WalletDetailPage() {
                 value={`${formatUsdt(parsedAmount > 0 ? parsedAmount : 0)} ${asset}`}
               />
               <Row
-                label="Platform fee"
-                value={`${formatUsdt(asset === "USDT" ? 0 : 0)} ${asset}`}
+                label="Transfer fee"
+                value={
+                  previewLoading
+                    ? "Calculating..."
+                    : `${formatUsdt(preview?.customerFee ?? 0)} ${asset}`
+                }
               />
-              <Row
-                label="Estimated network requirement"
-                value={`${formatUsdt(estimatedNetworkTrx)} TRX`}
-              />
+              {asset === "USDT" && preview?.estimatedEnergy ? (
+                <Row label="Estimated Energy" value={preview.estimatedEnergy.toLocaleString()} />
+              ) : null}
+              {asset === "TRX" && preview?.networkCostTrx != null ? (
+                <Row
+                  label="Estimated network cost"
+                  value={`${formatUsdt(preview.networkCostTrx)} TRX`}
+                />
+              ) : null}
               <Row label="Total debit" value={`${formatUsdt(total)} ${asset}`} strong />
             </dl>
+            {previewError ? <p className="text-xs text-destructive">{previewError}</p> : null}
+            {preview?.blocked ? (
+              <p className="text-xs text-destructive">
+                Transfer unavailable: {preview.blockCode?.replaceAll("_", " ") ?? "fee policy"}
+              </p>
+            ) : null}
             <Field label="Transaction password">
               <Input
                 type="password"

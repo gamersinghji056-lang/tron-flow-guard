@@ -143,6 +143,13 @@ function SystemSettingsPage() {
             settings["fee_collection_wallet_id"] ||
             null,
           feeCollectionWalletIdNile: settings["fee_collection_wallet_id_trc20_nile"] || null,
+          usdtTotalTransferFee: Number(settings["usdt_total_transfer_fee"] ?? 1.5),
+          tronEnergyRouteEnabled: settings["tron_energy_route_enabled"] === "true",
+          tronEnergyProvider: "tronrental",
+          tronEnergyBufferPercent: Number(settings["tron_energy_buffer_percent"] ?? 12),
+          trxMinTransferFee: Number(settings["trx_min_transfer_fee"] ?? 5),
+          trxMaxTransferFee: Number(settings["trx_max_transfer_fee"] ?? 8),
+          trxTransferFeeMargin: Number(settings["trx_transfer_fee_margin"] ?? 4),
           onChainSendEnabled: settings["on_chain_send_enabled"] === "true",
           tronSigningMainnetEnabled: settings["tron_signing_mainnet_enabled"] === "true",
           feeSweepEnabled: settings["fee_sweep_enabled"] === "true",
@@ -345,6 +352,69 @@ function SystemSettingsPage() {
               </option>
             ))}
           </select>
+        </div>
+        <div className="rounded-lg border p-3 md:col-span-2">
+          <p className="font-medium">Transfer Fees & Resources</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Customer fees are server-authoritative. Provider resource cost is tracked separately for
+            WTRON revenue accounting and is not added on top of the displayed customer fee.
+          </p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <SettingInput
+              label="USDT customer total fee"
+              value={settings["usdt_total_transfer_fee"] ?? "1.5"}
+              onChange={(value) => setSettings({ ...settings, usdt_total_transfer_fee: value })}
+            />
+            <ToggleInput
+              label="Energy route enabled"
+              checked={settings["tron_energy_route_enabled"] === "true"}
+              onChange={(checked) =>
+                setSettings({ ...settings, tron_energy_route_enabled: String(checked) })
+              }
+            />
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Energy provider</label>
+              <select
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                value={settings["tron_energy_provider"] ?? "tronrental"}
+                onChange={(event) =>
+                  setSettings({ ...settings, tron_energy_provider: event.target.value })
+                }
+              >
+                <option value="tronrental">TronRental</option>
+              </select>
+            </div>
+            <SettingInput
+              label="Energy safety buffer %"
+              value={settings["tron_energy_buffer_percent"] ?? "12"}
+              onChange={(value) => setSettings({ ...settings, tron_energy_buffer_percent: value })}
+            />
+            <SettingInput
+              label="TRX minimum fee"
+              value={settings["trx_min_transfer_fee"] ?? "5"}
+              onChange={(value) => setSettings({ ...settings, trx_min_transfer_fee: value })}
+            />
+            <SettingInput
+              label="TRX maximum fee"
+              value={settings["trx_max_transfer_fee"] ?? "8"}
+              onChange={(value) => setSettings({ ...settings, trx_max_transfer_fee: value })}
+            />
+            <SettingInput
+              label="TRX WTRON margin"
+              value={settings["trx_transfer_fee_margin"] ?? "4"}
+              onChange={(value) => setSettings({ ...settings, trx_transfer_fee_margin: value })}
+            />
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-4">
+            <Metric label="USDT Revenue Rule" value="1.50 - provider cost" />
+            <Metric label="USDT Loss Guard" value="ENERGY_COST_TOO_HIGH" />
+            <Metric label="TRX Revenue Rule" value="customer fee - network cost" />
+            <Metric label="TRX Loss Guard" value="TRX_NETWORK_COST_TOO_HIGH" />
+            <Metric label="Provider Expense" value="Recorded after provider order/broadcast" />
+            <Metric label="Fee Liability" value="Created after successful broadcast" />
+            <Metric label="Energy Metrics" value="Estimated / purchased / actual when available" />
+            <Metric label="Unknown Values" value="Not available" />
+          </div>
         </div>
         <div className="rounded-lg border p-3 md:col-span-2">
           <p className="font-medium">Fee Collection</p>

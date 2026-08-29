@@ -12,16 +12,18 @@ import { TRON_BIP44_DERIVATION_PATH } from "@/lib/tron-personal-wallet";
 
 type Client = SupabaseClient<Database>;
 
-export const DEFAULT_TRANSFER_FEE = 1;
+export const DEFAULT_TRANSFER_FEE = 1.5;
 
 export async function readTransferFee(): Promise<number> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await supabaseAdmin
     .from("system_settings")
-    .select("value")
-    .eq("key", "transfer_fee_usdt")
-    .maybeSingle();
-  const parsed = Number(data?.value);
+    .select("key, value")
+    .in("key", ["usdt_total_transfer_fee", "transfer_fee_usdt"])
+    .order("key", { ascending: false });
+  const authoritative = (data ?? []).find((row) => row.key === "usdt_total_transfer_fee");
+  const legacy = (data ?? []).find((row) => row.key === "transfer_fee_usdt");
+  const parsed = Number(authoritative?.value ?? legacy?.value);
   return Number.isFinite(parsed) ? parsed : DEFAULT_TRANSFER_FEE;
 }
 

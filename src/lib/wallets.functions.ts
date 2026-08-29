@@ -44,6 +44,12 @@ const transferInput = z.object({
   idempotencyKey: z.string().trim().min(8).max(120),
 });
 
+const transferPreviewInput = transferInput.omit({
+  transactionPassword: true,
+  idempotencyKey: true,
+  memo: true,
+});
+
 const gasfreeReadinessInput = z.object({
   walletId: z.string().uuid(),
 });
@@ -281,6 +287,20 @@ export const sendTransfer = createServerFn({ method: "POST" })
       transactionPassword: data.transactionPassword,
       idempotencyKey: data.idempotencyKey,
       memo: data.memo,
+    });
+  });
+
+export const previewTransfer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => transferPreviewInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { previewPersonalSendCost } = await import("@/lib/signer.server");
+    return previewPersonalSendCost({
+      userId: context.userId,
+      walletId: data.walletId,
+      asset: data.asset,
+      toAddress: data.toAddress,
+      amount: data.amount,
     });
   });
 

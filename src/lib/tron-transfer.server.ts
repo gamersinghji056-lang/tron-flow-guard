@@ -104,6 +104,76 @@ export async function broadcastSignedTrc20Transfer(params: {
   }
 }
 
+export async function estimateTrc20TransferEnergy(params: {
+  network: ChainNetwork;
+  ownerAddress: string;
+  toAddress: string;
+  amount: number;
+}): Promise<number> {
+  const config = networkConfig(params.network);
+  const units = BigInt(Math.round(params.amount * 10 ** config.tokenDecimals));
+  const parameter = pad32(tronAddressToHex(params.toAddress).slice(2)) + pad32(units.toString(16));
+  const res = await fetch(`${config.apiBase}/wallet/triggerconstantcontract`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      owner_address: tronAddressToHex(params.ownerAddress),
+      contract_address: tronAddressToHex(config.usdtContract),
+      function_selector: "transfer(address,uint256)",
+      parameter,
+      call_value: 0,
+    }),
+  });
+  const body = (await res.json()) as {
+    energy_used?: number;
+    energy_required?: number;
+    result?: { result?: boolean; message?: string };
+  };
+  if (body.result?.result === false) {
+    const message = body.result.message
+      ? Buffer.from(body.result.message, "hex").toString("utf8")
+      : "Energy estimation failed";
+    throw new Error(message);
+  }
+  return Math.max(Number(body.energy_required ?? 0), Number(body.energy_used ?? 0), 65_000);
+}
+
+export async function estimateTrxTransferNetworkCost(params: {
+  network: ChainNetwork;
+  ownerAddress: string;
+  toAddress: string;
+  amount: number;
+}): Promise<number> {
+  const config = networkConfig(params.network);
+  const sun = Math.round(params.amount * 1_000_000);
+  const [builtRes, resourceRes] = await Promise.all([
+    fetch(`${config.apiBase}/wallet/createtransaction`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        owner_address: tronAddressToHex(params.ownerAddress),
+        to_address: tronAddressToHex(params.toAddress),
+        amount: sun,
+      }),
+    }),
+    fetch(`${config.apiBase}/wallet/getaccountresource`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ address: tronAddressToHex(params.ownerAddress) }),
+    }),
+  ]);
+  const [built, resource] = (await Promise.all([builtRes.json(), resourceRes.json()])) as [
+    { raw_data_hex?: string },
+    { freeNetLimit?: number; freeNetUsed?: number; NetLimit?: number; NetUsed?: number },
+  ];
+  const txBytes = Math.ceil((built.raw_data_hex?.length ?? 534) / 2) + 67;
+  const freeAvailable =
+    Math.max(Number(resource.freeNetLimit ?? 0) - Number(resource.freeNetUsed ?? 0), 0) +
+    Math.max(Number(resource.NetLimit ?? 0) - Number(resource.NetUsed ?? 0), 0);
+  const paidBytes = Math.max(txBytes - freeAvailable, 0);
+  return paidBytes / 1_000;
+}
+
 async function broadcastSignedTransaction(
   apiBase: string,
   transaction: Record<string, unknown> & { txID?: string },

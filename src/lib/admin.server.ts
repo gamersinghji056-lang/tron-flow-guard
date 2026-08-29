@@ -106,6 +106,13 @@ export async function writeSettings(input: {
   feeCollectionWalletId?: string | null | undefined;
   feeCollectionWalletIdMainnet?: string | null | undefined;
   feeCollectionWalletIdNile?: string | null | undefined;
+  usdtTotalTransferFee?: number | undefined;
+  tronEnergyRouteEnabled?: boolean | undefined;
+  tronEnergyProvider?: "tronrental" | undefined;
+  tronEnergyBufferPercent?: number | undefined;
+  trxMinTransferFee?: number | undefined;
+  trxMaxTransferFee?: number | undefined;
+  trxTransferFeeMargin?: number | undefined;
   vendorBuyerFeePercent?: number | undefined;
   vendorSellerFeePercent?: number | undefined;
   wtronBuyRateInr?: number | undefined;
@@ -157,6 +164,27 @@ export async function writeSettings(input: {
       key: "fee_collection_wallet_id_trc20_nile",
       value: input.feeCollectionWalletIdNile,
     });
+  }
+  if (input.usdtTotalTransferFee !== undefined) {
+    rows.push({ key: "usdt_total_transfer_fee", value: input.usdtTotalTransferFee });
+  }
+  if (input.tronEnergyRouteEnabled !== undefined) {
+    rows.push({ key: "tron_energy_route_enabled", value: input.tronEnergyRouteEnabled });
+  }
+  if (input.tronEnergyProvider !== undefined) {
+    rows.push({ key: "tron_energy_provider", value: input.tronEnergyProvider });
+  }
+  if (input.tronEnergyBufferPercent !== undefined) {
+    rows.push({ key: "tron_energy_buffer_percent", value: input.tronEnergyBufferPercent });
+  }
+  if (input.trxMinTransferFee !== undefined) {
+    rows.push({ key: "trx_min_transfer_fee", value: input.trxMinTransferFee });
+  }
+  if (input.trxMaxTransferFee !== undefined) {
+    rows.push({ key: "trx_max_transfer_fee", value: input.trxMaxTransferFee });
+  }
+  if (input.trxTransferFeeMargin !== undefined) {
+    rows.push({ key: "trx_transfer_fee_margin", value: input.trxTransferFeeMargin });
   }
   if (input.vendorBuyerFeePercent !== undefined) {
     rows.push({ key: "vendor_buyer_fee_percent", value: input.vendorBuyerFeePercent });

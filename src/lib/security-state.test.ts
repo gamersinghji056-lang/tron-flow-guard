@@ -168,6 +168,7 @@ import {
   signerRequestSignature,
   verifySignerServiceRequest,
 } from "./signer-policy.ts";
+import { calculateTrxTransferFee, calculateUsdtTransferFee } from "./transfer-fee-policy.ts";
 
 describe("API key crypto", () => {
   it("parses and verifies generated keys", () => {
@@ -590,6 +591,72 @@ describe("server-side signer safety", () => {
           estimatedTrxRequired: 0.1,
         }),
       /INSUFFICIENT_TRX/,
+    );
+  });
+
+  it("keeps USDT customer fee fixed and accounts for Energy provider cost internally", () => {
+    const quote = calculateUsdtTransferFee({
+      customerFeeUsdt: 1.5,
+      providerCostUsdt: 0.57,
+    });
+    assert.equal(quote.customerFeeUsdt, 1.5);
+    assert.equal(quote.providerCostUsdt, 0.57);
+    assert.equal(quote.wtronRevenueUsdt, 0.93);
+    assert.equal(quote.blocked, false);
+
+    const blocked = calculateUsdtTransferFee({
+      customerFeeUsdt: 1.5,
+      providerCostUsdt: 1.5,
+    });
+    assert.equal(blocked.blocked, true);
+    assert.equal(blocked.blockCode, "ENERGY_COST_TOO_HIGH");
+  });
+
+  it("constrains TRX transfer fees to the configured min/max customer range", () => {
+    const minimum = calculateTrxTransferFee({
+      networkCostTrx: 1,
+      marginTrx: 2,
+      minFeeTrx: 5,
+      maxFeeTrx: 8,
+    });
+    assert.equal(minimum.customerFeeTrx, 5);
+    assert.equal(minimum.wtronRevenueTrx, 4);
+
+    const capped = calculateTrxTransferFee({
+      networkCostTrx: 3,
+      marginTrx: 6,
+      minFeeTrx: 5,
+      maxFeeTrx: 8,
+    });
+    assert.equal(capped.customerFeeTrx, 8);
+    assert.equal(capped.wtronRevenueTrx, 5);
+
+    const blocked = calculateTrxTransferFee({
+      networkCostTrx: 8.1,
+      marginTrx: 1,
+      minFeeTrx: 5,
+      maxFeeTrx: 8,
+    });
+    assert.equal(blocked.blocked, true);
+    assert.equal(blocked.blockCode, "TRX_NETWORK_COST_TOO_HIGH");
+  });
+
+  it("uses resource accounting fields and records send fee liability only after broadcast", () => {
+    const signerServer = readFileSync(resolve("src/lib/signer.server.ts"), "utf8");
+    const feePolicy = readFileSync(resolve("src/lib/transfer-fee-policy.ts"), "utf8");
+    assert.doesNotMatch(signerServer, /USDT_TRX_REQUIREMENT/);
+    assert.doesNotMatch(signerServer, /TRX_TRANSFER_REQUIREMENT/);
+    assert.match(signerServer, /customer_fee_usdt/);
+    assert.match(signerServer, /provider_cost_usdt/);
+    assert.match(signerServer, /wtron_revenue_usdt/);
+    assert.match(signerServer, /customer_fee_trx/);
+    assert.match(signerServer, /wtron_revenue_trx/);
+    assert.match(feePolicy, /ENERGY_COST_TOO_HIGH/);
+    assert.match(feePolicy, /TRX_NETWORK_COST_TOO_HIGH/);
+    assert.match(signerServer, /record_fee_liability/);
+    assert.ok(
+      signerServer.indexOf("broadcastSignedTrc20Transfer") <
+        signerServer.indexOf("wallet-send:${requestId}:customer-fee"),
     );
   });
 
