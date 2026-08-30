@@ -660,6 +660,26 @@ describe("server-side signer safety", () => {
     );
   });
 
+  it("drives Mini App standard Mainnet send capability from server preview", () => {
+    const mini = readFileSync(resolve("src/routes/mini-app.tsx"), "utf8");
+    const signerServer = readFileSync(resolve("src/lib/signer.server.ts"), "utf8");
+    assert.match(signerServer, /signingEnabled/);
+    assert.match(signerServer, /mainnetSigningEnabled/);
+    assert.match(signerServer, /energyRouteEnabled/);
+    assert.match(signerServer, /signerReady/);
+    assert.match(signerServer, /transactionPasswordConfigured/);
+    assert.match(mini, /standardPreview\?\.mainnetSigningEnabled/);
+    assert.match(mini, /standardPreview\?\.energyRouteEnabled/);
+    assert.match(mini, /Energy-assisted/);
+    assert.match(mini, /standardFeeLabel/);
+    assert.match(mini, /standardTotalDebitLabel/);
+    assert.match(mini, /submitStandardTransfer/);
+    assert.match(mini, /standardTransferPassword/);
+    assert.doesNotMatch(mini, /const mainnetDisabled = wallet\?\.network === "trc20-mainnet"/);
+    assert.doesNotMatch(mini, /\[t\("resources"\), t\("signerRequired"\)\]/);
+    assert.doesNotMatch(mini, /\[t\("fees"\), t\("signerRequired"\)\]/);
+  });
+
   it("protects watch-only company wallets from signing", () => {
     assert.equal(companyWalletCanSign("WATCH_ONLY"), false);
     assert.equal(companyWalletCanSign("SIGNING_ENABLED"), true);

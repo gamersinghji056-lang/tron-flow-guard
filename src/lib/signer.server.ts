@@ -521,6 +521,37 @@ export async function previewPersonalSendCost(input: {
     toAddress: input.toAddress.trim(),
     amount: input.amount,
   });
+  const [signerSecretResult, transactionPasswordResult] = await Promise.all([
+    supabaseAdmin
+      .from("personal_wallet_secrets" as never)
+      .select("wallet_id")
+      .eq("wallet_id", input.walletId as never)
+      .eq("user_id", input.userId as never)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("transaction_passwords" as never)
+      .select("user_id, locked_until")
+      .eq("user_id", input.userId as never)
+      .maybeSingle(),
+  ]);
+  if (signerSecretResult.error) throw new Error(signerSecretResult.error.message);
+  if (transactionPasswordResult.error) throw new Error(transactionPasswordResult.error.message);
+  const signerSecret = signerSecretResult.data;
+  const transactionPassword = transactionPasswordResult.data;
+  const signingEnabled =
+    (await readSetting("on_chain_send_enabled", false)) &&
+    process.env["TRON_SIGNING_ENABLED"] === "true";
+  const mainnetSigningEnabled =
+    row.network !== "trc20-mainnet" ||
+    ((await readSetting("tron_signing_mainnet_enabled", false)) &&
+      process.env["TRON_SIGNING_MAINNET_ENABLED"] === "true");
+  const transactionPasswordRow = transactionPassword as unknown as {
+    locked_until?: string | null;
+  } | null;
+  const transactionPasswordLocked = Boolean(
+    transactionPasswordRow?.locked_until &&
+    new Date(transactionPasswordRow.locked_until).getTime() > Date.now(),
+  );
   return {
     asset: input.asset,
     customerFee: quote.platformFee,
@@ -535,6 +566,12 @@ export async function previewPersonalSendCost(input: {
     wtronRevenueTrx: quote.wtronRevenueTrx,
     blocked: quote.blocked,
     blockCode: quote.blockCode,
+    signingEnabled,
+    mainnetSigningEnabled,
+    energyRouteEnabled: quote.provider !== null,
+    signerReady: Boolean(signerSecret),
+    transactionPasswordConfigured: Boolean(transactionPassword),
+    transactionPasswordLocked,
     availableBalance:
       input.asset === "USDT"
         ? Number(row.onchain_balance ?? 0)

@@ -58,9 +58,11 @@ import {
   discoverWalletGasFreeAddress,
   getGasFreeSendReadiness,
   importWallet,
+  previewTransfer,
   getWalletSecurityStatus,
   refreshWalletBalance,
   revealRecoveryPhrase,
+  sendTransfer,
   setDefaultWallet,
   setWalletTransactionPassword,
 } from "@/lib/wallets.functions";
@@ -397,6 +399,29 @@ interface GasFreeTransferResult {
   } | null;
 }
 
+interface StandardTransferPreview {
+  asset: ReceiveAsset;
+  customerFee: number;
+  customerFeeCurrency: ReceiveAsset;
+  totalDebit: number;
+  estimatedEnergy?: number | null;
+  provider?: string | null;
+  providerCostUsdt?: number | null;
+  providerCostTrx?: number | null;
+  networkCostTrx?: number | null;
+  wtronRevenueUsdt?: number | null;
+  wtronRevenueTrx?: number | null;
+  blocked?: boolean | null;
+  blockCode?: string | null;
+  signingEnabled?: boolean | null;
+  mainnetSigningEnabled?: boolean | null;
+  energyRouteEnabled?: boolean | null;
+  signerReady?: boolean | null;
+  transactionPasswordConfigured?: boolean | null;
+  transactionPasswordLocked?: boolean | null;
+  availableBalance?: number | null;
+}
+
 interface PaymentMethodRow {
   id: string;
   kind: "upi" | "bank";
@@ -708,6 +733,8 @@ function TelegramMiniApp() {
   const discoverGasfreeWallet = useServerFn(discoverWalletGasFreeAddress);
   const loadGasfreeReadiness = useServerFn(getGasFreeSendReadiness);
   const submitGasfreeTransfer = useServerFn(createGasFreeTransfer);
+  const loadTransferPreview = useServerFn(previewTransfer);
+  const submitStandardTransfer = useServerFn(sendTransfer);
   const loadPaymentMethods = useServerFn(listPaymentMethods);
   const loadVendorPortal = useServerFn(fetchVendorPortal);
   const saveVendorPayout = useServerFn(saveVendorAccount);
@@ -813,6 +840,20 @@ function TelegramMiniApp() {
   const [sendAddress, setSendAddress] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sendMode, setSendMode] = useState<"standard" | "gasfree">("standard");
+  const [standardTransferPassword, setStandardTransferPassword] = useState("");
+  const [standardTransferPreview, setStandardTransferPreview] =
+    useState<StandardTransferPreview | null>(null);
+  const [standardTransferPreviewError, setStandardTransferPreviewError] = useState("");
+  const [standardTransferSubmitState, setStandardTransferSubmitState] = useState<
+    "idle" | "submitting" | "submitted" | "failed"
+  >("idle");
+  const [standardTransferResult, setStandardTransferResult] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [standardTransferIdempotencyKey, setStandardTransferIdempotencyKey] = useState(() =>
+    createMiniAppClientId("standard-send"),
+  );
   const [gasfreeSendPassword, setGasfreeSendPassword] = useState("");
   const [gasfreeSubmitState, setGasfreeSubmitState] = useState<
     "idle" | "preparing" | "awaiting_password" | "submitting" | "pending" | "confirmed" | "failed"
@@ -864,6 +905,55 @@ function TelegramMiniApp() {
         : window.matchMedia("(prefers-color-scheme: dark)").matches;
     return resolveMiniTheme(theme, systemDark);
   }, [theme]);
+
+  useEffect(() => {
+    if (screen !== "send" || sendMode !== "standard" || !selectedWallet?.id) {
+      setStandardTransferPreview(null);
+      setStandardTransferPreviewError("");
+      return;
+    }
+    const amount = Number(sendAmount);
+    const recipient = sendAddress.trim();
+    if (!isTronAddress(recipient) || !Number.isFinite(amount) || amount <= 0) {
+      setStandardTransferPreview(null);
+      setStandardTransferPreviewError("");
+      return;
+    }
+    let stale = false;
+    const timer = window.setTimeout(() => {
+      void loadTransferPreview({
+        data: {
+          walletId: selectedWallet.id,
+          asset: sendAsset,
+          toAddress: recipient,
+          amount,
+        },
+      })
+        .then((preview) => {
+          if (stale) return;
+          setStandardTransferPreview(preview as StandardTransferPreview);
+          setStandardTransferPreviewError("");
+        })
+        .catch((error) => {
+          if (stale) return;
+          setStandardTransferPreview(null);
+          setStandardTransferPreviewError(friendlyMiniError(error, "Could not prepare send"));
+        });
+    }, 300);
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    loadTransferPreview,
+    screen,
+    selectedWallet?.id,
+    sendAddress,
+    sendAmount,
+    sendAsset,
+    sendMode,
+  ]);
+
   const platformBalance = Number(profile?.balance ?? 0);
   const lockedBalance = Number(profile?.locked_balance ?? 0);
   const pendingBalance = Number(profile?.pending_balance ?? 0);
@@ -1818,6 +1908,72 @@ function TelegramMiniApp() {
     }
   }
 
+  async function submitStandardSend(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedWallet?.id) {
+      toast.error(t("noWalletSelected"));
+      return;
+    }
+    const recipient = sendAddress.trim();
+    const amount = Number(sendAmount);
+    if (!isTronAddress(recipient)) {
+      toast.error(t("recipientAddressPlaceholder"));
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    if (!standardTransferPreview) {
+      toast.error(standardTransferPreviewError || "Send preview is not ready");
+      return;
+    }
+    if (
+      !standardTransferPreview.signingEnabled ||
+      !standardTransferPreview.mainnetSigningEnabled ||
+      !standardTransferPreview.signerReady ||
+      !standardTransferPreview.transactionPasswordConfigured ||
+      standardTransferPreview.transactionPasswordLocked ||
+      standardTransferPreview.blocked
+    ) {
+      toast.error(standardTransferPreview.blockCode || t("sendUnavailable"));
+      return;
+    }
+    if (!standardTransferPassword) {
+      toast.error(t("transactionPassword"));
+      return;
+    }
+    if (busy || standardTransferSubmitState === "submitting") return;
+    setBusy(true);
+    setStandardTransferSubmitState("submitting");
+    setStandardTransferResult(null);
+    try {
+      const result = (await submitStandardTransfer({
+        data: {
+          walletId: selectedWallet.id,
+          asset: sendAsset,
+          toAddress: recipient,
+          amount,
+          transactionPassword: standardTransferPassword,
+          idempotencyKey: standardTransferIdempotencyKey,
+        },
+      })) as unknown as Record<string, unknown>;
+      setStandardTransferResult(result);
+      setStandardTransferSubmitState("submitted");
+      setStandardTransferPassword("");
+      setStandardTransferIdempotencyKey(createMiniAppClientId("standard-send"));
+      await refreshBalance({ data: { walletId: selectedWallet.id, forceGasfreeCheck: false } });
+      await loadSelectedWalletTransactions(selectedWallet.id, true);
+      await refresh("wallet-detail");
+      toast.success("Transfer submitted");
+    } catch (error) {
+      setStandardTransferSubmitState("failed");
+      toast.error(friendlyMiniError(error, "Could not submit transfer"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitGasfreeSend(event: FormEvent) {
     event.preventDefault();
     if (!selectedGasfreeWallet?.id) {
@@ -2250,6 +2406,12 @@ function TelegramMiniApp() {
             onSend={() => {
               setSendMode("standard");
               setSendAsset(selectedWalletAsset);
+              setStandardTransferPassword("");
+              setStandardTransferPreview(null);
+              setStandardTransferPreviewError("");
+              setStandardTransferResult(null);
+              setStandardTransferSubmitState("idle");
+              setStandardTransferIdempotencyKey(createMiniAppClientId("standard-send"));
               void navigate("send");
             }}
             onReceive={() => {
@@ -2374,10 +2536,17 @@ function TelegramMiniApp() {
             setAmount={setSendAmount}
             transactionPassword={gasfreeSendPassword}
             setTransactionPassword={setGasfreeSendPassword}
+            standardTransactionPassword={standardTransferPassword}
+            setStandardTransactionPassword={setStandardTransferPassword}
+            standardPreview={standardTransferPreview}
+            standardPreviewError={standardTransferPreviewError}
+            standardSubmitState={standardTransferSubmitState}
+            standardResult={standardTransferResult}
             submitState={gasfreeSubmitState}
             result={gasfreeTransferResult}
             busy={busy}
             t={t}
+            onSubmitStandard={submitStandardSend}
             onSubmitGasfree={submitGasfreeSend}
           />
         ) : null}
@@ -4142,10 +4311,17 @@ function SendScreen({
   setAmount,
   transactionPassword,
   setTransactionPassword,
+  standardTransactionPassword,
+  setStandardTransactionPassword,
+  standardPreview,
+  standardPreviewError,
+  standardSubmitState,
+  standardResult,
   submitState,
   result,
   busy,
   t,
+  onSubmitStandard,
   onSubmitGasfree,
 }: {
   wallet: WalletRow | null;
@@ -4159,18 +4335,24 @@ function SendScreen({
   setAmount: (value: string) => void;
   transactionPassword: string;
   setTransactionPassword: (value: string) => void;
+  standardTransactionPassword: string;
+  setStandardTransactionPassword: (value: string) => void;
+  standardPreview: StandardTransferPreview | null;
+  standardPreviewError: string;
+  standardSubmitState: "idle" | "submitting" | "submitted" | "failed";
+  standardResult: Record<string, unknown> | null;
   submitState:
     "idle" | "preparing" | "awaiting_password" | "submitting" | "pending" | "confirmed" | "failed";
   result: GasFreeTransferResult | null;
   busy: boolean;
   t: MiniT;
+  onSubmitStandard: (event: FormEvent) => void;
   onSubmitGasfree: (event: FormEvent) => void;
 }) {
   const enabled = onChainSendEnabled(wallet);
   const network = networkConfig(wallet?.network);
   const available =
     asset === "USDT" ? walletDisplayBalance(wallet) : Number(wallet?.onchain_trx_balance ?? 0);
-  const mainnetDisabled = wallet?.network === "trc20-mainnet";
   const gasfreeMode = mode === "gasfree" && wallet?.wallet_role === "gasfree";
   const amountNumber = Number(amount);
   const previewAmount = Number.isFinite(amountNumber) && amountNumber > 0 ? amountNumber : 0;
@@ -4191,6 +4373,63 @@ function SendScreen({
   const txid = result?.submitted?.txId ?? result?.submitted?.txid ?? result?.request?.txid ?? null;
   const providerStatus =
     result?.submitted?.state ?? result?.request?.status ?? result?.status ?? null;
+  const standardRecipientValid = isTronAddress(address);
+  const standardCapabilityReady = Boolean(
+    standardPreview?.signingEnabled &&
+    standardPreview?.mainnetSigningEnabled &&
+    standardPreview?.signerReady &&
+    standardPreview?.transactionPasswordConfigured &&
+    !standardPreview?.transactionPasswordLocked &&
+    !standardPreview?.blocked,
+  );
+  const standardSufficient =
+    standardPreview?.availableBalance == null
+      ? false
+      : Number(standardPreview.availableBalance) >= Number(standardPreview.totalDebit ?? 0);
+  const canContinueStandard =
+    enabled &&
+    standardRecipientValid &&
+    previewAmount > 0 &&
+    Boolean(standardPreview) &&
+    standardCapabilityReady &&
+    standardSufficient &&
+    !busy &&
+    standardSubmitState !== "submitting";
+  const standardResourceLabel =
+    asset === "USDT" && standardPreview?.energyRouteEnabled
+      ? "Energy-assisted"
+      : asset === "TRX"
+        ? "TRON network"
+        : standardPreview
+          ? "Signer ready"
+          : "Checking...";
+  const standardFeeLabel = standardPreview
+    ? `${money(Number(standardPreview.customerFee ?? 0), asset)} ${asset}`
+    : "Checking...";
+  const standardTotalDebitLabel = standardPreview
+    ? `${money(Number(standardPreview.totalDebit ?? 0), asset)} ${asset}`
+    : "Checking...";
+  const standardStatusMessage = !enabled
+    ? t("sendUnavailable")
+    : standardPreviewError
+      ? standardPreviewError
+      : !standardRecipientValid && address
+        ? "Enter a valid TRON address"
+        : standardPreview?.blocked
+          ? standardPreview.blockCode || t("sendUnavailable")
+          : standardPreview?.transactionPasswordLocked
+            ? "Transaction password is temporarily locked."
+            : standardPreview && !standardPreview.signerReady
+              ? "Signer is not available for this wallet."
+              : standardPreview && !standardPreview.signingEnabled
+                ? "Secure signing is disabled by WTRON."
+                : standardPreview && !standardPreview.mainnetSigningEnabled
+                  ? "Mainnet signing is disabled by WTRON."
+                  : standardPreview && !standardPreview.transactionPasswordConfigured
+                    ? "Set a transaction password before sending."
+                    : standardPreview && !standardSufficient
+                      ? "Insufficient balance for amount plus transfer fee."
+                      : "";
   if (gasfreeMode) {
     return (
       <Screen title={t("send")} subtitle="NILE TESTNET GasFree USDT">
@@ -4323,65 +4562,97 @@ function SendScreen({
   }
   return (
     <Screen title={t("send")} subtitle={t("selfCustodyWallet")}>
-      <Surface className="p-4">
-        <SegmentedControl
-          value={asset}
-          setValue={(value) => setAsset(value as ReceiveAsset)}
-          items={[
-            ["USDT", "USDT"],
-            ["TRX", "TRX"],
-          ]}
-        />
-        <div className="mt-4 space-y-3">
-          <FormField label={t("available")}>
-            <p className="text-sm font-semibold tabular-nums">
-              {money(available, asset)} {asset}
-            </p>
-          </FormField>
-          <FormField label={t("toAddress")}>
-            <div className="flex items-center gap-2">
+      <form className="space-y-4" onSubmit={onSubmitStandard}>
+        <Surface className="p-4">
+          <SegmentedControl
+            value={asset}
+            setValue={(value) => setAsset(value as ReceiveAsset)}
+            items={[
+              ["USDT", "USDT"],
+              ["TRX", "TRX"],
+            ]}
+          />
+          <div className="mt-4 space-y-3">
+            <FormField label={t("available")}>
+              <p className="text-sm font-semibold tabular-nums">
+                {money(available, asset)} {asset}
+              </p>
+            </FormField>
+            <FormField label={t("toAddress")}>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={address}
+                  onChange={(event) => setAddress(event.target.value)}
+                  placeholder={t("recipientAddressPlaceholder")}
+                  aria-invalid={address.length > 0 && !standardRecipientValid}
+                />
+                <button
+                  type="button"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6"
+                >
+                  <ScanLine className="h-4 w-4 text-slate-300" />
+                </button>
+              </div>
+            </FormField>
+            <FormField label={t("amount")}>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  placeholder={t("amount")}
+                  inputMode="decimal"
+                />
+                <button
+                  type="button"
+                  className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
+                  onClick={() => setAmount(String(available || ""))}
+                >
+                  {t("max")}
+                </button>
+              </div>
+            </FormField>
+            <FormField label={t("transactionPassword")}>
               <Input
-                value={address}
-                onChange={(event) => setAddress(event.target.value)}
-                placeholder={t("recipientAddressPlaceholder")}
+                type="password"
+                value={standardTransactionPassword}
+                onChange={(event) => setStandardTransactionPassword(event.target.value)}
+                placeholder={t("transactionPassword")}
+                autoComplete="current-password"
               />
-              <button className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6">
-                <ScanLine className="h-4 w-4 text-slate-300" />
-              </button>
-            </div>
-          </FormField>
-          <FormField label={t("amount")}>
-            <div className="flex items-center gap-2">
-              <Input
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                placeholder={t("amount")}
-              />
-              <button
-                type="button"
-                className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
-                onClick={() => setAmount(String(available || ""))}
-              >
-                {t("max")}
-              </button>
-            </div>
-          </FormField>
-        </div>
-        <MetricGrid
-          items={[
-            [t("selectedWallet"), wallet?.name ?? t("noWalletSelected")],
-            [t("network"), networkLabelForMini(wallet?.network, t)],
-            [t("resources"), t("signerRequired")],
-            [t("fees"), t("signerRequired")],
-          ]}
-        />
-      </Surface>
-      <p className="rounded-2xl bg-yellow-500/10 p-3 text-sm text-yellow-100">
-        {mainnetDisabled ? t("mainnetSendDisabled") : t("sendUnavailable")}
-      </p>
-      <Button className="w-full" disabled={!enabled || mainnetDisabled}>
-        {t("continue")}
-      </Button>
+            </FormField>
+          </div>
+          <MetricGrid
+            items={[
+              [t("selectedWallet"), wallet?.name ?? t("noWalletSelected")],
+              [t("network"), networkLabelForMini(wallet?.network, t)],
+              [t("resources"), standardResourceLabel],
+              [t("fees"), standardFeeLabel],
+              ["Total debit", standardTotalDebitLabel],
+              ["Mainnet signing", standardPreview?.mainnetSigningEnabled ? "Enabled" : "Checking"],
+              ["Signer", standardPreview?.signerReady ? "Ready" : "Checking"],
+            ]}
+          />
+        </Surface>
+        {standardStatusMessage ? (
+          <p className="rounded-2xl bg-yellow-500/10 p-3 text-sm text-yellow-100">
+            {standardStatusMessage}
+          </p>
+        ) : null}
+        {standardResult ? (
+          <Surface className="space-y-3 p-4">
+            <StatusRow label="Status" value={String(standardResult["status"] ?? "Submitted")} />
+            <StatusRow
+              label="Request"
+              value={String(standardResult["id"] ?? "Not available")}
+              mono
+            />
+            <StatusRow label="TXID" value={String(standardResult["txid"] ?? "Pending")} mono />
+          </Surface>
+        ) : null}
+        <Button className="w-full" disabled={!canContinueStandard}>
+          {standardSubmitState === "submitting" ? "Submitting" : t("continue")}
+        </Button>
+      </form>
     </Screen>
   );
 }
