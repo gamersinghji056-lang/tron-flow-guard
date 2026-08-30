@@ -2,6 +2,19 @@ import { createStart, createMiddleware } from "@tanstack/start-client-core";
 
 import { renderErrorPage } from "./lib/error-page";
 import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
+import { domainRedirectTarget } from "@/lib/domain-policy";
+
+const domainRoutingMiddleware = createMiddleware().server(async (ctx) => {
+  const request = ctx.request;
+  const url = new URL(request.url);
+  const target = domainRedirectTarget({
+    hostname: url.hostname,
+    pathname: url.pathname,
+    search: url.search,
+  });
+  if (target) return Response.redirect(target, 302);
+  return ctx.next();
+});
 
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
@@ -48,5 +61,5 @@ Object.defineProperty(csrfMiddleware, Symbol.for("tanstack-start:csrf-middleware
 
 export const startInstance = createStart(() => ({
   functionMiddleware: [attachSupabaseAuth],
-  requestMiddleware: [errorMiddleware, csrfMiddleware],
+  requestMiddleware: [errorMiddleware, domainRoutingMiddleware, csrfMiddleware],
 }));

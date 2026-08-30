@@ -1,4 +1,6 @@
-export const CANONICAL_PRODUCTION_ORIGIN = "https://tron-flow-guard-production.up.railway.app";
+import { PUBLIC_PRODUCTION_ORIGIN } from "./domain-policy.ts";
+
+export const CANONICAL_PRODUCTION_ORIGIN = PUBLIC_PRODUCTION_ORIGIN;
 export const LEGACY_LOVABLE_HOSTNAME = "wtron.lovable.app";
 export const AUTHORITATIVE_SUPABASE_PROJECT_REF = "taqdmbcqztxwdgkwfcoi";
 

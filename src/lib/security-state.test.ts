@@ -47,6 +47,7 @@ import {
   canonicalRuntimeUrl,
   isAuthoritativeSupabaseUrl,
 } from "./production-url.ts";
+import { domainRedirectTarget } from "./domain-policy.ts";
 import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
@@ -1429,7 +1430,7 @@ describe("admin registration hardening", () => {
 });
 
 describe("public website auth surface", () => {
-  it("redirects the legacy Lovable host to the authoritative Railway runtime", () => {
+  it("redirects the legacy Lovable host to the authoritative public runtime", () => {
     assert.equal(
       canonicalRuntimeUrl({
         hostname: "wtron.lovable.app",
@@ -1443,6 +1444,50 @@ describe("public website auth surface", () => {
       null,
     );
     assert.match(canonicalRuntimeRedirectScript(), /location/);
+  });
+
+  it("separates public and admin production host routing", () => {
+    assert.equal(CANONICAL_PRODUCTION_ORIGIN, "https://wtron.org");
+    assert.equal(
+      domainRedirectTarget({ hostname: "admin.wtron.org", pathname: "/", search: "" }),
+      "https://admin.wtron.org/admin/login",
+    );
+    assert.equal(
+      domainRedirectTarget({ hostname: "admin.wtron.org", pathname: "/trader/login", search: "" }),
+      "https://admin.wtron.org/admin/login",
+    );
+    assert.equal(
+      domainRedirectTarget({
+        hostname: "admin.wtron.org",
+        pathname: "/vendor/register",
+        search: "",
+      }),
+      "https://admin.wtron.org/admin/login",
+    );
+    assert.equal(
+      domainRedirectTarget({ hostname: "admin.wtron.org", pathname: "/admin/login", search: "" }),
+      null,
+    );
+    assert.equal(
+      domainRedirectTarget({ hostname: "wtron.org", pathname: "/admin/wallets", search: "?x=1" }),
+      "https://admin.wtron.org/admin/wallets?x=1",
+    );
+    assert.equal(
+      domainRedirectTarget({ hostname: "wtron.org", pathname: "/trader/login", search: "" }),
+      null,
+    );
+    assert.equal(
+      domainRedirectTarget({
+        hostname: "tron-flow-guard-production.up.railway.app",
+        pathname: "/api/v1/health",
+        search: "",
+      }),
+      null,
+    );
+    assert.equal(
+      domainRedirectTarget({ hostname: "localhost", pathname: "/admin/login", search: "" }),
+      null,
+    );
   });
 
   it("accepts only the authoritative production Supabase URL", () => {
