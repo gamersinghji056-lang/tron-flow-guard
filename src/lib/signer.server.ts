@@ -299,11 +299,31 @@ export async function createAndBroadcastPersonalSend(input: {
     const derived = deriveTronWalletFromMnemonic(mnemonic, secretRow.derivation_path ?? undefined);
     if (derived.address !== wallet.address) throw new Error("Derived key does not match wallet");
 
-    const { broadcastSignedTrc20Transfer, broadcastSignedTrxTransfer } =
-      await import("@/lib/tron-transfer.server");
+    const {
+      assertTransferSignerAuthorized,
+      broadcastSignedTrc20Transfer,
+      broadcastSignedTrxTransfer,
+    } = await import("@/lib/tron-transfer.server");
+    const permission = await assertTransferSignerAuthorized({
+      network,
+      ownerAddress: wallet.address,
+      signerAddress: derived.address,
+      asset: input.asset,
+    });
     await supabaseAdmin
       .from("wallet_send_requests" as never)
-      .update({ status: "BROADCASTING", signed_at: new Date().toISOString() } as never)
+      .update({
+        status: "BROADCASTING",
+        signed_at: new Date().toISOString(),
+        metadata: {
+          memo: input.memo ?? null,
+          customer_fee_currency: input.asset,
+          signer_boundary: "server_module_v1",
+          permission_id: permission.permissionId,
+          permission_name: permission.permissionName,
+          permission_source: permission.source,
+        },
+      } as never)
       .eq("id", requestId as never);
 
     let energyOrderId: string | null = null;
@@ -340,6 +360,10 @@ export async function createAndBroadcastPersonalSend(input: {
           metadata: {
             memo: input.memo ?? null,
             customer_fee_currency: input.asset,
+            signer_boundary: "server_module_v1",
+            permission_id: permission.permissionId,
+            permission_name: permission.permissionName,
+            permission_source: permission.source,
             energy_order_status: energyOrderStatus,
             energy_order: energyOrder.raw,
           },
@@ -355,6 +379,7 @@ export async function createAndBroadcastPersonalSend(input: {
             ownerAddress: wallet.address,
             toAddress: input.toAddress.trim(),
             amount: input.amount,
+            permissionId: permission.permissionId,
           })
         : await broadcastSignedTrxTransfer({
             network,
@@ -362,6 +387,7 @@ export async function createAndBroadcastPersonalSend(input: {
             ownerAddress: wallet.address,
             toAddress: input.toAddress.trim(),
             amount: input.amount,
+            permissionId: permission.permissionId,
           });
 
     if (!broadcast.ok || !broadcast.txid) {

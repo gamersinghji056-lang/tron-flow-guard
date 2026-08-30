@@ -8,9 +8,16 @@
  */
 import { networkConfig, parseTokenBalanceHex, type ChainNetwork } from "@/lib/chain";
 import { tronAddressToHex } from "@/lib/tron-address";
-import { deriveWallet, signTxHash } from "@/lib/wallet-keys.server";
+import {
+  selectAuthorizedTronPermission,
+  type SelectedTronPermission,
+  type TronAccountPermissions,
+} from "@/lib/tron-permission";
+import { deriveWallet } from "@/lib/wallet-keys.server";
 
 const READ_TIMEOUT_MS = 30_000;
+const TRANSFER_CONTRACT_TYPE = 1;
+const TRIGGER_SMART_CONTRACT_TYPE = 31;
 
 function pad32(hex: string): string {
   return hex.replace(/^0x/, "").padStart(64, "0");
@@ -29,12 +36,52 @@ function headers() {
   return out;
 }
 
+export async function assertTransferSignerAuthorized(params: {
+  network: ChainNetwork;
+  ownerAddress: string;
+  signerAddress: string;
+  asset: "USDT" | "TRX";
+}): Promise<SelectedTronPermission> {
+  const config = networkConfig(params.network);
+  const res = await fetch(`${config.apiBase}/wallet/getaccount`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ address: tronAddressToHex(params.ownerAddress) }),
+  });
+  if (!res.ok) throw new Error("TRON_ACCOUNT_PERMISSION_UNAVAILABLE");
+  const account = (await res.json()) as TronAccountPermissions;
+  return selectAuthorizedTronPermission({
+    account,
+    ownerAddress: params.ownerAddress,
+    signerAddress: params.signerAddress,
+    contractType: params.asset === "USDT" ? TRIGGER_SMART_CONTRACT_TYPE : TRANSFER_CONTRACT_TYPE,
+  });
+}
+
+async function signBuiltTransaction(
+  apiBase: string,
+  transaction: Record<string, unknown>,
+  privateKeyHex: string,
+) {
+  const { TronWeb } = await import("tronweb");
+  const tronWeb = new TronWeb({ fullHost: apiBase });
+  const signed = (await tronWeb.trx.sign(transaction as never, privateKeyHex)) as unknown as Record<
+    string,
+    unknown
+  >;
+  const recovered = tronWeb.trx.ecRecover(signed as never);
+  const expected = tronWeb.address.fromPrivateKey(privateKeyHex);
+  if (recovered !== expected) throw new Error("TRON_SIGNATURE_RECOVERY_MISMATCH");
+  return signed;
+}
+
 export async function broadcastSignedTrxTransfer(params: {
   network: ChainNetwork;
   privateKeyHex: string;
   ownerAddress: string;
   toAddress: string;
   amount: number;
+  permissionId?: number | null;
 }): Promise<BroadcastResult> {
   const config = networkConfig(params.network);
   const sun = Math.round(params.amount * 1_000_000);
@@ -48,12 +95,15 @@ export async function broadcastSignedTrxTransfer(params: {
         owner_address: tronAddressToHex(params.ownerAddress),
         to_address: tronAddressToHex(params.toAddress),
         amount: sun,
+        ...(params.permissionId && params.permissionId > 0
+          ? { Permission_id: params.permissionId }
+          : {}),
       }),
     });
     const built = (await buildRes.json()) as { txID?: string; Error?: string };
     if (!built.txID) return { ok: false, error: built.Error ?? "Failed to build TRX transfer" };
-    const signature = signTxHash(built.txID, params.privateKeyHex);
-    return broadcastSignedTransaction(config.apiBase, { ...built, signature: [signature] });
+    const signed = await signBuiltTransaction(config.apiBase, built, params.privateKeyHex);
+    return broadcastSignedTransaction(config.apiBase, signed);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Broadcast failed" };
   }
@@ -65,6 +115,7 @@ export async function broadcastSignedTrc20Transfer(params: {
   ownerAddress: string;
   toAddress: string;
   amount: number;
+  permissionId?: number | null;
 }): Promise<BroadcastResult> {
   const config = networkConfig(params.network);
   const units = BigInt(Math.round(params.amount * 10 ** config.tokenDecimals));
@@ -82,6 +133,9 @@ export async function broadcastSignedTrc20Transfer(params: {
         parameter,
         fee_limit: 40_000_000,
         call_value: 0,
+        ...(params.permissionId && params.permissionId > 0
+          ? { Permission_id: params.permissionId }
+          : {}),
       }),
     });
     const built = (await buildRes.json()) as {
@@ -94,11 +148,12 @@ export async function broadcastSignedTrc20Transfer(params: {
         : "Failed to build transaction";
       return { ok: false, error: message };
     }
-    const signature = signTxHash(built.transaction.txID, params.privateKeyHex);
-    return broadcastSignedTransaction(config.apiBase, {
-      ...built.transaction,
-      signature: [signature],
-    });
+    const signed = await signBuiltTransaction(
+      config.apiBase,
+      built.transaction,
+      params.privateKeyHex,
+    );
+    return broadcastSignedTransaction(config.apiBase, signed);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Broadcast failed" };
   }
@@ -240,11 +295,8 @@ export async function broadcastTrc20Transfer(params: {
       return { ok: false, error: message };
     }
 
-    const signature = signTxHash(built.transaction.txID, key.privateKeyHex);
-    return broadcastSignedTransaction(config.apiBase, {
-      ...built.transaction,
-      signature: [signature],
-    });
+    const signed = await signBuiltTransaction(config.apiBase, built.transaction, key.privateKeyHex);
+    return broadcastSignedTransaction(config.apiBase, signed);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Broadcast failed" };
   }

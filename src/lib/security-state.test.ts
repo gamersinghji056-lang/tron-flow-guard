@@ -89,6 +89,7 @@ import {
 } from "./wallet-state.ts";
 import { chooseImportedWalletNetwork, decideImportedWalletNetwork } from "./wallet-network.ts";
 import { collectPaginatedTronGridRows } from "./tron-pagination.ts";
+import { permissionAllowsContractType, selectAuthorizedTronPermission } from "./tron-permission.ts";
 import {
   canAccessKnownWalletHistory,
   filterMiniWalletTransactions,
@@ -658,6 +659,131 @@ describe("server-side signer safety", () => {
     assert.ok(
       signerServer.indexOf("broadcastSignedTrc20Transfer") <
         signerServer.indexOf("wallet-send:${requestId}:customer-fee"),
+    );
+  });
+
+  it("preflights TRON permissions before Energy purchase or broadcast", () => {
+    const signerServer = readFileSync(resolve("src/lib/signer.server.ts"), "utf8");
+    const tronTransfer = readFileSync(resolve("src/lib/tron-transfer.server.ts"), "utf8");
+    assert.match(tronTransfer, /tronWeb\.trx\.sign/);
+    assert.doesNotMatch(tronTransfer, /signTxHash\(built\.transaction\.txID/);
+    assert.ok(
+      signerServer.indexOf("assertTransferSignerAuthorized") <
+        signerServer.indexOf("purchaseEnergy"),
+    );
+    assert.ok(
+      signerServer.indexOf("assertTransferSignerAuthorized") <
+        signerServer.indexOf("broadcastSignedTrc20Transfer"),
+    );
+  });
+
+  it("selects only authorized TRON permissions for contract sends", () => {
+    const sender = "TZAzdxjhkHhtW5KagQZ6zfeNnihS5noyAZ";
+    const recoveredUnauthorized = "TCCPAwoEewu7QZk63tYJwmCwanWoGeCeeT";
+    const senderHex = "41fe8590576865bddc489b2ff2b95dc9917d8d6b1e";
+    const otherHex = "41183dbe6ba82d464ba28ca73d34b617f55401c595";
+    const triggerSmartContract = 31;
+
+    assert.equal(
+      permissionAllowsContractType(
+        "7fff1fc0033ec30f000000000000000000000000000000000000000000000",
+        triggerSmartContract,
+      ),
+      true,
+    );
+    assert.equal(
+      permissionAllowsContractType(
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        triggerSmartContract,
+      ),
+      false,
+    );
+
+    const active = selectAuthorizedTronPermission({
+      ownerAddress: sender,
+      signerAddress: sender,
+      contractType: triggerSmartContract,
+      account: {
+        owner_permission: { threshold: 1, keys: [{ address: senderHex, weight: 1 }] },
+        active_permission: [
+          {
+            id: 2,
+            permission_name: "active",
+            threshold: 1,
+            operations: "7fff1fc0033ec30f000000000000000000000000000000000000000000000000",
+            keys: [{ address: senderHex, weight: 1 }],
+          },
+        ],
+      },
+    });
+    assert.equal(active.permissionId, 2);
+    assert.equal(active.source, "active");
+
+    const owner = selectAuthorizedTronPermission({
+      ownerAddress: sender,
+      signerAddress: sender,
+      contractType: triggerSmartContract,
+      account: {
+        owner_permission: { threshold: 1, keys: [{ address: senderHex, weight: 1 }] },
+        active_permission: [],
+      },
+    });
+    assert.equal(owner.permissionId, 0);
+
+    assert.throws(
+      () =>
+        selectAuthorizedTronPermission({
+          ownerAddress: sender,
+          signerAddress: recoveredUnauthorized,
+          contractType: triggerSmartContract,
+          account: {
+            owner_permission: { threshold: 1, keys: [{ address: senderHex, weight: 1 }] },
+            active_permission: [],
+          },
+        }),
+      /TRON_SIGNER_NOT_AUTHORIZED/,
+    );
+
+    assert.throws(
+      () =>
+        selectAuthorizedTronPermission({
+          ownerAddress: sender,
+          signerAddress: sender,
+          contractType: triggerSmartContract,
+          account: {
+            owner_permission: { threshold: 1, keys: [{ address: otherHex, weight: 1 }] },
+            active_permission: [
+              {
+                id: 2,
+                threshold: 2,
+                operations: "7fff1fc0033ec30f000000000000000000000000000000000000000000000000",
+                keys: [{ address: senderHex, weight: 1 }],
+              },
+            ],
+          },
+        }),
+      /TRON_SIGNER_WEIGHT_TOO_LOW/,
+    );
+
+    assert.throws(
+      () =>
+        selectAuthorizedTronPermission({
+          ownerAddress: sender,
+          signerAddress: sender,
+          contractType: triggerSmartContract,
+          account: {
+            owner_permission: { threshold: 1, keys: [{ address: otherHex, weight: 1 }] },
+            active_permission: [
+              {
+                id: 2,
+                threshold: 1,
+                operations: "0000000000000000000000000000000000000000000000000000000000000000",
+                keys: [{ address: senderHex, weight: 1 }],
+              },
+            ],
+          },
+        }),
+      /TRON_SIGNER_OPERATION_NOT_ALLOWED/,
     );
   });
 
