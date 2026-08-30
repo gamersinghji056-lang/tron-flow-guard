@@ -5,7 +5,9 @@ import {
   Bell,
   ChevronLeft,
   ChevronDown,
+  CircleCheck,
   CircleDollarSign,
+  CircleX,
   Copy,
   ExternalLink,
   FileText,
@@ -16,6 +18,7 @@ import {
   QrCode,
   ScanLine,
   ShieldCheck,
+  Share2,
   UserRound,
   Wallet,
   Zap,
@@ -409,6 +412,7 @@ interface StandardTransferPreview {
   providerCostUsdt?: number | null;
   providerCostTrx?: number | null;
   networkCostTrx?: number | null;
+  customerFeeTrx?: number | null;
   wtronRevenueUsdt?: number | null;
   wtronRevenueTrx?: number | null;
   blocked?: boolean | null;
@@ -420,6 +424,7 @@ interface StandardTransferPreview {
   transactionPasswordConfigured?: boolean | null;
   transactionPasswordLocked?: boolean | null;
   availableBalance?: number | null;
+  availableTrxBalance?: number | null;
 }
 
 interface PaymentMethodRow {
@@ -639,6 +644,37 @@ function copyText(value: string, label = "Copied") {
   void navigator.clipboard.writeText(value).then(() => toast.success(label));
 }
 
+function shareText(value: string) {
+  if (!value) return;
+  if (navigator.share) {
+    void navigator.share({ text: value }).catch(() => undefined);
+    return;
+  }
+  copyText(value, "Receipt copied");
+}
+
+function receiptShareText(input: {
+  title: string;
+  asset?: string | null;
+  amount?: unknown;
+  from?: string | null;
+  to?: string | null;
+  network?: string | null;
+  txid?: string | null;
+  status?: string | null;
+}) {
+  return [
+    input.title,
+    `Asset: ${input.asset ?? "USDT"}`,
+    `Amount: ${money(input.amount, input.asset ?? "USDT")} ${input.asset ?? "USDT"}`,
+    `From: ${input.from ?? "Not available"}`,
+    `To: ${input.to ?? "Not available"}`,
+    `Network: ${input.network ?? "TRON"}`,
+    `Status: ${input.status ?? "Pending"}`,
+    input.txid ? `TXID: ${input.txid}` : "TXID: Not broadcast",
+  ].join("\n");
+}
+
 function gasfreeStatusLabel(status: string | null | undefined, t: MiniT) {
   const normalized = String(status ?? "unavailable").toLowerCase();
   if (normalized === "available") return t("available");
@@ -652,6 +688,29 @@ function gasfreeStatusLabel(status: string | null | undefined, t: MiniT) {
 function friendlyMiniError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const lower = message.toLowerCase();
+  const parsed = (() => {
+    try {
+      return JSON.parse(message) as { error?: { code?: string; message?: string } };
+    } catch {
+      return null;
+    }
+  })();
+  const code = parsed?.error?.code ?? "";
+  if (code === "INSUFFICIENT_BALANCE" || lower.includes("insufficient_trx")) {
+    return "Insufficient TRX balance to cover the transfer fee.";
+  }
+  if (lower.includes("insufficient_usdt")) {
+    return "Insufficient USDT balance for this transfer.";
+  }
+  if (lower.includes("tron_signer_not_authorized")) {
+    return "This wallet is not authorized to sign this transaction.";
+  }
+  if (lower.includes("another send is already active")) {
+    return "A previous transfer is still being processed. Please wait while its status is confirmed.";
+  }
+  if (lower.includes("fee_collection_wallet_not_configured")) {
+    return "Transfer fee collection is not configured for this network.";
+  }
   if (
     lower.includes("duplicate key") ||
     lower.includes("user_wallets_address_key") ||
@@ -1967,8 +2026,19 @@ function TelegramMiniApp() {
       await refresh("wallet-detail");
       toast.success("Transfer submitted");
     } catch (error) {
+      const message = friendlyMiniError(error, "Could not submit transfer");
+      setStandardTransferResult({
+        id: standardTransferIdempotencyKey,
+        status: "FAILED",
+        asset: sendAsset,
+        amount,
+        from_address: selectedWallet.address,
+        to_address: recipient,
+        safe_failure_message: message,
+        txid: null,
+      });
       setStandardTransferSubmitState("failed");
-      toast.error(friendlyMiniError(error, "Could not submit transfer"));
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -3360,6 +3430,7 @@ function WalletDetailScreen({
       </Screen>
     );
   const balance = walletDisplayBalance(wallet);
+  const isGasfreeWallet = wallet.wallet_type === "gasfree" || wallet.wallet_role === "gasfree";
   const typeLabel = (wallet.wallet_type ?? "standard").toUpperCase();
   const gasReady = Boolean(gasfreeWallet?.address);
   const gasStatus = gasReady
@@ -3435,16 +3506,22 @@ function WalletDetailScreen({
                 <p className="text-2xl font-semibold tracking-normal tabular-nums">
                   {money(balance)} USDT
                 </p>
-                <p className="text-base text-slate-400 tabular-nums">
-                  {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
-                </p>
+                {!isGasfreeWallet ? (
+                  <p className="text-base text-slate-400 tabular-nums">
+                    {money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX
+                  </p>
+                ) : null}
               </>
             )}
           </div>
         </div>
 
         <div className="grid grid-cols-4 gap-3">
-          <QuickAction icon={MiniIcons.send} label={t("send")} onClick={() => onNavigate("send")} />
+          <QuickAction
+            icon={MiniIcons.send}
+            label={t("send")}
+            onClick={() => onNavigate(isGasfreeWallet ? "wallet-gasfree" : "send")}
+          />
           <QuickAction
             icon={MiniIcons.receive}
             label={t("receive")}
@@ -3505,14 +3582,16 @@ function WalletDetailScreen({
           amount={`${money(balance)} USDT`}
           onClick={() => onSelectAsset("USDT")}
         />
-        <AssetRow
-          icon={<TronIcon />}
-          symbol="TRX"
-          name="TRON"
-          network="TRON"
-          amount={`${money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX`}
-          onClick={() => onSelectAsset("TRX")}
-        />
+        {!isGasfreeWallet ? (
+          <AssetRow
+            icon={<TronIcon />}
+            symbol="TRX"
+            name="TRON"
+            network="TRON"
+            amount={`${money(wallet.onchain_trx_balance ?? 0, "TRX")} TRX`}
+            onClick={() => onSelectAsset("TRX")}
+          />
+        ) : null}
       </Section>
       <TransactionList
         title={t("recentWalletActivity")}
@@ -3591,9 +3670,11 @@ function WalletHistoryScreen({
   onLoadMore: () => void;
   onSelectTransaction: (transaction: TransactionRow) => void;
 }) {
+  const isGasfreeWallet = wallet?.wallet_type === "gasfree" || wallet?.wallet_role === "gasfree";
+  const effectiveAssetFilter = isGasfreeWallet && assetFilter === "TRX" ? "USDT" : assetFilter;
   const filtered = useMemo(
-    () => filterWalletTransactions(rows, assetFilter, directionFilter),
-    [rows, assetFilter, directionFilter],
+    () => filterWalletTransactions(rows, effectiveAssetFilter, directionFilter),
+    [rows, effectiveAssetFilter, directionFilter],
   );
   return (
     <Screen title={t("walletHistory")} subtitle={wallet?.name ?? t("selectedWalletSubtitle")}>
@@ -3611,13 +3692,20 @@ function WalletHistoryScreen({
         </Surface>
       ) : null}
       <Tabs
-        value={assetFilter}
+        value={effectiveAssetFilter}
         setValue={(value) => setAssetFilter(value as WalletHistoryAssetFilter)}
-        items={[
-          ["ALL", t("all")],
-          ["USDT", "USDT"],
-          ["TRX", "TRX"],
-        ]}
+        items={
+          isGasfreeWallet
+            ? [
+                ["ALL", t("all")],
+                ["USDT", "USDT"],
+              ]
+            : [
+                ["ALL", t("all")],
+                ["USDT", "USDT"],
+                ["TRX", "TRX"],
+              ]
+        }
       />
       <Tabs
         value={directionFilter}
@@ -4107,16 +4195,20 @@ function ReceiveScreen({
   t: MiniT;
 }) {
   const address = safeAddress(wallet?.address);
+  const isGasfreeWallet = wallet?.wallet_type === "gasfree" || wallet?.wallet_role === "gasfree";
+  const displayAsset = isGasfreeWallet ? "USDT" : asset;
   return (
     <Screen title={t("personalWalletReceive")} subtitle={t("receiveSubtitle")}>
-      <SegmentedControl
-        value={asset}
-        setValue={(value) => setAsset(value as ReceiveAsset)}
-        items={[
-          ["USDT", "USDT"],
-          ["TRX", "TRX"],
-        ]}
-      />
+      {!isGasfreeWallet ? (
+        <SegmentedControl
+          value={asset}
+          setValue={(value) => setAsset(value as ReceiveAsset)}
+          items={[
+            ["USDT", "USDT"],
+            ["TRX", "TRX"],
+          ]}
+        />
+      ) : null}
       <Surface className="p-4 text-center">
         <div className="mx-auto grid h-56 w-56 max-w-full place-items-center rounded-xl bg-white p-2.5">
           {qr ? (
@@ -4126,7 +4218,7 @@ function ReceiveScreen({
           )}
         </div>
         <p className="mt-4 text-sm font-semibold text-white">
-          {asset === "USDT" ? "USDT / TRC20" : "TRX / TRON Network"}
+          {displayAsset === "USDT" ? "USDT / TRC20" : "TRX / TRON Network"}
         </p>
         <p className="mono mt-2 break-all text-sm text-slate-300" dir={technicalTextDirection()}>
           {address || t("noWalletSelected")}
@@ -4385,7 +4477,11 @@ function SendScreen({
   const standardSufficient =
     standardPreview?.availableBalance == null
       ? false
-      : Number(standardPreview.availableBalance) >= Number(standardPreview.totalDebit ?? 0);
+      : asset === "USDT"
+        ? Number(standardPreview.availableBalance) >= previewAmount &&
+          Number(standardPreview.availableTrxBalance ?? 0) >=
+            Number(standardPreview.customerFeeTrx ?? standardPreview.customerFee ?? 0)
+        : Number(standardPreview.availableBalance) >= Number(standardPreview.totalDebit ?? 0);
   const canContinueStandard =
     enabled &&
     standardRecipientValid &&
@@ -4403,11 +4499,17 @@ function SendScreen({
         : standardPreview
           ? "Signer ready"
           : "Checking...";
+  const standardFeeCurrency = standardPreview?.customerFeeCurrency ?? asset;
   const standardFeeLabel = standardPreview
-    ? `${money(Number(standardPreview.customerFee ?? 0), asset)} ${asset}`
+    ? `${money(Number(standardPreview.customerFee ?? 0), standardFeeCurrency)} ${standardFeeCurrency}`
     : "Checking...";
   const standardTotalDebitLabel = standardPreview
-    ? `${money(Number(standardPreview.totalDebit ?? 0), asset)} ${asset}`
+    ? asset === "USDT"
+      ? `${money(previewAmount, "USDT")} USDT + ${money(
+          Number(standardPreview.customerFeeTrx ?? standardPreview.customerFee ?? 0),
+          "TRX",
+        )} TRX`
+      : `${money(Number(standardPreview.totalDebit ?? 0), asset)} ${asset}`
     : "Checking...";
   const standardStatusMessage = !enabled
     ? t("sendUnavailable")
@@ -4428,11 +4530,21 @@ function SendScreen({
                   : standardPreview && !standardPreview.transactionPasswordConfigured
                     ? "Set a transaction password before sending."
                     : standardPreview && !standardSufficient
-                      ? "Insufficient balance for amount plus transfer fee."
+                      ? asset === "USDT"
+                        ? "Insufficient USDT amount or TRX fee balance."
+                        : "Insufficient balance for amount plus transfer fee."
                       : "";
+  const standardNetworkCostTrx =
+    asset === "USDT"
+      ? Number(standardPreview?.providerCostTrx ?? 0)
+      : Number(standardPreview?.networkCostTrx ?? 0);
+  const standardWtronFeeTrx = Number(
+    standardPreview?.wtronRevenueTrx ??
+      Math.max(Number(standardPreview?.customerFeeTrx ?? 0) - standardNetworkCostTrx, 0),
+  );
   if (gasfreeMode) {
     return (
-      <Screen title={t("send")} subtitle="NILE TESTNET GasFree USDT">
+      <Screen title="GasFree Wallet" subtitle="USDT Send">
         <form className="space-y-4" onSubmit={onSubmitGasfree}>
           <Surface className="p-4">
             <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-sm text-cyan-100">
@@ -4519,32 +4631,25 @@ function SendScreen({
           ) : null}
 
           {result ? (
-            <Surface className="space-y-3 p-4">
-              <StatusRow label="Provider status" value={providerStatus ?? "Pending"} />
-              <StatusRow
-                label="Provider request"
-                value={providerRequestId ?? "Not available"}
-                mono
-              />
-              <StatusRow label="TXID" value={txid ?? "Pending provider broadcast"} mono />
-              {txid ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() =>
-                    window.open(network.explorerTx(txid), "_blank", "noopener,noreferrer")
-                  }
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  {t("explorer")}
-                </Button>
-              ) : null}
-              {result.request?.failure_reason ? (
-                <p className="rounded-lg bg-red-500/10 p-3 text-xs text-red-100">
-                  {result.request.failure_reason}
-                </p>
-              ) : null}
-            </Surface>
+            <TransferResultReceipt
+              title={
+                submitState === "failed" ? "Transaction Failed" : "GasFree Transaction Submitted"
+              }
+              success={submitState !== "failed"}
+              asset="USDT"
+              amount={previewAmount}
+              from={wallet?.address ?? ""}
+              to={address}
+              networkLabel={networkLabelForMini(wallet?.network, t)}
+              network={network}
+              networkFee={`${money(activationFee + providerFee)} USDT`}
+              wtronFee={`${money(wtronFee)} USDT`}
+              totalCharged={`${money(totalRequired)} USDT`}
+              txid={txid}
+              status={String(providerStatus ?? "Pending")}
+              referenceId={providerRequestId ?? result.request?.id ?? null}
+              reason={result.request?.failure_reason ?? null}
+            />
           ) : null}
 
           <Button className="w-full" disabled={!canSubmitGasfree}>
@@ -4561,7 +4666,7 @@ function SendScreen({
     );
   }
   return (
-    <Screen title={t("send")} subtitle={t("selfCustodyWallet")}>
+    <Screen title="Normal TRON Wallet" subtitle={t("send")}>
       <form className="space-y-4" onSubmit={onSubmitStandard}>
         <Surface className="p-4">
           <SegmentedControl
@@ -4626,8 +4731,23 @@ function SendScreen({
               [t("selectedWallet"), wallet?.name ?? t("noWalletSelected")],
               [t("network"), networkLabelForMini(wallet?.network, t)],
               [t("resources"), standardResourceLabel],
-              [t("fees"), standardFeeLabel],
-              ["Total debit", standardTotalDebitLabel],
+              ...(asset === "USDT"
+                ? ([
+                    [
+                      "Available TRX",
+                      `${money(standardPreview?.availableTrxBalance ?? 0, "TRX")} TRX`,
+                    ],
+                    ["Network cost", `${money(standardNetworkCostTrx, "TRX")} TRX`],
+                    ["WTRON fee", `${money(standardWtronFeeTrx, "TRX")} TRX`],
+                    ["Total TRX fee", standardFeeLabel],
+                    ["USDT debit", `${money(previewAmount, "USDT")} USDT`],
+                  ] as Array<[string, string]>)
+                : ([
+                    ["Network cost", `${money(standardNetworkCostTrx, "TRX")} TRX`],
+                    ["WTRON fee", `${money(standardWtronFeeTrx, "TRX")} TRX`],
+                    [t("fees"), standardFeeLabel],
+                  ] as Array<[string, string]>)),
+              ["Total charged", standardTotalDebitLabel],
               ["Mainnet signing", standardPreview?.mainnetSigningEnabled ? "Enabled" : "Checking"],
               ["Signer", standardPreview?.signerReady ? "Ready" : "Checking"],
             ]}
@@ -4639,21 +4759,140 @@ function SendScreen({
           </p>
         ) : null}
         {standardResult ? (
-          <Surface className="space-y-3 p-4">
-            <StatusRow label="Status" value={String(standardResult["status"] ?? "Submitted")} />
-            <StatusRow
-              label="Request"
-              value={String(standardResult["id"] ?? "Not available")}
-              mono
-            />
-            <StatusRow label="TXID" value={String(standardResult["txid"] ?? "Pending")} mono />
-          </Surface>
+          <TransferResultReceipt
+            title={
+              standardSubmitState === "failed"
+                ? "Transaction Failed"
+                : standardResult["txid"]
+                  ? "Transaction Successful"
+                  : "Transaction Submitted"
+            }
+            success={standardSubmitState !== "failed"}
+            asset={String(standardResult["asset"] ?? asset)}
+            amount={standardResult["amount"] ?? previewAmount}
+            from={String(standardResult["from_address"] ?? wallet?.address ?? "")}
+            to={String(standardResult["to_address"] ?? address)}
+            networkLabel={networkLabelForMini(wallet?.network, t)}
+            network={network}
+            networkFee={`${money(standardNetworkCostTrx, "TRX")} TRX`}
+            wtronFee={`${money(standardWtronFeeTrx, "TRX")} TRX`}
+            totalCharged={standardTotalDebitLabel}
+            txid={typeof standardResult["txid"] === "string" ? standardResult["txid"] : null}
+            status={String(standardResult["status"] ?? "Submitted")}
+            referenceId={String(standardResult["id"] ?? "")}
+            reason={
+              typeof standardResult["safe_failure_message"] === "string"
+                ? standardResult["safe_failure_message"]
+                : null
+            }
+          />
         ) : null}
         <Button className="w-full" disabled={!canContinueStandard}>
           {standardSubmitState === "submitting" ? "Submitting" : t("continue")}
         </Button>
       </form>
     </Screen>
+  );
+}
+
+function TransferResultReceipt({
+  title,
+  success,
+  asset,
+  amount,
+  from,
+  to,
+  networkLabel,
+  network,
+  networkFee,
+  wtronFee,
+  totalCharged,
+  txid,
+  status,
+  referenceId,
+  reason,
+}: {
+  title: string;
+  success: boolean;
+  asset: string;
+  amount: unknown;
+  from: string;
+  to: string;
+  networkLabel: string;
+  network: ReturnType<typeof networkConfig>;
+  networkFee: string;
+  wtronFee: string;
+  totalCharged: string;
+  txid?: string | null;
+  status: string;
+  referenceId?: string | null;
+  reason?: string | null;
+}) {
+  const sharePayload = receiptShareText({
+    title,
+    asset,
+    amount,
+    from,
+    to,
+    network: networkLabel,
+    txid: txid ?? null,
+    status,
+  });
+  return (
+    <Surface className="space-y-4 p-4">
+      <div className="text-center">
+        {success ? (
+          <CircleCheck className="mx-auto h-12 w-12 text-emerald-300" />
+        ) : (
+          <CircleX className="mx-auto h-12 w-12 text-red-300" />
+        )}
+        <p className="mt-3 text-lg font-semibold">{title}</p>
+        <p className="text-sm text-slate-400">
+          {txid ? "Broadcast to TRON." : success ? "Waiting for broadcast." : "Not broadcast"}
+        </p>
+      </div>
+      <MetricGrid
+        items={[
+          ["Asset", asset],
+          ["Amount", `${money(amount, asset)} ${asset}`],
+          ["Network", networkLabel],
+          ["Network/resource fee", networkFee],
+          ["WTRON fee", wtronFee],
+          ["Total charged", totalCharged],
+          ["Status", status],
+          ["Date/time", new Date().toLocaleString()],
+        ]}
+      />
+      <StatusRow label="From" value={from ? shortenHash(from, 8) : "Not available"} mono />
+      <StatusRow label="To" value={to ? shortenHash(to, 8) : "Not available"} mono />
+      <StatusRow label="Reference" value={referenceId || "Not available"} mono />
+      <StatusRow label="TXID" value={txid || "Not broadcast"} mono />
+      {reason ? (
+        <p className="rounded-xl bg-red-500/10 p-3 text-sm text-red-100">
+          {friendlyMiniError(reason, "The transfer could not be completed.")}
+        </p>
+      ) : null}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!txid}
+          onClick={() =>
+            txid && window.open(network.explorerTx(txid), "_blank", "noopener,noreferrer")
+          }
+        >
+          <ExternalLink className="mr-2 h-4 w-4" />
+          View on TronScan
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => shareText(sharePayload)}>
+          <Share2 className="mr-2 h-4 w-4" />
+          Share
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => window.history.back()}>
+          Done
+        </Button>
+      </div>
+    </Surface>
   );
 }
 

@@ -26,6 +26,7 @@ const settingsInput = z.object({
   tronEnergyRouteEnabled: z.boolean().optional(),
   tronEnergyProvider: z.enum(["tronrental"]).optional(),
   tronEnergyBufferPercent: z.number().min(0).max(100).optional(),
+  usdtTrxTransferFeeMargin: z.number().min(0).max(1000).optional(),
   trxMinTransferFee: z.number().min(0).max(1000).optional(),
   trxMaxTransferFee: z.number().min(0).max(1000).optional(),
   trxTransferFeeMargin: z.number().min(0).max(1000).optional(),

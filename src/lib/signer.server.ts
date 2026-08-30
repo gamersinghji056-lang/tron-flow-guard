@@ -12,9 +12,9 @@ import {
   DEFAULT_TRX_MAX_TRANSFER_FEE,
   DEFAULT_TRX_MIN_TRANSFER_FEE,
   DEFAULT_TRX_WTRON_MARGIN,
-  DEFAULT_USDT_TOTAL_TRANSFER_FEE,
+  DEFAULT_USDT_WTRON_MARGIN_TRX,
+  calculateNormalUsdtTrxFee,
   calculateTrxTransferFee,
-  calculateUsdtTransferFee,
 } from "@/lib/transfer-fee-policy";
 
 async function readSetting<T>(key: string, fallback: T): Promise<T> {
@@ -36,6 +36,138 @@ async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function feeCollectionWalletSettingKeys(network: ChainNetwork) {
+  if (network === "trc20-nile") {
+    return ["fee_collection_wallet_id_trc20_nile", "fee_collection_wallet_id"] as const;
+  }
+  return ["fee_collection_wallet_id_trc20_mainnet", "fee_collection_wallet_id"] as const;
+}
+
+function parseFeeCollectionWalletSetting(value: unknown) {
+  if (typeof value === "string") return value.replace(/^"|"$/g, "") || null;
+  if (value == null) return null;
+  return String(value).replace(/^"|"$/g, "") || null;
+}
+
+async function feeDestinationForNetwork(network: ChainNetwork) {
+  for (const settingKey of feeCollectionWalletSettingKeys(network)) {
+    const walletId = parseFeeCollectionWalletSetting(await readSetting<unknown>(settingKey, null));
+    if (!walletId) continue;
+    const { data: wallet, error } = await supabaseAdmin
+      .from("wallets" as never)
+      .select("id, address, network, is_active, purpose")
+      .eq("id", walletId as never)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const row = wallet as {
+      id?: string | null;
+      address?: string | null;
+      network?: ChainNetwork | null;
+      is_active?: boolean | null;
+      purpose?: string | null;
+    } | null;
+    if (
+      row?.id &&
+      row.network === network &&
+      row.is_active === true &&
+      row.purpose === "FEE_COLLECTION"
+    ) {
+      return { id: row.id, address: row.address ?? null };
+    }
+  }
+  return null;
+}
+
+async function assertFeeCollectionReady(input: {
+  network: ChainNetwork;
+  amount: number;
+  currency: SendAsset;
+}) {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) return null;
+  const destination = await feeDestinationForNetwork(input.network);
+  if (!destination?.id || !destination.address) {
+    throw new Error(`${input.currency}_FEE_COLLECTION_WALLET_NOT_CONFIGURED`);
+  }
+  return destination;
+}
+
+async function recordWalletSendFeeLiability(input: {
+  requestId: string;
+  userId: string;
+  network: ChainNetwork;
+  amount: number;
+  currency: SendAsset;
+  destinationWalletId?: string | null;
+}) {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) return;
+  const destinationWalletId =
+    input.destinationWalletId ?? (await feeDestinationForNetwork(input.network))?.id;
+  const { error } = await supabaseAdmin.from("fee_liabilities" as never).insert({
+    source: "wallet_send_request",
+    order_id: input.requestId,
+    user_id: input.userId,
+    vendor_id: null,
+    fee_type:
+      input.currency === "USDT" ? "wallet_send_customer_fee_usdt" : "wallet_send_customer_fee_trx",
+    amount: input.amount,
+    currency: input.currency,
+    destination_wallet_id: destinationWalletId,
+    status: destinationWalletId ? "PENDING_SWEEP" : "ACCRUED",
+    idempotency_key: `wallet-send:${input.requestId}:customer-fee`,
+  } as never);
+  if (error && error.code !== "23505") throw new Error(error.message);
+}
+
+async function reconcileWalletActiveSendRequests(walletId: string, network: ChainNetwork) {
+  const { data } = await supabaseAdmin
+    .from("wallet_send_requests" as never)
+    .select("id, txid, wallet_transaction_id")
+    .eq("wallet_id", walletId as never)
+    .eq("network", network as never)
+    .in("status", ["BROADCAST", "CONFIRMING"] as never)
+    .not("txid", "is", null)
+    .limit(10);
+  const rows = (data ?? []) as Array<{
+    id: string;
+    txid?: string | null;
+    wallet_transaction_id?: string | null;
+  }>;
+  if (!rows.length) return;
+  const { getTransactionInfo } = await import("@/lib/tron.server");
+  for (const row of rows) {
+    if (!row.txid) continue;
+    const info = await getTransactionInfo(network, row.txid);
+    if (!info.blockNumber) {
+      await supabaseAdmin
+        .from("wallet_send_requests" as never)
+        .update({ status: "CONFIRMING" } as never)
+        .eq("id", row.id as never);
+      continue;
+    }
+    const status = info.success ? "CONFIRMED" : "FAILED";
+    await supabaseAdmin
+      .from("wallet_send_requests" as never)
+      .update({
+        status,
+        confirmed_at: info.success ? new Date().toISOString() : null,
+        failed_at: info.success ? null : new Date().toISOString(),
+        failure_code: info.success ? null : info.status,
+        safe_failure_message: info.success ? null : info.status,
+      } as never)
+      .eq("id", row.id as never);
+    if (row.wallet_transaction_id) {
+      await supabaseAdmin
+        .from("wallet_transactions" as never)
+        .update({
+          status: info.success ? "completed" : "failed",
+          block_number: info.blockNumber,
+          failure_reason: info.success ? null : info.status,
+        } as never)
+        .eq("id", row.wallet_transaction_id as never);
+    }
+  }
+}
+
 async function buildTransferCostQuote(input: {
   asset: SendAsset;
   network: ChainNetwork;
@@ -46,10 +178,6 @@ async function buildTransferCostQuote(input: {
   const { estimateTrc20TransferEnergy, estimateTrxTransferNetworkCost } =
     await import("@/lib/tron-transfer.server");
   if (input.asset === "USDT") {
-    const usdtCustomerFee = await readNumericSetting(
-      "usdt_total_transfer_fee",
-      DEFAULT_USDT_TOTAL_TRANSFER_FEE,
-    );
     const energyRouteEnabled = await readSetting("tron_energy_route_enabled", false);
     const energyProvider = await readSetting<"tronrental">("tron_energy_provider", "tronrental");
     const estimatedEnergy = await estimateTrc20TransferEnergy(input);
@@ -57,9 +185,7 @@ async function buildTransferCostQuote(input: {
     let providerCostTrx = 0;
     let providerQuote: unknown = null;
     let purchasedEnergy = 0;
-    if (energyRouteEnabled !== true) {
-      providerCostUsdt = usdtCustomerFee;
-    } else {
+    if (energyRouteEnabled === true) {
       const { quoteEnergy } = await import("@/lib/energy-provider.server");
       const quote = await quoteEnergy({
         energyRequired: estimatedEnergy,
@@ -70,21 +196,29 @@ async function buildTransferCostQuote(input: {
       providerQuote = quote.raw;
       purchasedEnergy = quote.energyAmount;
     }
-    const fee = calculateUsdtTransferFee({ customerFeeUsdt: usdtCustomerFee, providerCostUsdt });
+    const fee = calculateNormalUsdtTrxFee({
+      providerCostTrx,
+      providerCostUsdt,
+      marginTrx: await readNumericSetting(
+        "usdt_trx_transfer_fee_margin",
+        DEFAULT_USDT_WTRON_MARGIN_TRX,
+      ),
+    });
     return {
       asset: input.asset,
-      estimatedNetworkFeeTrx: 0,
-      platformFee: fee.customerFeeUsdt,
-      totalDebit: input.amount + fee.customerFeeUsdt,
-      customerFeeUsdt: fee.customerFeeUsdt,
+      estimatedNetworkFeeTrx: fee.customerFeeTrx,
+      platformFee: fee.customerFeeTrx,
+      totalDebit: input.amount,
+      customerFeeUsdt: 0,
       providerCostUsdt,
       providerCostTrx,
-      wtronRevenueUsdt: fee.wtronRevenueUsdt,
+      wtronRevenueUsdt: 0,
       estimatedEnergy,
       purchasedEnergy,
       networkCostTrx: 0,
-      customerFeeTrx: 0,
-      wtronRevenueTrx: 0,
+      customerFeeTrx: fee.customerFeeTrx,
+      wtronRevenueTrx: fee.wtronRevenueTrx,
+      feeCurrency: "TRX" as const,
       provider: energyRouteEnabled === true ? energyProvider : null,
       providerQuote,
       blocked: fee.blocked,
@@ -113,6 +247,7 @@ async function buildTransferCostQuote(input: {
     networkCostTrx: trxFee.networkCostTrx,
     customerFeeTrx: trxFee.customerFeeTrx,
     wtronRevenueTrx: trxFee.wtronRevenueTrx,
+    feeCurrency: "TRX" as const,
     provider: null,
     providerQuote: null,
     blocked: trxFee.blocked,
@@ -185,11 +320,12 @@ export async function createAndBroadcastPersonalSend(input: {
     throw new Error("Wallet not found");
   }
   if (input.toAddress.trim() === wallet.address) throw new Error("Cannot send to the same wallet");
-  if (wallet.wallet_type === "gasfree" && wallet.gas_sponsorship_status === "available") {
-    throw new Error("GasFree sponsored send is not configured for this signer");
+  if (wallet.wallet_type === "gasfree") {
+    throw new Error("Use GasFree Send for this USDT-only wallet.");
   }
 
   const network = wallet.network as ChainNetwork;
+  await reconcileWalletActiveSendRequests(wallet.id, network);
   const costQuote = await buildTransferCostQuote({
     asset: input.asset,
     network,
@@ -201,6 +337,13 @@ export async function createAndBroadcastPersonalSend(input: {
   const estimatedNetworkFeeTrx = costQuote.estimatedNetworkFeeTrx;
   const platformFee = costQuote.platformFee;
   const totalDebit = costQuote.totalDebit;
+  const feeCurrency = costQuote.feeCurrency;
+  const feeLiabilityAmount = platformFee;
+  const feeDestination = await assertFeeCollectionReady({
+    network,
+    amount: feeLiabilityAmount,
+    currency: feeCurrency,
+  });
 
   const { data: request, error: requestError } = await supabaseAdmin
     .from("wallet_send_requests" as never)
@@ -231,7 +374,7 @@ export async function createAndBroadcastPersonalSend(input: {
       metadata: {
         memo: input.memo ?? null,
         signer_boundary: "server_module_v1",
-        customer_fee_currency: input.asset,
+        customer_fee_currency: feeCurrency,
         internal_provider_quote: costQuote.providerQuote,
       },
     } as never)
@@ -310,6 +453,15 @@ export async function createAndBroadcastPersonalSend(input: {
       signerAddress: derived.address,
       asset: input.asset,
     });
+    const feePermission =
+      input.asset === "USDT" && feeCurrency === "TRX" && platformFee > 0
+        ? await assertTransferSignerAuthorized({
+            network,
+            ownerAddress: wallet.address,
+            signerAddress: derived.address,
+            asset: "TRX",
+          })
+        : null;
     await supabaseAdmin
       .from("wallet_send_requests" as never)
       .update({
@@ -317,11 +469,13 @@ export async function createAndBroadcastPersonalSend(input: {
         signed_at: new Date().toISOString(),
         metadata: {
           memo: input.memo ?? null,
-          customer_fee_currency: input.asset,
+          customer_fee_currency: feeCurrency,
           signer_boundary: "server_module_v1",
           permission_id: permission.permissionId,
           permission_name: permission.permissionName,
           permission_source: permission.source,
+          fee_permission_id: feePermission?.permissionId ?? null,
+          fee_destination_wallet_id: feeDestination?.id ?? null,
         },
       } as never)
       .eq("id", requestId as never);
@@ -359,13 +513,70 @@ export async function createAndBroadcastPersonalSend(input: {
           actual_provider_cost_usdt: energyOrder.priceUsdt,
           metadata: {
             memo: input.memo ?? null,
-            customer_fee_currency: input.asset,
+            customer_fee_currency: feeCurrency,
             signer_boundary: "server_module_v1",
             permission_id: permission.permissionId,
             permission_name: permission.permissionName,
             permission_source: permission.source,
+            fee_permission_id: feePermission?.permissionId ?? null,
+            fee_destination_wallet_id: feeDestination?.id ?? null,
             energy_order_status: energyOrderStatus,
             energy_order: energyOrder.raw,
+          },
+        } as never)
+        .eq("id", requestId as never);
+    }
+
+    let feeTxid: string | null = null;
+    let feeWalletTransactionId: string | null = null;
+    if (input.asset === "USDT" && feeCurrency === "TRX" && platformFee > 0) {
+      if (!feeDestination?.address) throw new Error("TRX_FEE_COLLECTION_WALLET_NOT_CONFIGURED");
+      const feeBroadcast = await broadcastSignedTrxTransfer({
+        network,
+        privateKeyHex: derived.privateKeyHex,
+        ownerAddress: wallet.address,
+        toAddress: feeDestination.address,
+        amount: platformFee,
+        permissionId: feePermission?.permissionId ?? null,
+      });
+      if (!feeBroadcast.ok || !feeBroadcast.txid) {
+        throw new Error(feeBroadcast.error ?? "Fee transfer rejected");
+      }
+      feeTxid = feeBroadcast.txid;
+      const { data: feeWalletTx } = await supabaseAdmin
+        .from("wallet_transactions" as never)
+        .insert({
+          wallet_id: input.walletId,
+          user_id: input.userId,
+          direction: "out",
+          kind: "fee",
+          status: "broadcasting",
+          amount: platformFee,
+          fee: 0,
+          currency: "TRX",
+          counterparty_address: feeDestination.address,
+          memo: "WTRON transfer fee",
+          network,
+          txid: feeTxid,
+          onchain: true,
+        } as never)
+        .select("id")
+        .single();
+      feeWalletTransactionId = (feeWalletTx as { id?: string } | null)?.id ?? null;
+      await supabaseAdmin
+        .from("wallet_send_requests" as never)
+        .update({
+          metadata: {
+            memo: input.memo ?? null,
+            customer_fee_currency: feeCurrency,
+            signer_boundary: "server_module_v1",
+            permission_id: permission.permissionId,
+            permission_name: permission.permissionName,
+            permission_source: permission.source,
+            fee_permission_id: feePermission?.permissionId ?? null,
+            fee_destination_wallet_id: feeDestination.id,
+            fee_txid: feeTxid,
+            fee_wallet_transaction_id: feeWalletTransactionId,
           },
         } as never)
         .eq("id", requestId as never);
@@ -421,35 +632,36 @@ export async function createAndBroadcastPersonalSend(input: {
         txid: broadcast.txid,
         broadcast_at: new Date().toISOString(),
         provider_order_id: energyOrderId,
-        broadcast_result: { ok: true, txid: broadcast.txid, provider_order_id: energyOrderId },
+        broadcast_result: {
+          ok: true,
+          txid: broadcast.txid,
+          provider_order_id: energyOrderId,
+          fee_txid: feeTxid,
+        },
         wallet_transaction_id: (walletTx as { id?: string } | null)?.id ?? null,
       } as never)
       .eq("id", requestId as never)
       .select("*")
       .single();
 
-    const { error: liabilityError } = await supabaseAdmin.rpc(
-      "record_fee_liability" as never,
-      {
-        _source: "wallet_send_request",
-        _order_id: requestId,
-        _user_id: input.userId,
-        _vendor_id: null,
-        _fee_type:
-          input.asset === "USDT" ? "wallet_send_customer_fee_usdt" : "wallet_send_customer_fee_trx",
-        _amount: platformFee,
-        _currency: input.asset,
-        _idempotency_key: `wallet-send:${requestId}:customer-fee`,
-      } as never,
-    );
-    if (liabilityError) {
+    try {
+      await recordWalletSendFeeLiability({
+        requestId,
+        userId: input.userId,
+        network,
+        amount: feeLiabilityAmount,
+        currency: feeCurrency,
+        destinationWalletId: feeDestination?.id ?? null,
+      });
+    } catch (liabilityError) {
       await supabaseAdmin
         .from("wallet_send_requests" as never)
         .update({
           metadata: {
             memo: input.memo ?? null,
-            customer_fee_currency: input.asset,
-            fee_liability_error: liabilityError.message,
+            customer_fee_currency: feeCurrency,
+            fee_liability_error:
+              liabilityError instanceof Error ? liabilityError.message : "Fee liability failed",
           },
         } as never)
         .eq("id", requestId as never);
@@ -522,7 +734,7 @@ export async function previewPersonalSendCost(input: {
   const { data: wallet, error } = await supabaseAdmin
     .from("user_wallets" as never)
     .select(
-      "id, user_id, address, network, wallet_type, custody, is_archived, onchain_balance, onchain_trx_balance",
+      "id, user_id, address, network, wallet_type, wallet_role, custody, is_archived, onchain_balance, onchain_trx_balance",
     )
     .eq("id", input.walletId as never)
     .maybeSingle();
@@ -533,6 +745,7 @@ export async function previewPersonalSendCost(input: {
     address?: string | null;
     network?: ChainNetwork | null;
     wallet_type?: string | null;
+    wallet_role?: string | null;
     custody?: string | null;
     is_archived?: boolean | null;
     onchain_balance?: number | string | null;
@@ -540,6 +753,9 @@ export async function previewPersonalSendCost(input: {
   } | null;
   if (!row || row.user_id !== input.userId || row.is_archived) throw new Error("Wallet not found");
   if (!row.address || !row.network) throw new Error("Wallet is missing chain metadata");
+  if (row.wallet_type === "gasfree" || row.wallet_role === "gasfree") {
+    throw new Error("Use GasFree Send for this USDT-only wallet.");
+  }
   const quote = await buildTransferCostQuote({
     asset: input.asset,
     network: row.network,
@@ -581,7 +797,7 @@ export async function previewPersonalSendCost(input: {
   return {
     asset: input.asset,
     customerFee: quote.platformFee,
-    customerFeeCurrency: input.asset,
+    customerFeeCurrency: quote.feeCurrency,
     totalDebit: quote.totalDebit,
     estimatedEnergy: quote.estimatedEnergy,
     provider: quote.provider,
@@ -589,6 +805,7 @@ export async function previewPersonalSendCost(input: {
     providerCostTrx: quote.providerCostTrx,
     networkCostTrx: quote.networkCostTrx,
     wtronRevenueUsdt: quote.wtronRevenueUsdt,
+    customerFeeTrx: quote.customerFeeTrx,
     wtronRevenueTrx: quote.wtronRevenueTrx,
     blocked: quote.blocked,
     blockCode: quote.blockCode,
@@ -602,6 +819,7 @@ export async function previewPersonalSendCost(input: {
       input.asset === "USDT"
         ? Number(row.onchain_balance ?? 0)
         : Number(row.onchain_trx_balance ?? 0),
+    availableTrxBalance: Number(row.onchain_trx_balance ?? 0),
   };
 }
 

@@ -110,6 +110,7 @@ export async function writeSettings(input: {
   tronEnergyRouteEnabled?: boolean | undefined;
   tronEnergyProvider?: "tronrental" | undefined;
   tronEnergyBufferPercent?: number | undefined;
+  usdtTrxTransferFeeMargin?: number | undefined;
   trxMinTransferFee?: number | undefined;
   trxMaxTransferFee?: number | undefined;
   trxTransferFeeMargin?: number | undefined;
@@ -176,6 +177,9 @@ export async function writeSettings(input: {
   }
   if (input.tronEnergyBufferPercent !== undefined) {
     rows.push({ key: "tron_energy_buffer_percent", value: input.tronEnergyBufferPercent });
+  }
+  if (input.usdtTrxTransferFeeMargin !== undefined) {
+    rows.push({ key: "usdt_trx_transfer_fee_margin", value: input.usdtTrxTransferFeeMargin });
   }
   if (input.trxMinTransferFee !== undefined) {
     rows.push({ key: "trx_min_transfer_fee", value: input.trxMinTransferFee });

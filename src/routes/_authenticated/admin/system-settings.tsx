@@ -147,6 +147,7 @@ function SystemSettingsPage() {
           tronEnergyRouteEnabled: settings["tron_energy_route_enabled"] === "true",
           tronEnergyProvider: "tronrental",
           tronEnergyBufferPercent: Number(settings["tron_energy_buffer_percent"] ?? 12),
+          usdtTrxTransferFeeMargin: Number(settings["usdt_trx_transfer_fee_margin"] ?? 1.5),
           trxMinTransferFee: Number(settings["trx_min_transfer_fee"] ?? 5),
           trxMaxTransferFee: Number(settings["trx_max_transfer_fee"] ?? 8),
           trxTransferFeeMargin: Number(settings["trx_transfer_fee_margin"] ?? 4),
@@ -361,7 +362,7 @@ function SystemSettingsPage() {
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <SettingInput
-              label="USDT customer total fee"
+              label="GasFree USDT customer fee"
               value={settings["usdt_total_transfer_fee"] ?? "1.5"}
               onChange={(value) => setSettings({ ...settings, usdt_total_transfer_fee: value })}
             />
@@ -390,6 +391,13 @@ function SystemSettingsPage() {
               onChange={(value) => setSettings({ ...settings, tron_energy_buffer_percent: value })}
             />
             <SettingInput
+              label="Normal USDT WTRON margin TRX"
+              value={settings["usdt_trx_transfer_fee_margin"] ?? "1.5"}
+              onChange={(value) =>
+                setSettings({ ...settings, usdt_trx_transfer_fee_margin: value })
+              }
+            />
+            <SettingInput
               label="TRX minimum fee"
               value={settings["trx_min_transfer_fee"] ?? "5"}
               onChange={(value) => setSettings({ ...settings, trx_min_transfer_fee: value })}
@@ -406,8 +414,8 @@ function SystemSettingsPage() {
             />
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-4">
-            <Metric label="USDT Revenue Rule" value="1.50 - provider cost" />
-            <Metric label="USDT Loss Guard" value="ENERGY_COST_TOO_HIGH" />
+            <Metric label="GasFree Revenue Rule" value="1.50 USDT - provider cost" />
+            <Metric label="Normal USDT Fee" value="provider TRX cost + WTRON TRX margin" />
             <Metric label="TRX Revenue Rule" value="customer fee - network cost" />
             <Metric label="TRX Loss Guard" value="TRX_NETWORK_COST_TOO_HIGH" />
             <Metric label="Provider Expense" value="Recorded after provider order/broadcast" />

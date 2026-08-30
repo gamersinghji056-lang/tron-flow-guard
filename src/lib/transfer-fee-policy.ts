@@ -1,6 +1,7 @@
 import type { SendAsset } from "@/lib/signer-policy";
 
 export const DEFAULT_USDT_TOTAL_TRANSFER_FEE = 1.5;
+export const DEFAULT_USDT_WTRON_MARGIN_TRX = 1.5;
 export const DEFAULT_TRX_MIN_TRANSFER_FEE = 5;
 export const DEFAULT_TRX_MAX_TRANSFER_FEE = 8;
 export const DEFAULT_TRX_WTRON_MARGIN = 4;
@@ -24,6 +25,16 @@ export interface TrxFeeQuote {
   wtronRevenueTrx: number;
   blocked: boolean;
   blockCode: TransferFeeBlockCode | null;
+}
+
+export interface NormalUsdtTrxFeeQuote {
+  asset: "USDT";
+  customerFeeTrx: number;
+  providerCostTrx: number;
+  providerCostUsdt: number;
+  wtronRevenueTrx: number;
+  blocked: false;
+  blockCode: null;
 }
 
 export function calculateUsdtTransferFee(input: {
@@ -63,6 +74,25 @@ export function calculateTrxTransferFee(input: {
     wtronRevenueTrx: blocked ? 0 : Math.max(customerFeeTrx - networkCostTrx, 0),
     blocked,
     blockCode: blocked ? "TRX_NETWORK_COST_TOO_HIGH" : null,
+  };
+}
+
+export function calculateNormalUsdtTrxFee(input: {
+  providerCostTrx?: number | null;
+  providerCostUsdt?: number | null;
+  marginTrx?: number | null;
+}): NormalUsdtTrxFeeQuote {
+  const providerCostTrx = Number(input.providerCostTrx ?? 0);
+  const providerCostUsdt = Number(input.providerCostUsdt ?? 0);
+  const marginTrx = Number(input.marginTrx ?? DEFAULT_USDT_WTRON_MARGIN_TRX);
+  return {
+    asset: "USDT",
+    customerFeeTrx: providerCostTrx + marginTrx,
+    providerCostTrx,
+    providerCostUsdt,
+    wtronRevenueTrx: marginTrx,
+    blocked: false,
+    blockCode: null,
   };
 }
 

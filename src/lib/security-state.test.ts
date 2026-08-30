@@ -170,7 +170,11 @@ import {
   signerRequestSignature,
   verifySignerServiceRequest,
 } from "./signer-policy.ts";
-import { calculateTrxTransferFee, calculateUsdtTransferFee } from "./transfer-fee-policy.ts";
+import {
+  calculateNormalUsdtTrxFee,
+  calculateTrxTransferFee,
+  calculateUsdtTransferFee,
+} from "./transfer-fee-policy.ts";
 
 describe("API key crypto", () => {
   it("parses and verifies generated keys", () => {
@@ -614,6 +618,19 @@ describe("server-side signer safety", () => {
     assert.equal(blocked.blockCode, "ENERGY_COST_TOO_HIGH");
   });
 
+  it("charges normal wallet USDT sends in TRX while debiting only the USDT amount", () => {
+    const quote = calculateNormalUsdtTrxFee({
+      providerCostTrx: 1.8,
+      providerCostUsdt: 0.62,
+      marginTrx: 1.5,
+    });
+    assert.equal(quote.customerFeeTrx, 3.3);
+    assert.equal(quote.providerCostTrx, 1.8);
+    assert.equal(quote.providerCostUsdt, 0.62);
+    assert.equal(quote.wtronRevenueTrx, 1.5);
+    assert.equal(quote.blocked, false);
+  });
+
   it("constrains TRX transfer fees to the configured min/max customer range", () => {
     const minimum = calculateTrxTransferFee({
       networkCostTrx: 1,
@@ -655,10 +672,10 @@ describe("server-side signer safety", () => {
     assert.match(signerServer, /wtron_revenue_trx/);
     assert.match(feePolicy, /ENERGY_COST_TOO_HIGH/);
     assert.match(feePolicy, /TRX_NETWORK_COST_TOO_HIGH/);
-    assert.match(signerServer, /record_fee_liability/);
+    assert.match(signerServer, /recordWalletSendFeeLiability/);
     assert.ok(
       signerServer.indexOf("broadcastSignedTrc20Transfer") <
-        signerServer.indexOf("wallet-send:${requestId}:customer-fee"),
+        signerServer.indexOf("recordWalletSendFeeLiability({"),
     );
   });
 
@@ -2631,13 +2648,42 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /createGasFreeTransfer/);
     assert.match(mini, /openGasfreeSend/);
     assert.match(mini, /onSubmitGasfree=\{submitGasfreeSend\}/);
-    assert.match(mini, /NILE TESTNET GasFree USDT/);
+    assert.match(mini, /NILE TESTNET/);
     assert.match(mini, /Activation fee/);
     assert.match(mini, /GasFree provider fee/);
     assert.match(mini, /WTRON fee/);
     assert.match(mini, /gasfreeSendIdempotencyKey/);
     assert.match(mini, /txid \? \(/);
     assert.doesNotMatch(mini, /fake.*txid|mock.*txid/i);
+  });
+
+  it("keeps GasFree USDT-only and renders professional send receipts", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const signerServer = readFileSync(resolve(process.cwd(), "src/lib/signer.server.ts"), "utf8");
+    assert.match(signerServer, /Use GasFree Send for this USDT-only wallet/);
+    assert.match(mini, /isGasfreeWallet/);
+    assert.match(mini, /displayAsset = isGasfreeWallet \? "USDT" : asset/);
+    assert.match(mini, /TransferResultReceipt/);
+    assert.match(mini, /Transaction Successful|Transaction Submitted/);
+    assert.match(mini, /Not broadcast/);
+    assert.match(mini, /receiptShareText/);
+    assert.doesNotMatch(mini, /JSON\.stringify\(standardResult|JSON\.stringify\(result/);
+  });
+
+  it("models normal wallet USDT fees as TRX resource cost plus WTRON margin", () => {
+    const signerServer = readFileSync(resolve(process.cwd(), "src/lib/signer.server.ts"), "utf8");
+    const adminSettings = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/system-settings.tsx"),
+      "utf8",
+    );
+    assert.match(signerServer, /calculateNormalUsdtTrxFee/);
+    assert.match(signerServer, /usdt_trx_transfer_fee_margin/);
+    assert.match(signerServer, /totalDebit: input\.amount/);
+    assert.match(signerServer, /customerFeeUsdt: 0/);
+    assert.match(signerServer, /feeCurrency: "TRX"/);
+    assert.match(signerServer, /assertFeeCollectionReady/);
+    assert.match(signerServer, /reconcileWalletActiveSendRequests/);
+    assert.match(adminSettings, /Normal USDT WTRON margin TRX/);
   });
 
   it("ships a non-secret Admin Wallet Monitor with owner, Telegram and real wallet metrics", () => {
