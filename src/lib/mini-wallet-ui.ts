@@ -2,6 +2,8 @@ export type MiniWalletAssetFilter = "ALL" | "USDT" | "TRX";
 export type MiniWalletDirectionFilter = "ALL" | "in" | "out";
 export type MiniThemePreference = "system" | "light" | "dark";
 
+const MINI_TRON_ADDRESS_REGEX = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
+
 export interface MiniWalletTransactionLike {
   id: string;
   wallet_id?: string | null;
@@ -214,4 +216,44 @@ export function walletImportOutcome(
     } as const;
   }
   return { action: "insert", message: "Wallet imported", insert: true } as const;
+}
+
+export function extractTronAddressFromQrPayload(payload: string) {
+  const raw = payload.trim();
+  if (!raw) return null;
+  if (MINI_TRON_ADDRESS_REGEX.test(raw)) return raw;
+
+  const decodedCandidates = new Set<string>();
+  decodedCandidates.add(raw);
+  try {
+    decodedCandidates.add(decodeURIComponent(raw));
+  } catch {
+    // Keep the raw candidate only.
+  }
+
+  for (const candidate of decodedCandidates) {
+    const directMatch = candidate.match(MINI_TRON_ADDRESS_REGEX);
+    if (directMatch?.[0]) return directMatch[0];
+    const embedded = candidate.match(/T[1-9A-HJ-NP-Za-km-z]{33}/);
+    if (embedded?.[0] && MINI_TRON_ADDRESS_REGEX.test(embedded[0])) return embedded[0];
+    try {
+      const url = new URL(candidate);
+      const values = [
+        url.hostname,
+        url.pathname.replace(/^\/+/, ""),
+        url.searchParams.get("address"),
+        url.searchParams.get("to"),
+        url.searchParams.get("recipient"),
+        url.searchParams.get("receiver"),
+      ];
+      for (const value of values) {
+        const trimmed = value?.trim() ?? "";
+        if (MINI_TRON_ADDRESS_REGEX.test(trimmed)) return trimmed;
+      }
+    } catch {
+      // Non-URL payloads are handled by the embedded-address scan above.
+    }
+  }
+
+  return null;
 }

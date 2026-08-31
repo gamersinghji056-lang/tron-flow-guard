@@ -114,6 +114,7 @@ import {
 import {
   gasfreeCapabilityNeedsCheck,
   gasfreeCapabilityStatus,
+  extractTronAddressFromQrPayload,
   paymentMethodDisplay,
   resolveMiniTheme,
   type MiniThemePreference,
@@ -174,6 +175,13 @@ interface TelegramWebApp {
   initData?: string;
   ready?: () => void;
   expand?: () => void;
+  showScanQrPopup?: (
+    params: { text?: string },
+    callback: (payload: string) => boolean | void,
+  ) => void;
+  closeScanQrPopup?: () => void;
+  onEvent?: (eventType: "scanQrPopupClosed", handler: () => void) => void;
+  offEvent?: (eventType: "scanQrPopupClosed", handler: () => void) => void;
   BackButton?: {
     show: () => void;
     hide: () => void;
@@ -184,6 +192,13 @@ interface TelegramWebApp {
 
 interface TelegramWindow extends Window {
   Telegram?: { WebApp?: TelegramWebApp };
+}
+
+interface BarcodeDetectorConstructor {
+  new (options?: { formats?: string[] }): {
+    detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
+  };
+  getSupportedFormats?: () => Promise<string[]>;
 }
 
 interface ProfileSummary {
@@ -380,6 +395,9 @@ interface GasFreeReadiness {
   transferFee?: number | null;
   activateFee?: number | null;
   platformFee?: number | null;
+  productTransferAllowed?: boolean | null;
+  productTransferBlockedBy?: string | null;
+  productTransferReason?: string | null;
 }
 
 interface GasFreeTransferResult {
@@ -642,6 +660,121 @@ function safeAddress(address?: string | null) {
 function copyText(value: string, label = "Copied") {
   if (!value) return;
   void navigator.clipboard.writeText(value).then(() => toast.success(label));
+}
+
+type QrScanErrorCode = "denied" | "unsupported" | "invalid" | "cancelled";
+
+class QrScanError extends Error {
+  code: QrScanErrorCode;
+
+  constructor(code: QrScanErrorCode) {
+    super(code);
+    this.code = code;
+  }
+}
+
+function qrScanErrorMessage(error: unknown) {
+  const code = error instanceof QrScanError ? error.code : "unsupported";
+  if (code === "denied") return "Camera access was denied. Paste the address instead.";
+  if (code === "invalid") return "QR code does not contain a valid TRON address.";
+  if (code === "cancelled") return "QR scan cancelled.";
+  return "QR scanning is not supported on this device. Paste the address instead.";
+}
+
+async function scanRecipientQrWithTelegram(webApp: TelegramWebApp) {
+  const showScanQrPopup = webApp.showScanQrPopup;
+  if (!showScanQrPopup) throw new QrScanError("unsupported");
+  return await new Promise<string>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      webApp.offEvent?.("scanQrPopupClosed", onClosed);
+      window.clearTimeout(timeout);
+    };
+    const onClosed = () => {
+      cleanup();
+      reject(new QrScanError("cancelled"));
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      webApp.closeScanQrPopup?.();
+      reject(new QrScanError("cancelled"));
+    }, 60_000);
+    webApp.onEvent?.("scanQrPopupClosed", onClosed);
+    showScanQrPopup({ text: "Scan recipient TRON address" }, (payload) => {
+      const address = extractTronAddressFromQrPayload(payload);
+      if (!address) {
+        cleanup();
+        webApp.closeScanQrPopup?.();
+        reject(new QrScanError("invalid"));
+        return true;
+      }
+      cleanup();
+      resolve(address);
+      return true;
+    });
+  });
+}
+
+async function scanRecipientQrWithCamera() {
+  const detectorConstructor = (
+    window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }
+  ).BarcodeDetector;
+  if (!navigator.mediaDevices?.getUserMedia || !detectorConstructor) {
+    throw new QrScanError("unsupported");
+  }
+  const supported = detectorConstructor.getSupportedFormats
+    ? await detectorConstructor.getSupportedFormats().catch(() => [])
+    : ["qr_code"];
+  if (!supported.includes("qr_code")) throw new QrScanError("unsupported");
+
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+  } catch {
+    throw new QrScanError("denied");
+  }
+
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = stream;
+  video.style.cssText =
+    "position:fixed;inset:0;z-index:9999;width:100vw;height:100vh;object-fit:cover;background:#000;";
+  document.body.appendChild(video);
+
+  const stop = () => {
+    stream.getTracks().forEach((track) => track.stop());
+    video.remove();
+  };
+
+  try {
+    await video.play();
+    const detector = new detectorConstructor({ formats: ["qr_code"] });
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 30_000) {
+      const codes = await detector.detect(video).catch(() => []);
+      for (const code of codes) {
+        const address = extractTronAddressFromQrPayload(code.rawValue ?? "");
+        if (address) return address;
+      }
+      if (codes.length > 0) throw new QrScanError("invalid");
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
+    throw new QrScanError("cancelled");
+  } finally {
+    stop();
+  }
+}
+
+async function scanRecipientQr() {
+  const webApp = typeof window !== "undefined" ? (window as TelegramWindow).Telegram?.WebApp : null;
+  if (webApp?.showScanQrPopup) return await scanRecipientQrWithTelegram(webApp);
+  return await scanRecipientQrWithCamera();
 }
 
 function shareText(value: string) {
@@ -4031,20 +4164,25 @@ function WalletGasFreeScreen({
             ? "GasFree Wallet Discovered"
             : t("notDiscovered");
   const transferStatus = readiness?.status ?? (discovered ? "NOT_CONFIGURED" : "DISABLED");
+  const productDisabled = readiness?.productTransferAllowed === false;
   const transferLabel =
     transferStatus === "AVAILABLE" && accountState === "READY"
       ? "Transfers Ready"
-      : transferStatus === "NOT_CONFIGURED"
+      : productDisabled
         ? "Transfers Disabled by Admin"
-        : transferStatus === "PROVIDER_ERROR"
-          ? "Provider Unavailable"
-          : transferStatus === "LIMIT_REACHED"
-            ? "Insufficient Test Funds"
-            : transferStatus === "PENDING"
-              ? "Pending"
-              : accountState === "ACTIVATION_REQUIRED" || transferStatus === "ACTIVATION_REQUIRED"
-                ? "Activation Required"
-                : "Transfers Disabled by Admin";
+        : transferStatus === "NOT_CONFIGURED"
+          ? "Setup Required"
+          : transferStatus === "PROVIDER_ERROR"
+            ? "Provider Unavailable"
+            : transferStatus === "LIMIT_REACHED"
+              ? "Insufficient Test Funds"
+              : transferStatus === "PENDING"
+                ? "Pending"
+                : accountState === "ACTIVATION_REQUIRED" || transferStatus === "ACTIVATION_REQUIRED"
+                  ? "Activation Required"
+                  : transferStatus === "DISABLED"
+                    ? "Transfers Unavailable"
+                    : "Transfers Unavailable";
   const rawStatus = discovered
     ? "available"
     : gasfreeCapabilityStatus(wallet.gas_sponsorship_status);
@@ -4069,14 +4207,17 @@ function WalletGasFreeScreen({
       : transferStatus === "NOT_CONFIGURED" || transferStatus === "PROVIDER_ERROR"
         ? "warning"
         : "muted";
-  const disabledReason =
-    transferStatus === "DISABLED" || transferStatus === "NOT_CONFIGURED"
-      ? "Send unavailable: Mainnet GasFree transfers are currently disabled by WTRON."
-      : accountState === "ACTIVATION_REQUIRED"
-        ? "Send unavailable: GasFree account activation is required first."
-        : transferStatus === "PROVIDER_ERROR"
-          ? "Send unavailable: GasFree provider is currently unavailable."
-          : readiness?.reason;
+  const disabledReason = productDisabled
+    ? (readiness?.productTransferReason ?? "Send unavailable: transfers are disabled by Admin.")
+    : transferStatus === "DISABLED"
+      ? "Send unavailable: GasFree transfers are currently unavailable."
+      : transferStatus === "NOT_CONFIGURED"
+        ? "Send unavailable: Mainnet GasFree transfers are currently disabled by WTRON."
+        : accountState === "ACTIVATION_REQUIRED"
+          ? "Send unavailable: GasFree account activation is required first."
+          : transferStatus === "PROVIDER_ERROR"
+            ? "Send unavailable: GasFree provider is currently unavailable."
+            : readiness?.reason;
   const explanation = discovered
     ? (disabledReason ?? t("gasfreeTransferSetupRequired"))
     : t("gasfreeUnavailableConfirmedMessage");
@@ -4468,6 +4609,7 @@ function SendScreen({
   onSubmitGasfree: (event: FormEvent) => void;
 }) {
   const [sendStep, setSendStep] = useState<"recipient" | "amount" | "confirm">("recipient");
+  const [scanBusy, setScanBusy] = useState(false);
   const enabled = onChainSendEnabled(wallet);
   const network = networkConfig(wallet?.network);
   const available =
@@ -4554,6 +4696,20 @@ function SendScreen({
   const standardResultStatus = String(standardResult?.["status"] ?? "Submitted");
   const standardResultConfirmed = isConfirmedTransferStatus(standardResultStatus);
   const nextStep = () => setSendStep(sendStep === "recipient" ? "amount" : "confirm");
+  const scanRecipient = async () => {
+    if (scanBusy) return;
+    setScanBusy(true);
+    try {
+      const scanned = await scanRecipientQr();
+      setAddress(scanned);
+      toast.success("Recipient address added");
+    } catch (error) {
+      const message = qrScanErrorMessage(error);
+      if (!(error instanceof QrScanError) || error.code !== "cancelled") toast.error(message);
+    } finally {
+      setScanBusy(false);
+    }
+  };
   const submitStandardStep = (event: FormEvent) => {
     if (sendStep !== "confirm") {
       event.preventDefault();
@@ -4591,8 +4747,15 @@ function SendScreen({
                     <button
                       type="button"
                       className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6"
+                      disabled={scanBusy}
+                      onClick={() => void scanRecipient()}
+                      aria-label="Scan recipient QR"
                     >
-                      <ScanLine className="h-4 w-4 text-slate-300" />
+                      {scanBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
+                      ) : (
+                        <ScanLine className="h-4 w-4 text-slate-300" />
+                      )}
                     </button>
                   </div>
                 </FormField>
@@ -4731,8 +4894,15 @@ function SendScreen({
                   <button
                     type="button"
                     className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6"
+                    disabled={scanBusy}
+                    onClick={() => void scanRecipient()}
+                    aria-label="Scan recipient QR"
                   >
-                    <ScanLine className="h-4 w-4 text-slate-300" />
+                    {scanBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
+                    ) : (
+                      <ScanLine className="h-4 w-4 text-slate-300" />
+                    )}
                   </button>
                 </div>
               </FormField>

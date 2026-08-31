@@ -92,6 +92,7 @@ import { collectPaginatedTronGridRows } from "./tron-pagination.ts";
 import { permissionAllowsContractType, selectAuthorizedTronPermission } from "./tron-permission.ts";
 import {
   canAccessKnownWalletHistory,
+  extractTronAddressFromQrPayload,
   filterMiniWalletTransactions,
   gasfreeCapabilityNeedsCheck,
   gasfreeCapabilityStatus,
@@ -112,6 +113,7 @@ import {
   walletTypeAndGasfreeCapabilityAreIndependent,
   walletImportOutcome,
 } from "./mini-wallet-ui.ts";
+import { evaluateTransferPolicy } from "./transfer-control-policy.ts";
 
 const { TronGasFree } = GasFreeSdk as typeof import("@gasfree/gasfree-sdk");
 import {
@@ -1151,6 +1153,22 @@ describe("Mini App wallet UX routing and classification", () => {
     assert.deepEqual(walletAssetBalances(15, 7.954209), { USDT: 15, TRX: 7.954209 });
   });
 
+  it("extracts valid TRON recipient addresses from QR payloads", () => {
+    const address = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7";
+    assert.equal(extractTronAddressFromQrPayload(address), address);
+    assert.equal(extractTronAddressFromQrPayload(`tron:${address}`), address);
+    assert.equal(
+      extractTronAddressFromQrPayload(`https://tronscan.org/#/address/${address}`),
+      address,
+    );
+    assert.equal(extractTronAddressFromQrPayload(`wtron://send?to=${address}`), address);
+    assert.equal(extractTronAddressFromQrPayload("not-a-tron-address"), null);
+    assert.equal(
+      extractTronAddressFromQrPayload("0x0000000000000000000000000000000000000000"),
+      null,
+    );
+  });
+
   it("presents GasFree as capability without creating a second imported wallet", () => {
     assert.deepEqual(walletGasfreePresentation("standard", "unavailable"), {
       walletType: "standard",
@@ -1629,6 +1647,22 @@ describe("public website auth surface", () => {
     assert.equal(
       domainRedirectTarget({ hostname: "localhost", pathname: "/admin/login", search: "" }),
       null,
+    );
+  });
+
+  it("serves the current admin app only from the admin production domain", () => {
+    assert.equal(
+      domainRedirectTarget({ hostname: "admin.wtron.org", pathname: "/", search: "" }),
+      "https://admin.wtron.org/admin/login",
+    );
+    assert.equal(
+      domainRedirectTarget({ hostname: "admin.wtron.org", pathname: "/admin/login", search: "" }),
+      null,
+    );
+    assert.equal(domainRedirectTarget({ hostname: "wtron.org", pathname: "/", search: "" }), null);
+    assert.equal(
+      domainRedirectTarget({ hostname: "wtron.org", pathname: "/admin/login", search: "" }),
+      "https://admin.wtron.org/admin/login",
     );
   });
 
@@ -2715,10 +2749,20 @@ describe("GasFree transfer service safety", () => {
       ),
       "utf8",
     );
-    assert.match(signerServer, /assertProductTransferPolicy/);
-    assert.match(signerServer, /wallet_transfers_enabled/);
-    assert.match(signerServer, /normal_usdt_transfers_enabled/);
-    assert.match(signerServer, /normal_trx_transfers_enabled/);
+    const transferPolicyServer = readFileSync(
+      resolve(process.cwd(), "src/lib/transfer-control-policy.server.ts"),
+      "utf8",
+    );
+    const transferPolicy = readFileSync(
+      resolve(process.cwd(), "src/lib/transfer-control-policy.ts"),
+      "utf8",
+    );
+    assert.match(signerServer, /assertUserTransferPolicyAllowed/);
+    assert.match(gasfreeServer, /assertUserTransferPolicyAllowed/);
+    assert.match(transferPolicyServer, /evaluateTransferPolicy/);
+    assert.match(transferPolicyServer, /wallet_transfers_enabled/);
+    assert.match(transferPolicy, /normal_usdt_transfers_enabled/);
+    assert.match(transferPolicy, /normal_trx_transfers_enabled/);
     assert.match(gasfreeServer, /gasfree_usdt_transfers_enabled/);
     assert.match(signerServer, /fee_collection_wallet_id_\$\{currencySuffix\}_\$\{networkSuffix\}/);
     assert.match(adminSettings, /fee_collection_wallet_id_usdt_trc20_mainnet/);
@@ -2739,6 +2783,85 @@ describe("GasFree transfer service safety", () => {
     assert.match(migration, /CREATE OR REPLACE FUNCTION public\.create_manual_fee_sweep/);
     assert.match(migration, /EXISTS \(\s*SELECT 1\s*FROM public\.wallet_purpose_assignments/s);
     assert.doesNotMatch(adminWallets, /encrypted_mnemonic|privateKey|password_hash/);
+  });
+
+  it("evaluates transfer controls consistently for Mini App status and backend sends", () => {
+    const enabled = evaluateTransferPolicy({
+      kind: "gasfree_usdt",
+      settings: {
+        wallet_transfers_enabled: "true",
+        gasfree_usdt_transfers_enabled: "true",
+      },
+      userControl: null,
+    });
+    assert.equal(enabled.allowed, true);
+    assert.equal(enabled.blockedBy, null);
+
+    const globalDisabled = evaluateTransferPolicy({
+      kind: "gasfree_usdt",
+      settings: {
+        wallet_transfers_enabled: "false",
+        gasfree_usdt_transfers_enabled: "true",
+      },
+      userControl: null,
+    });
+    assert.equal(globalDisabled.allowed, false);
+    assert.equal(globalDisabled.blockedBy, "global");
+
+    const gasfreeDisabled = evaluateTransferPolicy({
+      kind: "gasfree_usdt",
+      settings: {
+        wallet_transfers_enabled: "true",
+        gasfree_usdt_transfers_enabled: "false",
+      },
+      userControl: null,
+    });
+    assert.equal(gasfreeDisabled.allowed, false);
+    assert.equal(gasfreeDisabled.blockedBy, "product");
+
+    const userDisabled = evaluateTransferPolicy({
+      kind: "gasfree_usdt",
+      settings: {
+        wallet_transfers_enabled: true,
+        gasfree_usdt_transfers_enabled: true,
+      },
+      userControl: {
+        all_transfers_enabled: false,
+        gasfree_usdt_enabled: true,
+        reason: "Manual review",
+      },
+    });
+    assert.equal(userDisabled.allowed, false);
+    assert.equal(userDisabled.blockedBy, "user");
+    assert.equal(userDisabled.reason, "Manual review");
+
+    const missingOptionalUserControl = evaluateTransferPolicy({
+      kind: "normal_usdt",
+      settings: {
+        wallet_transfers_enabled: true,
+        normal_usdt_transfers_enabled: true,
+      },
+      userControl: { all_transfers_enabled: true },
+    });
+    assert.equal(missingOptionalUserControl.allowed, true);
+
+    const transferPolicyServer = readFileSync(
+      resolve(process.cwd(), "src/lib/transfer-control-policy.server.ts"),
+      "utf8",
+    );
+    const walletsFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/wallets.functions.ts"),
+      "utf8",
+    );
+    const signerServer = readFileSync(resolve(process.cwd(), "src/lib/signer.server.ts"), "utf8");
+    const gasfreeServer = readFileSync(
+      resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
+      "utf8",
+    );
+    assert.match(transferPolicyServer, /evaluateUserTransferPolicy/);
+    assert.match(walletsFunctions, /userId: context\.userId/);
+    assert.match(signerServer, /assertUserTransferPolicyAllowed/);
+    assert.match(gasfreeServer, /assertUserTransferPolicyAllowed/);
   });
 
   it("ships a non-secret Admin Wallet Monitor with owner, Telegram and real wallet metrics", () => {

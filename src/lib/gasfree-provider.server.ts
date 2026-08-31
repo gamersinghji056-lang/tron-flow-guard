@@ -22,6 +22,15 @@ import {
 } from "@/lib/gasfree-transfer-policy";
 import { signGasFreePermitTypedData } from "@/lib/gasfree-signing";
 import { safeErrorMessage, writeServiceHeartbeat } from "@/lib/system-health.server";
+import {
+  evaluateTransferPolicy,
+  type TransferPolicySettings,
+  type UserTransferControlLike,
+} from "@/lib/transfer-control-policy";
+import {
+  assertUserTransferPolicyAllowed,
+  evaluateUserTransferPolicy,
+} from "@/lib/transfer-control-policy.server";
 
 const gasfreeSdkModule =
   "default" in GasFreeSdk && GasFreeSdk.default
@@ -113,6 +122,9 @@ export interface GasFreeTransferReadiness {
   accountAllowSubmit?: boolean | null;
   accountNonce?: string | null;
   quoteAvailable?: boolean | null;
+  productTransferAllowed?: boolean | null;
+  productTransferBlockedBy?: string | null;
+  productTransferReason?: string | null;
 }
 
 export interface GasFreePermitTransferInput {
@@ -444,8 +456,14 @@ export async function getGasFreeTransferReadiness(input: {
   amount?: number;
   generalAddress?: string;
   allowTestnet?: boolean;
+  userId?: string;
 }): Promise<GasFreeTransferReadiness> {
-  const settings = await readSettings();
+  const [settings, productPolicy] = await Promise.all([
+    readSettings(),
+    input.userId
+      ? evaluateUserTransferPolicy({ userId: input.userId, kind: "gasfree_usdt" })
+      : Promise.resolve(null),
+  ]);
   const providerConfig = readProviderConfig(input.network);
   const staticReadiness = gasFreeServiceReadiness({
     settings,
@@ -479,6 +497,19 @@ export async function getGasFreeTransferReadiness(input: {
     Boolean(providerConfig.providerBaseUrl) &&
     providerConfig.apiKeyConfigured === true &&
     providerConfig.apiSecretConfigured === true;
+  if (productPolicy && !productPolicy.allowed) {
+    return {
+      ...base,
+      status: "DISABLED",
+      reason: productPolicy.reason ?? "Transfers are temporarily unavailable.",
+      accountStatus:
+        productPolicy.blockedBy === "user" ? "TRANSFERS_DISABLED" : "DISABLED_BY_ADMIN",
+      productTransferAllowed: false,
+      productTransferBlockedBy: productPolicy.blockedBy,
+      productTransferReason: productPolicy.reason,
+      quoteAvailable: false,
+    };
+  }
   try {
     const [provider, tokens] = await Promise.all([
       getProviderConfig(input.network),
@@ -527,6 +558,9 @@ export async function getGasFreeTransferReadiness(input: {
             : null;
     const enrichedBase = {
       ...base,
+      productTransferAllowed: productPolicy?.allowed ?? null,
+      productTransferBlockedBy: productPolicy?.blockedBy ?? null,
+      productTransferReason: productPolicy?.reason ?? null,
       provider: provider.name || GASFREE_PROVIDER_NAME,
       providerAddress: provider.address,
       tokenAddress: token.tokenAddress,
@@ -776,6 +810,7 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
     requestRes,
     nileAccessRes,
     transferControlRes,
+    transferPolicySettingsRes,
   ] = await Promise.all([
     parentIds.length
       ? supabaseAdmin
@@ -854,6 +889,15 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
           )
           .in("user_id", userIds as never)
       : Promise.resolve({ data: [], error: null }),
+    supabaseAdmin
+      .from("system_settings" as never)
+      .select("key, value")
+      .in("key", [
+        "wallet_transfers_enabled",
+        "normal_usdt_transfers_enabled",
+        "normal_trx_transfers_enabled",
+        "gasfree_usdt_transfers_enabled",
+      ] as never),
   ]);
   for (const result of [
     parentsRes,
@@ -867,9 +911,15 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
     requestRes,
     nileAccessRes,
     transferControlRes,
+    transferPolicySettingsRes,
   ]) {
     if (result.error && result.error.code !== "42P01") throw new Error(result.error.message);
   }
+  const transferPolicySettings = Object.fromEntries(
+    ((transferPolicySettingsRes.data ?? []) as Array<{ key?: string | null; value?: unknown }>).map(
+      (row) => [row.key, row.value],
+    ),
+  ) as TransferPolicySettings;
 
   const parents = new Map(
     (
@@ -974,6 +1024,14 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
     const telegram = wallet.user_id ? telegramByUser.get(wallet.user_id) : null;
     const password = wallet.user_id ? passwords.get(wallet.user_id) : null;
     const transferControl = wallet.user_id ? transferControls.get(wallet.user_id) : null;
+    const transferPolicy = evaluateTransferPolicy({
+      kind:
+        wallet.wallet_role === "gasfree" || wallet.wallet_type === "gasfree"
+          ? "gasfree_usdt"
+          : "normal_usdt",
+      settings: transferPolicySettings,
+      userControl: transferControl as UserTransferControlLike | null,
+    });
     const userRoles = wallet.user_id ? (rolesByUser.get(wallet.user_id) ?? []) : [];
     const walletTx = txByWallet.get(wallet.id) ?? [];
     const successfulUsdt = walletTx.filter(
@@ -1082,9 +1140,8 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
         : null,
       lastBlockchainSync: wallet.onchain_checked_at ?? null,
       nileTestWalletEnabled: wallet.user_id ? nileAccess.has(wallet.user_id) : false,
-      transferEnabled: transferControl?.all_transfers_enabled !== false,
-      transferDisabledReason:
-        transferControl?.all_transfers_enabled === false ? (transferControl.reason ?? null) : null,
+      transferEnabled: transferPolicy.allowed,
+      transferDisabledReason: transferPolicy.reason,
       transferControlChangedAt: transferControl?.changed_at ?? null,
       adminAction: "User authorization required",
     });
@@ -1245,47 +1302,7 @@ async function gasFreeFeeDestinationForNetwork(network: ChainNetwork) {
 }
 
 async function assertGasFreeProductTransferPolicy(userId: string) {
-  const { data: settings, error: settingsError } = await supabaseAdmin
-    .from("system_settings" as never)
-    .select("key, value")
-    .in("key", [
-      "wallet_transfers_enabled",
-      "gasfree_usdt_transfers_enabled",
-      "gasfree_transfer_enabled",
-    ] as never);
-  if (settingsError) throw new Error(settingsError.message);
-  const values = new Map(
-    ((settings ?? []) as Array<{ key?: string | null; value?: SettingValue }>).map((row) => [
-      row.key,
-      row.value,
-    ]),
-  );
-  const walletTransfersEnabled = parseBoolean(values.get("wallet_transfers_enabled") ?? null, true);
-  const gasfreeUsdtEnabled = parseBoolean(
-    values.get("gasfree_usdt_transfers_enabled") ?? null,
-    true,
-  );
-  const gasfreeProviderEnabled = parseBoolean(
-    values.get("gasfree_transfer_enabled") ?? null,
-    false,
-  );
-  if (!walletTransfersEnabled || !gasfreeUsdtEnabled || !gasfreeProviderEnabled) {
-    throw new Error("TRANSFERS_TEMPORARILY_UNAVAILABLE");
-  }
-  const { data, error } = await supabaseAdmin
-    .from("user_transfer_controls" as never)
-    .select("all_transfers_enabled, gasfree_usdt_enabled, reason")
-    .eq("user_id", userId as never)
-    .maybeSingle();
-  if (error && error.code !== "42P01") throw new Error(error.message);
-  const row = data as {
-    all_transfers_enabled?: boolean | null;
-    gasfree_usdt_enabled?: boolean | null;
-    reason?: string | null;
-  } | null;
-  if (row?.all_transfers_enabled === false || row?.gasfree_usdt_enabled === false) {
-    throw new Error(row.reason || "TRANSFERS_UNAVAILABLE_FOR_ACCOUNT");
-  }
+  await assertUserTransferPolicyAllowed({ userId, kind: "gasfree_usdt" });
 }
 
 async function recordGasFreePlatformFeeLiability(input: {

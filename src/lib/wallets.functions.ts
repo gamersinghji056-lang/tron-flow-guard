@@ -254,6 +254,7 @@ export const getGasFreeSendReadiness = createServerFn({ method: "POST" })
       asset: "USDT",
       ...(generalAddress ? { generalAddress } : {}),
       allowTestnet: nileTestAuthorized,
+      userId: context.userId,
     });
     return { ...readiness, platformFee: await readTransferFee() };
   });

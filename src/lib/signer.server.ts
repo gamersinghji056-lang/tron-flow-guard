@@ -16,6 +16,7 @@ import {
   calculateNormalUsdtTrxFee,
   calculateTrxTransferFee,
 } from "@/lib/transfer-fee-policy";
+import { assertUserTransferPolicyAllowed } from "@/lib/transfer-control-policy.server";
 
 async function readSetting<T>(key: string, fallback: T): Promise<T> {
   const { data } = await supabaseAdmin
@@ -34,46 +35,6 @@ async function readNumericSetting(key: string, fallback: number): Promise<number
 
 async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-type TransferPolicyKind = "normal_usdt" | "normal_trx" | "gasfree_usdt";
-
-async function assertProductTransferPolicy(input: { userId: string; kind: TransferPolicyKind }) {
-  const globalEnabled = await readSetting("wallet_transfers_enabled", true);
-  const kindKey =
-    input.kind === "normal_usdt"
-      ? "normal_usdt_transfers_enabled"
-      : input.kind === "normal_trx"
-        ? "normal_trx_transfers_enabled"
-        : "gasfree_usdt_transfers_enabled";
-  const kindEnabled = await readSetting(kindKey, true);
-  if (globalEnabled !== true || kindEnabled !== true) {
-    throw new Error("TRANSFERS_TEMPORARILY_UNAVAILABLE");
-  }
-  const { data, error } = await supabaseAdmin
-    .from("user_transfer_controls" as never)
-    .select(
-      "all_transfers_enabled, normal_usdt_enabled, normal_trx_enabled, gasfree_usdt_enabled, reason",
-    )
-    .eq("user_id", input.userId as never)
-    .maybeSingle();
-  if (error && error.code !== "42P01") throw new Error(error.message);
-  const row = data as {
-    all_transfers_enabled?: boolean | null;
-    normal_usdt_enabled?: boolean | null;
-    normal_trx_enabled?: boolean | null;
-    gasfree_usdt_enabled?: boolean | null;
-    reason?: string | null;
-  } | null;
-  const userKindEnabled =
-    input.kind === "normal_usdt"
-      ? row?.normal_usdt_enabled
-      : input.kind === "normal_trx"
-        ? row?.normal_trx_enabled
-        : row?.gasfree_usdt_enabled;
-  if (row?.all_transfers_enabled === false || userKindEnabled === false) {
-    throw new Error(row?.reason || "TRANSFERS_UNAVAILABLE_FOR_ACCOUNT");
-  }
 }
 
 function parseFeeCollectionWalletSetting(value: unknown) {
@@ -359,7 +320,7 @@ export async function createAndBroadcastPersonalSend(input: {
 
   assertValidTronAddress(input.toAddress);
   assertSendAmount(input.asset, input.amount);
-  await assertProductTransferPolicy({
+  await assertUserTransferPolicyAllowed({
     userId: input.userId,
     kind: input.asset === "USDT" ? "normal_usdt" : "normal_trx",
   });
@@ -797,7 +758,7 @@ export async function previewPersonalSendCost(input: {
 }) {
   assertValidTronAddress(input.toAddress);
   assertSendAmount(input.asset, input.amount);
-  await assertProductTransferPolicy({
+  await assertUserTransferPolicyAllowed({
     userId: input.userId,
     kind: input.asset === "USDT" ? "normal_usdt" : "normal_trx",
   });
