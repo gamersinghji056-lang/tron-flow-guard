@@ -47,7 +47,7 @@ import {
   canonicalRuntimeUrl,
   isAuthoritativeSupabaseUrl,
 } from "./production-url.ts";
-import { domainRedirectTarget } from "./domain-policy.ts";
+import { adminDomainClientRouteTarget, domainRedirectTarget } from "./domain-policy.ts";
 import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
@@ -1663,6 +1663,42 @@ describe("public website auth surface", () => {
     assert.equal(
       domainRedirectTarget({ hostname: "wtron.org", pathname: "/admin/login", search: "" }),
       "https://admin.wtron.org/admin/login",
+    );
+    assert.equal(
+      adminDomainClientRouteTarget({
+        hostname: "admin.wtron.org",
+        pathname: "/dashboard",
+        authenticated: true,
+        isAdmin: true,
+      }),
+      "/admin",
+    );
+    assert.equal(
+      adminDomainClientRouteTarget({
+        hostname: "admin.wtron.org",
+        pathname: "/wallet",
+        authenticated: false,
+        isAdmin: false,
+      }),
+      "/admin/login",
+    );
+    assert.equal(
+      adminDomainClientRouteTarget({
+        hostname: "admin.wtron.org",
+        pathname: "/p2p",
+        authenticated: true,
+        isAdmin: false,
+      }),
+      "/admin/login",
+    );
+    assert.equal(
+      adminDomainClientRouteTarget({
+        hostname: "wtron.org",
+        pathname: "/dashboard",
+        authenticated: true,
+        isAdmin: false,
+      }),
+      null,
     );
   });
 

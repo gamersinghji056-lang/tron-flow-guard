@@ -4,13 +4,18 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useLocation,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { getCurrentAccountAccess } from "@/lib/accounts.functions";
+import { adminDomainClientRouteTarget } from "@/lib/domain-policy";
 import { miniAppErrorHomeHref } from "@/lib/mini-app-runtime";
 import { CANONICAL_PRODUCTION_ORIGIN, canonicalRuntimeRedirectScript } from "@/lib/production-url";
 
@@ -142,6 +147,48 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const location = useLocation();
+  const resolveCurrentAccount = useServerFn(getCurrentAccountAccess);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const initialTarget = adminDomainClientRouteTarget({
+      hostname: window.location.hostname,
+      pathname: window.location.pathname,
+      authenticated: false,
+      isAdmin: false,
+    });
+    if (!initialTarget) return;
+    let active = true;
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        if (!active) return;
+        if (!data.session) {
+          window.location.replace(initialTarget);
+          return;
+        }
+        try {
+          const account = await resolveCurrentAccount();
+          if (!active) return;
+          const target = adminDomainClientRouteTarget({
+            hostname: window.location.hostname,
+            pathname: window.location.pathname,
+            authenticated: true,
+            isAdmin: account.isAdmin,
+          });
+          if (target) window.location.replace(target);
+        } catch {
+          if (active) window.location.replace("/admin/login");
+        }
+      })
+      .catch(() => {
+        if (active) window.location.replace("/admin/login");
+      });
+    return () => {
+      active = false;
+    };
+  }, [location.pathname, resolveCurrentAccount]);
 
   return (
     <QueryClientProvider client={queryClient}>

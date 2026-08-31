@@ -29,6 +29,22 @@ export function isAdminPath(pathname: string) {
   return path === "/admin" || path.startsWith("/admin/");
 }
 
+export function isAdminProductionHostname(hostname: string) {
+  return hostname.toLowerCase() === ADMIN_PRODUCTION_HOSTNAME;
+}
+
+export function adminDomainClientRouteTarget(input: {
+  hostname: string;
+  pathname: string;
+  authenticated: boolean;
+  isAdmin: boolean;
+}) {
+  if (!isAdminProductionHostname(input.hostname)) return null;
+  const pathname = normalizedPath(input.pathname);
+  if (isAdminPath(pathname)) return null;
+  return input.authenticated && input.isAdmin ? "/admin" : "/admin/login";
+}
+
 export function domainRedirectTarget(input: {
   hostname: string;
   pathname: string;

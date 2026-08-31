@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { getAccess } from "@/lib/access.functions";
 import { AdminOpsShell } from "@/components/admin-ops-shell";
+import { isAdminProductionHostname } from "@/lib/domain-policy";
 
 /**
  * Administrator subtree gate. The role is resolved by a *server* function that
@@ -9,13 +10,17 @@ import { AdminOpsShell } from "@/components/admin-ops-shell";
  */
 export const Route = createFileRoute("/_authenticated/admin")({
   beforeLoad: async () => {
+    const unauthorizedTarget =
+      typeof window !== "undefined" && isAdminProductionHostname(window.location.hostname)
+        ? "/admin/login"
+        : "/dashboard";
     try {
       const access = await getAccess();
-      if (!access.isAdmin) throw redirect({ to: "/dashboard", replace: true });
+      if (!access.isAdmin) throw redirect({ to: unauthorizedTarget, replace: true });
       return { access };
     } catch (error) {
       if (error && typeof error === "object" && "to" in error) throw error;
-      throw redirect({ to: "/dashboard", replace: true });
+      throw redirect({ to: unauthorizedTarget, replace: true });
     }
   },
   component: () => (
