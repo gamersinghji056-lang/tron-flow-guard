@@ -1474,7 +1474,7 @@ export async function createGasFreeTransferRequest(input: {
   if (!quote.allowSubmit) throw new Error("GasFree account has a pending transfer.");
   const platformFee = await readTransferFee();
   const providerFee = quote.maxFee / 10 ** quote.decimals;
-  if (providerFee >= platformFee) {
+  if (providerFee - platformFee > 0.000001) {
     throw new Error("GASFREE_PROVIDER_COST_TOO_HIGH");
   }
   const collectiblePlatformFee = Math.max(platformFee - providerFee, 0);

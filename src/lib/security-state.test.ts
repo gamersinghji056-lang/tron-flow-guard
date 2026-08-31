@@ -1559,8 +1559,15 @@ describe("admin login role resolution", () => {
   it("clears stale sessions and uses the explicit admin resolver during admin login", () => {
     const source = readFileSync(resolve(process.cwd(), "src/components/auth-panel.tsx"), "utf8");
     assert.match(source, /audience === "admin"[\s\S]*supabase\.auth\.signOut\(\)/);
+    assert.match(source, /supabase\.auth\.setSession\(\{/);
+    assert.match(source, /supabase\.auth\.getSession\(\)/);
+    assert.ok(
+      source.indexOf("supabase.auth.setSession({") <
+        source.indexOf("const adminAccess = await resolveAdminLoginAccess()"),
+    );
     assert.match(source, /getCurrentAdminLoginAccess/);
     assert.match(source, /adminLoginErrorMessage\(adminAccess\.status\)/);
+    assert.match(source, /authToastMessage\(error\)/);
     assert.doesNotMatch(source, /audience === "admin" && !isStaff/);
   });
 
@@ -2551,6 +2558,23 @@ describe("GasFree transfer service safety", () => {
     assert.ok(
       createFunction.indexOf("submitPermitTransfer") <
         createFunction.indexOf("recordGasFreePlatformFeeLiability"),
+    );
+  });
+
+  it("allows GasFree provider cost to exactly consume the fixed customer fee", () => {
+    const providerServer = readFileSync(
+      resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
+      "utf8",
+    );
+    const createFunction = providerServer.slice(
+      providerServer.indexOf("export async function createGasFreeTransferRequest"),
+    );
+
+    assert.match(createFunction, /providerFee - platformFee > 0\.000001/);
+    assert.doesNotMatch(createFunction, /providerFee >= platformFee/);
+    assert.match(
+      createFunction,
+      /const collectiblePlatformFee = Math\.max\(platformFee - providerFee, 0\)/,
     );
   });
 

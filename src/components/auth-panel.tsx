@@ -61,6 +61,15 @@ function schemaFor(audience: Audience, mode: AuthMode) {
   });
 }
 
+function authToastMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return "Authentication failed";
+}
+
 export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMode }) {
   const navigate = useNavigate();
   const resolveCurrentAccount = useServerFn(getCurrentAccountAccess);
@@ -98,7 +107,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
       await supabase.auth.signOut().catch(() => undefined);
     }
 
-    const { error } = await supabase.auth.signInWithPassword(credentials);
+    const { data: signInData, error } = await supabase.auth.signInWithPassword(credentials);
     if (error) {
       throw new Error(
         /Email not confirmed/i.test(error.message)
@@ -107,6 +116,21 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
             ? "Invalid email or password."
             : error.message,
       );
+    }
+
+    if (!signInData.session?.access_token || !signInData.session.refresh_token) {
+      throw new Error("Authentication session was not created.");
+    }
+
+    const { error: setSessionError } = await supabase.auth.setSession({
+      access_token: signInData.session.access_token,
+      refresh_token: signInData.session.refresh_token,
+    });
+    if (setSessionError) throw new Error(setSessionError.message);
+
+    const { data: currentSession } = await supabase.auth.getSession();
+    if (!currentSession.session?.access_token) {
+      throw new Error("Authentication session was not saved for this domain.");
     }
 
     if (audience === "admin") {
@@ -178,7 +202,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
       toast.success(audience === "admin" ? "Administrator account created" : "Account created");
       await signInAndRoute({ email: parsed.data.email, password: parsed.data.password });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Authentication failed");
+      toast.error(authToastMessage(error));
     } finally {
       setPending(false);
     }
