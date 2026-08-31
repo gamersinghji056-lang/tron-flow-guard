@@ -22,6 +22,10 @@ const settingsInput = z.object({
   feeCollectionWalletId: z.string().uuid().nullable().optional(),
   feeCollectionWalletIdMainnet: z.string().uuid().nullable().optional(),
   feeCollectionWalletIdNile: z.string().uuid().nullable().optional(),
+  usdtFeeCollectionWalletIdMainnet: z.string().uuid().nullable().optional(),
+  usdtFeeCollectionWalletIdNile: z.string().uuid().nullable().optional(),
+  trxFeeCollectionWalletIdMainnet: z.string().uuid().nullable().optional(),
+  trxFeeCollectionWalletIdNile: z.string().uuid().nullable().optional(),
   usdtTotalTransferFee: z.number().min(0).max(1000).optional(),
   tronEnergyRouteEnabled: z.boolean().optional(),
   tronEnergyProvider: z.enum(["tronrental"]).optional(),
@@ -35,6 +39,10 @@ const settingsInput = z.object({
   wtronBuyRateInr: z.number().min(0).optional(),
   directSellFeePercent: z.number().min(0).max(20).optional(),
   withdrawalFeeUsdt: z.number().min(0).max(1000).optional(),
+  walletTransfersEnabled: z.boolean().optional(),
+  normalUsdtTransfersEnabled: z.boolean().optional(),
+  normalTrxTransfersEnabled: z.boolean().optional(),
+  gasfreeUsdtTransfersEnabled: z.boolean().optional(),
   onChainSendEnabled: z.boolean().optional(),
   tronSigningMainnetEnabled: z.boolean().optional(),
   feeSweepEnabled: z.boolean().optional(),
@@ -95,6 +103,15 @@ const nileTestWalletAccessInput = z.object({
   userId: z.string().uuid(),
   enabled: z.boolean(),
   reason: z.string().trim().max(160).optional(),
+});
+
+const userTransferAccessInput = z.object({
+  userId: z.string().uuid(),
+  allTransfersEnabled: z.boolean().optional(),
+  normalUsdtEnabled: z.boolean().optional(),
+  normalTrxEnabled: z.boolean().optional(),
+  gasfreeUsdtEnabled: z.boolean().optional(),
+  reason: z.string().trim().max(240).optional(),
 });
 
 export const listTraders = createServerFn({ method: "GET" })
@@ -197,6 +214,45 @@ export const setNileTestWalletAccess = createServerFn({ method: "POST" })
       entity_type: "user",
       entity_id: data.userId,
       metadata: { reason: data.reason ?? null } as never,
+    });
+    return { ok: true };
+  });
+
+export const setUserTransferAccess = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => userTransferAccessInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("user_transfer_controls" as never).upsert(
+      {
+        user_id: data.userId,
+        all_transfers_enabled: data.allTransfersEnabled ?? true,
+        normal_usdt_enabled: data.normalUsdtEnabled ?? true,
+        normal_trx_enabled: data.normalTrxEnabled ?? true,
+        gasfree_usdt_enabled: data.gasfreeUsdtEnabled ?? true,
+        reason: data.reason || null,
+        changed_by: context.userId,
+        changed_at: new Date().toISOString(),
+      } as never,
+      { onConflict: "user_id" },
+    );
+    if (error) throw new Error(error.message);
+    await supabaseAdmin.from("audit_logs").insert({
+      actor_id: context.userId,
+      actor_type: "admin",
+      action: "user_transfer_controls.updated",
+      entity_type: "user",
+      entity_id: data.userId,
+      metadata: {
+        all_transfers_enabled: data.allTransfersEnabled ?? true,
+        normal_usdt_enabled: data.normalUsdtEnabled ?? true,
+        normal_trx_enabled: data.normalTrxEnabled ?? true,
+        gasfree_usdt_enabled: data.gasfreeUsdtEnabled ?? true,
+        reason: data.reason ?? null,
+      } as never,
     });
     return { ok: true };
   });

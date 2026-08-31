@@ -1,7 +1,7 @@
 import type { SendAsset } from "@/lib/signer-policy";
 
 export const DEFAULT_USDT_TOTAL_TRANSFER_FEE = 1.5;
-export const DEFAULT_USDT_WTRON_MARGIN_TRX = 1.5;
+export const DEFAULT_USDT_WTRON_MARGIN_TRX = 2;
 export const DEFAULT_TRX_MIN_TRANSFER_FEE = 5;
 export const DEFAULT_TRX_MAX_TRANSFER_FEE = 8;
 export const DEFAULT_TRX_WTRON_MARGIN = 4;

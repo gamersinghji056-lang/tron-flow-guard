@@ -36,11 +36,44 @@ async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function feeCollectionWalletSettingKeys(network: ChainNetwork) {
-  if (network === "trc20-nile") {
-    return ["fee_collection_wallet_id_trc20_nile", "fee_collection_wallet_id"] as const;
+type TransferPolicyKind = "normal_usdt" | "normal_trx" | "gasfree_usdt";
+
+async function assertProductTransferPolicy(input: { userId: string; kind: TransferPolicyKind }) {
+  const globalEnabled = await readSetting("wallet_transfers_enabled", true);
+  const kindKey =
+    input.kind === "normal_usdt"
+      ? "normal_usdt_transfers_enabled"
+      : input.kind === "normal_trx"
+        ? "normal_trx_transfers_enabled"
+        : "gasfree_usdt_transfers_enabled";
+  const kindEnabled = await readSetting(kindKey, true);
+  if (globalEnabled !== true || kindEnabled !== true) {
+    throw new Error("TRANSFERS_TEMPORARILY_UNAVAILABLE");
   }
-  return ["fee_collection_wallet_id_trc20_mainnet", "fee_collection_wallet_id"] as const;
+  const { data, error } = await supabaseAdmin
+    .from("user_transfer_controls" as never)
+    .select(
+      "all_transfers_enabled, normal_usdt_enabled, normal_trx_enabled, gasfree_usdt_enabled, reason",
+    )
+    .eq("user_id", input.userId as never)
+    .maybeSingle();
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  const row = data as {
+    all_transfers_enabled?: boolean | null;
+    normal_usdt_enabled?: boolean | null;
+    normal_trx_enabled?: boolean | null;
+    gasfree_usdt_enabled?: boolean | null;
+    reason?: string | null;
+  } | null;
+  const userKindEnabled =
+    input.kind === "normal_usdt"
+      ? row?.normal_usdt_enabled
+      : input.kind === "normal_trx"
+        ? row?.normal_trx_enabled
+        : row?.gasfree_usdt_enabled;
+  if (row?.all_transfers_enabled === false || userKindEnabled === false) {
+    throw new Error(row?.reason || "TRANSFERS_UNAVAILABLE_FOR_ACCOUNT");
+  }
 }
 
 function parseFeeCollectionWalletSetting(value: unknown) {
@@ -49,8 +82,34 @@ function parseFeeCollectionWalletSetting(value: unknown) {
   return String(value).replace(/^"|"$/g, "") || null;
 }
 
-async function feeDestinationForNetwork(network: ChainNetwork) {
-  for (const settingKey of feeCollectionWalletSettingKeys(network)) {
+function feeCollectionWalletSettingKeys(network: ChainNetwork, currency: SendAsset) {
+  const networkSuffix = network === "trc20-nile" ? "trc20_nile" : "trc20_mainnet";
+  const currencySuffix = currency.toLowerCase();
+  const networkFallback =
+    network === "trc20-nile"
+      ? "fee_collection_wallet_id_trc20_nile"
+      : "fee_collection_wallet_id_trc20_mainnet";
+  return [
+    `fee_collection_wallet_id_${currencySuffix}_${networkSuffix}`,
+    networkFallback,
+    "fee_collection_wallet_id",
+  ] as const;
+}
+
+async function walletHasPurposeAssignment(walletId: string, purpose: string) {
+  const { data, error } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .select("wallet_id")
+    .eq("wallet_id", walletId as never)
+    .eq("purpose", purpose as never)
+    .eq("is_active", true as never)
+    .maybeSingle();
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function feeDestinationForNetwork(network: ChainNetwork, currency: SendAsset) {
+  for (const settingKey of feeCollectionWalletSettingKeys(network, currency)) {
     const walletId = parseFeeCollectionWalletSetting(await readSetting<unknown>(settingKey, null));
     if (!walletId) continue;
     const { data: wallet, error } = await supabaseAdmin
@@ -68,11 +127,13 @@ async function feeDestinationForNetwork(network: ChainNetwork) {
     } | null;
     if (
       row?.id &&
+      row.address &&
       row.network === network &&
       row.is_active === true &&
-      row.purpose === "FEE_COLLECTION"
+      (row.purpose === "FEE_COLLECTION" ||
+        (await walletHasPurposeAssignment(row.id, "FEE_COLLECTION")))
     ) {
-      return { id: row.id, address: row.address ?? null };
+      return { id: row.id, address: row.address };
     }
   }
   return null;
@@ -84,7 +145,7 @@ async function assertFeeCollectionReady(input: {
   currency: SendAsset;
 }) {
   if (!Number.isFinite(input.amount) || input.amount <= 0) return null;
-  const destination = await feeDestinationForNetwork(input.network);
+  const destination = await feeDestinationForNetwork(input.network, input.currency);
   if (!destination?.id || !destination.address) {
     throw new Error(`${input.currency}_FEE_COLLECTION_WALLET_NOT_CONFIGURED`);
   }
@@ -101,7 +162,8 @@ async function recordWalletSendFeeLiability(input: {
 }) {
   if (!Number.isFinite(input.amount) || input.amount <= 0) return;
   const destinationWalletId =
-    input.destinationWalletId ?? (await feeDestinationForNetwork(input.network))?.id;
+    input.destinationWalletId ??
+    (await feeDestinationForNetwork(input.network, input.currency))?.id;
   const { error } = await supabaseAdmin.from("fee_liabilities" as never).insert({
     source: "wallet_send_request",
     order_id: input.requestId,
@@ -294,10 +356,13 @@ export async function createAndBroadcastPersonalSend(input: {
 }) {
   const { verifyTransactionPasswordOrThrow, decryptMnemonic } =
     await import("@/lib/wallet-security.server");
-  await verifyTransactionPasswordOrThrow(input.userId, input.transactionPassword);
 
   assertValidTronAddress(input.toAddress);
   assertSendAmount(input.asset, input.amount);
+  await assertProductTransferPolicy({
+    userId: input.userId,
+    kind: input.asset === "USDT" ? "normal_usdt" : "normal_trx",
+  });
 
   const { data: existing } = await supabaseAdmin
     .from("wallet_send_requests" as never)
@@ -389,6 +454,7 @@ export async function createAndBroadcastPersonalSend(input: {
   const requestId = (request as { id: string }).id;
 
   try {
+    await verifyTransactionPasswordOrThrow(input.userId, input.transactionPassword);
     assertSigningSwitches({
       dbEnabled: await readSetting("on_chain_send_enabled", false),
       envEnabled: process.env["TRON_SIGNING_ENABLED"],
@@ -407,7 +473,7 @@ export async function createAndBroadcastPersonalSend(input: {
       amount: totalDebit,
       usdtBalance: balances.balance,
       trxBalance: balances.trxBalance,
-      estimatedTrxRequired: estimatedNetworkFeeTrx,
+      estimatedTrxRequired: input.asset === "TRX" ? 0 : estimatedNetworkFeeTrx,
     });
 
     const { data: secret, error: secretError } = await supabaseAdmin
@@ -731,6 +797,10 @@ export async function previewPersonalSendCost(input: {
 }) {
   assertValidTronAddress(input.toAddress);
   assertSendAmount(input.asset, input.amount);
+  await assertProductTransferPolicy({
+    userId: input.userId,
+    kind: input.asset === "USDT" ? "normal_usdt" : "normal_trx",
+  });
   const { data: wallet, error } = await supabaseAdmin
     .from("user_wallets" as never)
     .select(

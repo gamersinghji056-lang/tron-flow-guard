@@ -685,6 +685,21 @@ function gasfreeStatusLabel(status: string | null | undefined, t: MiniT) {
   return t("unavailable");
 }
 
+function isConfirmedTransferStatus(status: string | null | undefined) {
+  const normalized = String(status ?? "").toLowerCase();
+  return ["confirmed", "completed", "success", "succeed"].includes(normalized);
+}
+
+function cleanTransferStatusLabel(status: string | null | undefined) {
+  const normalized = String(status ?? "").toLowerCase();
+  if (isConfirmedTransferStatus(status)) return "Successful";
+  if (["failed", "rejected", "cancelled", "canceled"].includes(normalized)) return "Failed";
+  if (["broadcast", "broadcasting", "confirming", "pending", "submitted"].includes(normalized)) {
+    return "Processing";
+  }
+  return status ? String(status).replaceAll("_", " ") : "Processing";
+}
+
 function friendlyMiniError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const lower = message.toLowerCase();
@@ -705,8 +720,17 @@ function friendlyMiniError(error: unknown, fallback: string) {
   if (lower.includes("tron_signer_not_authorized")) {
     return "This wallet is not authorized to sign this transaction.";
   }
+  if (lower.includes("gasfree_provider_cost_too_high")) {
+    return "Transfers are temporarily unavailable.";
+  }
   if (lower.includes("another send is already active")) {
     return "A previous transfer is still being processed. Please wait while its status is confirmed.";
+  }
+  if (lower.includes("transfers_temporarily_unavailable")) {
+    return "Transfers are temporarily unavailable.";
+  }
+  if (lower.includes("transfers_unavailable_for_account")) {
+    return "Transfers are unavailable for this account.";
   }
   if (lower.includes("fee_collection_wallet_not_configured")) {
     return "Transfer fee collection is not configured for this network.";
@@ -2086,7 +2110,7 @@ function TelegramMiniApp() {
       }
       const providerStatus = result.submitted?.state ?? result.request?.status ?? result.status;
       const txid = result.submitted?.txId ?? result.submitted?.txid ?? result.request?.txid;
-      setGasfreeSubmitState(txid || providerStatus === "CONFIRMED" ? "confirmed" : "pending");
+      setGasfreeSubmitState(isConfirmedTransferStatus(providerStatus) ? "confirmed" : "pending");
       setGasfreeSendPassword("");
       setGasfreeSendIdempotencyKey(createMiniAppClientId("gasfree-send"));
       await refreshBalance({
@@ -3800,6 +3824,8 @@ function WalletTransactionDetailScreen({
   const counterparty = safeAddress(transaction.counterparty_address);
   const from = transaction.direction === "in" ? counterparty : safeAddress(wallet.address);
   const to = transaction.direction === "in" ? safeAddress(wallet.address) : counterparty;
+  const statusLabel = cleanTransferStatusLabel(transaction.status);
+  const confirmed = isConfirmedTransferStatus(transaction.status);
   return (
     <Screen
       title={`${direction} ${transaction.currency ?? "USDT"}`}
@@ -3816,18 +3842,18 @@ function WalletTransactionDetailScreen({
           {money(transaction.amount, transaction.currency ?? "USDT")}{" "}
           {transaction.currency ?? "USDT"}
         </p>
-        <StatusBadge status={transaction.status ?? "completed"} />
+        <StatusBadge status={statusLabel} />
       </Surface>
       <MetricGrid
         items={[
-          [t("status"), transaction.status ?? "completed"],
+          [t("status"), statusLabel],
           [t("transactionDetail"), direction],
           [t("network"), networkLabelForMini(wallet.network, t)],
           [t("from"), from ? shortenHash(from, 8) : "-"],
           [t("to"), to ? shortenHash(to, 8) : "-"],
           [t("fee"), money(transaction.fee ?? 0, transaction.currency ?? "USDT")],
           [t("block"), "-"],
-          [t("confirmations"), transaction.status === "completed" ? "Confirmed" : "-"],
+          [t("confirmations"), confirmed ? "Confirmed" : "Pending"],
           [
             t("date"),
             transaction.created_at ? new Date(transaction.created_at).toLocaleString() : "-",
@@ -4441,6 +4467,7 @@ function SendScreen({
   onSubmitStandard: (event: FormEvent) => void;
   onSubmitGasfree: (event: FormEvent) => void;
 }) {
+  const [sendStep, setSendStep] = useState<"recipient" | "amount" | "confirm">("recipient");
   const enabled = onChainSendEnabled(wallet);
   const network = networkConfig(wallet?.network);
   const available =
@@ -4448,10 +4475,8 @@ function SendScreen({
   const gasfreeMode = mode === "gasfree" && wallet?.wallet_role === "gasfree";
   const amountNumber = Number(amount);
   const previewAmount = Number.isFinite(amountNumber) && amountNumber > 0 ? amountNumber : 0;
-  const activationFee = Number(readiness?.activateFee ?? 0) / 10 ** network.tokenDecimals;
-  const providerFee = Number(readiness?.transferFee ?? 0) / 10 ** network.tokenDecimals;
   const wtronFee = Number(readiness?.platformFee ?? 0);
-  const totalRequired = previewAmount + activationFee + providerFee + wtronFee;
+  const totalRequired = previewAmount + wtronFee;
   const recipientValid = isTronAddress(address);
   const canSubmitGasfree =
     gasfreeMode &&
@@ -4491,14 +4516,6 @@ function SendScreen({
     standardSufficient &&
     !busy &&
     standardSubmitState !== "submitting";
-  const standardResourceLabel =
-    asset === "USDT" && standardPreview?.energyRouteEnabled
-      ? "Energy-assisted"
-      : asset === "TRX"
-        ? "TRON network"
-        : standardPreview
-          ? "Signer ready"
-          : "Checking...";
   const standardFeeCurrency = standardPreview?.customerFeeCurrency ?? asset;
   const standardFeeLabel = standardPreview
     ? `${money(Number(standardPreview.customerFee ?? 0), standardFeeCurrency)} ${standardFeeCurrency}`
@@ -4518,15 +4535,15 @@ function SendScreen({
       : !standardRecipientValid && address
         ? "Enter a valid TRON address"
         : standardPreview?.blocked
-          ? standardPreview.blockCode || t("sendUnavailable")
+          ? friendlyMiniError(standardPreview.blockCode, t("sendUnavailable"))
           : standardPreview?.transactionPasswordLocked
             ? "Transaction password is temporarily locked."
             : standardPreview && !standardPreview.signerReady
-              ? "Signer is not available for this wallet."
+              ? "This wallet is not ready to send."
               : standardPreview && !standardPreview.signingEnabled
-                ? "Secure signing is disabled by WTRON."
+                ? "Transfers are temporarily unavailable."
                 : standardPreview && !standardPreview.mainnetSigningEnabled
-                  ? "Mainnet signing is disabled by WTRON."
+                  ? "Transfers are temporarily unavailable."
                   : standardPreview && !standardPreview.transactionPasswordConfigured
                     ? "Set a transaction password before sending."
                     : standardPreview && !standardSufficient
@@ -4534,94 +4551,110 @@ function SendScreen({
                         ? "Insufficient USDT amount or TRX fee balance."
                         : "Insufficient balance for amount plus transfer fee."
                       : "";
-  const standardNetworkCostTrx =
-    asset === "USDT"
-      ? Number(standardPreview?.providerCostTrx ?? 0)
-      : Number(standardPreview?.networkCostTrx ?? 0);
-  const standardWtronFeeTrx = Number(
-    standardPreview?.wtronRevenueTrx ??
-      Math.max(Number(standardPreview?.customerFeeTrx ?? 0) - standardNetworkCostTrx, 0),
-  );
+  const standardResultStatus = String(standardResult?.["status"] ?? "Submitted");
+  const standardResultConfirmed = isConfirmedTransferStatus(standardResultStatus);
+  const nextStep = () => setSendStep(sendStep === "recipient" ? "amount" : "confirm");
+  const submitStandardStep = (event: FormEvent) => {
+    if (sendStep !== "confirm") {
+      event.preventDefault();
+      nextStep();
+      return;
+    }
+    onSubmitStandard(event);
+  };
+  const submitGasfreeStep = (event: FormEvent) => {
+    if (sendStep !== "confirm") {
+      event.preventDefault();
+      nextStep();
+      return;
+    }
+    onSubmitGasfree(event);
+  };
   if (gasfreeMode) {
     return (
-      <Screen title="GasFree Wallet" subtitle="USDT Send">
-        <form className="space-y-4" onSubmit={onSubmitGasfree}>
+      <Screen title="Send" subtitle="GasFree Wallet">
+        <form className="space-y-4" onSubmit={submitGasfreeStep}>
           <Surface className="p-4">
-            <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-sm text-cyan-100">
-              NILE TESTNET only. This uses the existing GasFree provider path and your General
-              wallet authorization.
-            </div>
+            <p className="rounded-xl bg-white/6 p-3 text-sm text-slate-300">
+              GasFree wallet supports USDT transfers.
+            </p>
             <div className="mt-4 space-y-3">
-              <FormField label={t("available")}>
-                <p className="text-sm font-semibold tabular-nums">{money(available)} USDT</p>
-              </FormField>
-              <FormField label={t("toAddress")}>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={address}
-                    onChange={(event) => setAddress(event.target.value)}
-                    placeholder={t("recipientAddressPlaceholder")}
-                    aria-invalid={address.length > 0 && !recipientValid}
+              {sendStep === "recipient" ? (
+                <FormField label={t("toAddress")}>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={address}
+                      onChange={(event) => setAddress(event.target.value)}
+                      placeholder={t("recipientAddressPlaceholder")}
+                      aria-invalid={address.length > 0 && !recipientValid}
+                    />
+                    <button
+                      type="button"
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6"
+                    >
+                      <ScanLine className="h-4 w-4 text-slate-300" />
+                    </button>
+                  </div>
+                </FormField>
+              ) : null}
+              {sendStep === "amount" ? (
+                <>
+                  <FormField label={t("available")}>
+                    <p className="text-sm font-semibold tabular-nums">{money(available)} USDT</p>
+                  </FormField>
+                  <FormField label={t("amount")}>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={amount}
+                        onChange={(event) => setAmount(event.target.value)}
+                        placeholder={t("amount")}
+                        inputMode="decimal"
+                      />
+                      <button
+                        type="button"
+                        className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
+                        onClick={() => setAmount(String(Math.max(available - wtronFee, 0)))}
+                      >
+                        {t("max")}
+                      </button>
+                    </div>
+                  </FormField>
+                  <MetricGrid
+                    items={[
+                      ["Fee", `${money(wtronFee)} USDT`],
+                      ["Total", `${money(totalRequired)} USDT`],
+                    ]}
                   />
-                  <button
-                    type="button"
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6"
-                  >
-                    <ScanLine className="h-4 w-4 text-slate-300" />
-                  </button>
-                </div>
-              </FormField>
-              <FormField label={t("amount")}>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    placeholder={t("amount")}
-                    inputMode="decimal"
+                </>
+              ) : null}
+              {sendStep === "confirm" ? (
+                <>
+                  <MetricGrid
+                    items={[
+                      ["Asset", "USDT"],
+                      ["Amount", `${money(previewAmount)} USDT`],
+                      ["From", wallet?.address ? shortenHash(wallet.address, 6) : "Not available"],
+                      [
+                        "To",
+                        recipientValid ? shortenHash(address, 6) : "Enter a valid TRON address",
+                      ],
+                      [t("network"), networkLabelForMini(wallet?.network, t)],
+                      ["Fee", `${money(wtronFee)} USDT`],
+                      ["Total", `${money(totalRequired)} USDT`],
+                    ]}
                   />
-                  <button
-                    type="button"
-                    className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
-                    onClick={() =>
-                      setAmount(
-                        String(Math.max(available - activationFee - providerFee - wtronFee, 0)),
-                      )
-                    }
-                  >
-                    {t("max")}
-                  </button>
-                </div>
-              </FormField>
-              <FormField label={t("transactionPassword")}>
-                <Input
-                  type="password"
-                  value={transactionPassword}
-                  onChange={(event) => setTransactionPassword(event.target.value)}
-                  placeholder={t("transactionPassword")}
-                  autoComplete="current-password"
-                />
-              </FormField>
+                  <FormField label={t("transactionPassword")}>
+                    <Input
+                      type="password"
+                      value={transactionPassword}
+                      onChange={(event) => setTransactionPassword(event.target.value)}
+                      placeholder={t("transactionPassword")}
+                      autoComplete="current-password"
+                    />
+                  </FormField>
+                </>
+              ) : null}
             </div>
-            <MetricGrid
-              items={[
-                [t("network"), "NILE TESTNET"],
-                [
-                  "Recipient",
-                  recipientValid ? shortenHash(address, 6) : "Enter a valid TRON address",
-                ],
-                ["Amount", `${money(previewAmount)} USDT`],
-                ["Activation fee", `${money(activationFee)} USDT`],
-                ["GasFree provider fee", `${money(providerFee)} USDT`],
-                ["WTRON fee", `${money(wtronFee)} USDT`],
-                ["Total required", `${money(totalRequired)} USDT`],
-                ["Available balance", `${money(available)} USDT`],
-                [
-                  "Activation state",
-                  readiness?.activationState ?? readiness?.accountStatus ?? "Not available",
-                ],
-                ["Nonce", readiness?.accountNonce ?? "Not available"],
-              ]}
-            />
           </Surface>
 
           {readiness?.status !== "AVAILABLE" ? (
@@ -4633,7 +4666,11 @@ function SendScreen({
           {result ? (
             <TransferResultReceipt
               title={
-                submitState === "failed" ? "Transaction Failed" : "GasFree Transaction Submitted"
+                submitState === "failed"
+                  ? "Transaction Failed"
+                  : submitState === "confirmed"
+                    ? "Transaction Successful"
+                    : "Transaction Submitted"
               }
               success={submitState !== "failed"}
               asset="USDT"
@@ -4642,116 +4679,134 @@ function SendScreen({
               to={address}
               networkLabel={networkLabelForMini(wallet?.network, t)}
               network={network}
-              networkFee={`${money(activationFee + providerFee)} USDT`}
-              wtronFee={`${money(wtronFee)} USDT`}
+              fee={`${money(wtronFee)} USDT`}
               totalCharged={`${money(totalRequired)} USDT`}
               txid={txid}
-              status={String(providerStatus ?? "Pending")}
+              status={cleanTransferStatusLabel(String(providerStatus ?? "Pending"))}
               referenceId={providerRequestId ?? result.request?.id ?? null}
               reason={result.request?.failure_reason ?? null}
             />
           ) : null}
 
-          <Button className="w-full" disabled={!canSubmitGasfree}>
-            {submitState === "preparing"
-              ? "Preparing"
-              : submitState === "submitting"
-                ? "Submitting"
-                : submitState === "pending"
-                  ? "Provider accepted"
-                  : t("continue")}
+          <Button
+            className="w-full"
+            disabled={
+              sendStep === "recipient"
+                ? !recipientValid
+                : sendStep === "amount"
+                  ? previewAmount <= 0
+                  : !canSubmitGasfree
+            }
+          >
+            {sendStep !== "confirm"
+              ? sendStep === "recipient"
+                ? "Next"
+                : "Review"
+              : submitState === "preparing"
+                ? "Preparing"
+                : submitState === "submitting"
+                  ? "Submitting"
+                  : submitState === "pending"
+                    ? "Provider accepted"
+                    : "Confirm"}
           </Button>
         </form>
       </Screen>
     );
   }
   return (
-    <Screen title="Normal TRON Wallet" subtitle={t("send")}>
-      <form className="space-y-4" onSubmit={onSubmitStandard}>
+    <Screen title="Send" subtitle="Normal TRON Wallet">
+      <form className="space-y-4" onSubmit={submitStandardStep}>
         <Surface className="p-4">
-          <SegmentedControl
-            value={asset}
-            setValue={(value) => setAsset(value as ReceiveAsset)}
-            items={[
-              ["USDT", "USDT"],
-              ["TRX", "TRX"],
-            ]}
-          />
           <div className="mt-4 space-y-3">
-            <FormField label={t("available")}>
-              <p className="text-sm font-semibold tabular-nums">
-                {money(available, asset)} {asset}
-              </p>
-            </FormField>
-            <FormField label={t("toAddress")}>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={address}
-                  onChange={(event) => setAddress(event.target.value)}
-                  placeholder={t("recipientAddressPlaceholder")}
-                  aria-invalid={address.length > 0 && !standardRecipientValid}
+            {sendStep === "recipient" ? (
+              <FormField label={t("toAddress")}>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={address}
+                    onChange={(event) => setAddress(event.target.value)}
+                    placeholder={t("recipientAddressPlaceholder")}
+                    aria-invalid={address.length > 0 && !standardRecipientValid}
+                  />
+                  <button
+                    type="button"
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6"
+                  >
+                    <ScanLine className="h-4 w-4 text-slate-300" />
+                  </button>
+                </div>
+              </FormField>
+            ) : null}
+            {sendStep === "amount" ? (
+              <>
+                <SegmentedControl
+                  value={asset}
+                  setValue={(value) => setAsset(value as ReceiveAsset)}
+                  items={[
+                    ["USDT", "USDT"],
+                    ["TRX", "TRX"],
+                  ]}
                 />
-                <button
-                  type="button"
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/6"
-                >
-                  <ScanLine className="h-4 w-4 text-slate-300" />
-                </button>
-              </div>
-            </FormField>
-            <FormField label={t("amount")}>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  placeholder={t("amount")}
-                  inputMode="decimal"
+                <FormField label={t("available")}>
+                  <p className="text-sm font-semibold tabular-nums">
+                    {money(available, asset)} {asset}
+                  </p>
+                </FormField>
+                <FormField label={t("amount")}>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      placeholder={t("amount")}
+                      inputMode="decimal"
+                    />
+                    <button
+                      type="button"
+                      className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
+                      onClick={() => setAmount(String(available || ""))}
+                    >
+                      {t("max")}
+                    </button>
+                  </div>
+                </FormField>
+                <MetricGrid
+                  items={[
+                    ["Network Fee", standardFeeLabel],
+                    [asset === "USDT" ? "USDT debit" : "Total", standardTotalDebitLabel],
+                  ]}
                 />
-                <button
-                  type="button"
-                  className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
-                  onClick={() => setAmount(String(available || ""))}
-                >
-                  {t("max")}
-                </button>
-              </div>
-            </FormField>
-            <FormField label={t("transactionPassword")}>
-              <Input
-                type="password"
-                value={standardTransactionPassword}
-                onChange={(event) => setStandardTransactionPassword(event.target.value)}
-                placeholder={t("transactionPassword")}
-                autoComplete="current-password"
-              />
-            </FormField>
-          </div>
-          <MetricGrid
-            items={[
-              [t("selectedWallet"), wallet?.name ?? t("noWalletSelected")],
-              [t("network"), networkLabelForMini(wallet?.network, t)],
-              [t("resources"), standardResourceLabel],
-              ...(asset === "USDT"
-                ? ([
+              </>
+            ) : null}
+            {sendStep === "confirm" ? (
+              <>
+                <MetricGrid
+                  items={[
+                    ["Asset", asset],
+                    ["Amount", `${money(previewAmount, asset)} ${asset}`],
+                    ["From", wallet?.address ? shortenHash(wallet.address, 6) : "Not available"],
                     [
-                      "Available TRX",
-                      `${money(standardPreview?.availableTrxBalance ?? 0, "TRX")} TRX`,
+                      "To",
+                      standardRecipientValid
+                        ? shortenHash(address, 6)
+                        : "Enter a valid TRON address",
                     ],
-                    ["Network cost", `${money(standardNetworkCostTrx, "TRX")} TRX`],
-                    ["WTRON fee", `${money(standardWtronFeeTrx, "TRX")} TRX`],
-                    ["Total TRX fee", standardFeeLabel],
-                    ["USDT debit", `${money(previewAmount, "USDT")} USDT`],
-                  ] as Array<[string, string]>)
-                : ([
-                    ["Network cost", `${money(standardNetworkCostTrx, "TRX")} TRX`],
-                    ["WTRON fee", `${money(standardWtronFeeTrx, "TRX")} TRX`],
-                    [t("fees"), standardFeeLabel],
-                  ] as Array<[string, string]>)),
-              ["Total charged", standardTotalDebitLabel],
-              ["Mainnet signing", standardPreview?.mainnetSigningEnabled ? "Enabled" : "Checking"],
-              ["Signer", standardPreview?.signerReady ? "Ready" : "Checking"],
-            ]}
-          />
+                    [t("network"), networkLabelForMini(wallet?.network, t)],
+                    ["Network Fee", standardFeeLabel],
+                    ["Total", standardTotalDebitLabel],
+                  ]}
+                />
+                <FormField label={t("transactionPassword")}>
+                  <Input
+                    type="password"
+                    value={standardTransactionPassword}
+                    onChange={(event) => setStandardTransactionPassword(event.target.value)}
+                    placeholder={t("transactionPassword")}
+                    autoComplete="current-password"
+                  />
+                </FormField>
+              </>
+            ) : null}
+          </div>
         </Surface>
         {standardStatusMessage ? (
           <p className="rounded-2xl bg-yellow-500/10 p-3 text-sm text-yellow-100">
@@ -4763,7 +4818,7 @@ function SendScreen({
             title={
               standardSubmitState === "failed"
                 ? "Transaction Failed"
-                : standardResult["txid"]
+                : standardResultConfirmed
                   ? "Transaction Successful"
                   : "Transaction Submitted"
             }
@@ -4774,11 +4829,10 @@ function SendScreen({
             to={String(standardResult["to_address"] ?? address)}
             networkLabel={networkLabelForMini(wallet?.network, t)}
             network={network}
-            networkFee={`${money(standardNetworkCostTrx, "TRX")} TRX`}
-            wtronFee={`${money(standardWtronFeeTrx, "TRX")} TRX`}
+            fee={standardFeeLabel}
             totalCharged={standardTotalDebitLabel}
             txid={typeof standardResult["txid"] === "string" ? standardResult["txid"] : null}
-            status={String(standardResult["status"] ?? "Submitted")}
+            status={cleanTransferStatusLabel(standardResultStatus)}
             referenceId={String(standardResult["id"] ?? "")}
             reason={
               typeof standardResult["safe_failure_message"] === "string"
@@ -4787,8 +4841,23 @@ function SendScreen({
             }
           />
         ) : null}
-        <Button className="w-full" disabled={!canContinueStandard}>
-          {standardSubmitState === "submitting" ? "Submitting" : t("continue")}
+        <Button
+          className="w-full"
+          disabled={
+            sendStep === "recipient"
+              ? !standardRecipientValid
+              : sendStep === "amount"
+                ? previewAmount <= 0 || Boolean(standardPreviewError)
+                : !canContinueStandard
+          }
+        >
+          {sendStep !== "confirm"
+            ? sendStep === "recipient"
+              ? "Next"
+              : "Review"
+            : standardSubmitState === "submitting"
+              ? "Submitting"
+              : "Confirm"}
         </Button>
       </form>
     </Screen>
@@ -4804,8 +4873,7 @@ function TransferResultReceipt({
   to,
   networkLabel,
   network,
-  networkFee,
-  wtronFee,
+  fee,
   totalCharged,
   txid,
   status,
@@ -4820,8 +4888,7 @@ function TransferResultReceipt({
   to: string;
   networkLabel: string;
   network: ReturnType<typeof networkConfig>;
-  networkFee: string;
-  wtronFee: string;
+  fee: string;
   totalCharged: string;
   txid?: string | null;
   status: string;
@@ -4856,9 +4923,8 @@ function TransferResultReceipt({
           ["Asset", asset],
           ["Amount", `${money(amount, asset)} ${asset}`],
           ["Network", networkLabel],
-          ["Network/resource fee", networkFee],
-          ["WTRON fee", wtronFee],
-          ["Total charged", totalCharged],
+          ["Fee", fee],
+          ["Total", totalCharged],
           ["Status", status],
           ["Date/time", new Date().toLocaleString()],
         ]}

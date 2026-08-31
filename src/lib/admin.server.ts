@@ -106,6 +106,10 @@ export async function writeSettings(input: {
   feeCollectionWalletId?: string | null | undefined;
   feeCollectionWalletIdMainnet?: string | null | undefined;
   feeCollectionWalletIdNile?: string | null | undefined;
+  usdtFeeCollectionWalletIdMainnet?: string | null | undefined;
+  usdtFeeCollectionWalletIdNile?: string | null | undefined;
+  trxFeeCollectionWalletIdMainnet?: string | null | undefined;
+  trxFeeCollectionWalletIdNile?: string | null | undefined;
   usdtTotalTransferFee?: number | undefined;
   tronEnergyRouteEnabled?: boolean | undefined;
   tronEnergyProvider?: "tronrental" | undefined;
@@ -119,6 +123,10 @@ export async function writeSettings(input: {
   wtronBuyRateInr?: number | undefined;
   directSellFeePercent?: number | undefined;
   withdrawalFeeUsdt?: number | undefined;
+  walletTransfersEnabled?: boolean | undefined;
+  normalUsdtTransfersEnabled?: boolean | undefined;
+  normalTrxTransfersEnabled?: boolean | undefined;
+  gasfreeUsdtTransfersEnabled?: boolean | undefined;
   onChainSendEnabled?: boolean | undefined;
   tronSigningMainnetEnabled?: boolean | undefined;
   feeSweepEnabled?: boolean | undefined;
@@ -166,6 +174,30 @@ export async function writeSettings(input: {
       value: input.feeCollectionWalletIdNile,
     });
   }
+  if (input.usdtFeeCollectionWalletIdMainnet !== undefined) {
+    rows.push({
+      key: "fee_collection_wallet_id_usdt_trc20_mainnet",
+      value: input.usdtFeeCollectionWalletIdMainnet,
+    });
+  }
+  if (input.usdtFeeCollectionWalletIdNile !== undefined) {
+    rows.push({
+      key: "fee_collection_wallet_id_usdt_trc20_nile",
+      value: input.usdtFeeCollectionWalletIdNile,
+    });
+  }
+  if (input.trxFeeCollectionWalletIdMainnet !== undefined) {
+    rows.push({
+      key: "fee_collection_wallet_id_trx_trc20_mainnet",
+      value: input.trxFeeCollectionWalletIdMainnet,
+    });
+  }
+  if (input.trxFeeCollectionWalletIdNile !== undefined) {
+    rows.push({
+      key: "fee_collection_wallet_id_trx_trc20_nile",
+      value: input.trxFeeCollectionWalletIdNile,
+    });
+  }
   if (input.usdtTotalTransferFee !== undefined) {
     rows.push({ key: "usdt_total_transfer_fee", value: input.usdtTotalTransferFee });
   }
@@ -204,6 +236,18 @@ export async function writeSettings(input: {
   }
   if (input.withdrawalFeeUsdt !== undefined) {
     rows.push({ key: "withdrawal_fee_usdt", value: input.withdrawalFeeUsdt });
+  }
+  if (input.walletTransfersEnabled !== undefined) {
+    rows.push({ key: "wallet_transfers_enabled", value: input.walletTransfersEnabled });
+  }
+  if (input.normalUsdtTransfersEnabled !== undefined) {
+    rows.push({ key: "normal_usdt_transfers_enabled", value: input.normalUsdtTransfersEnabled });
+  }
+  if (input.normalTrxTransfersEnabled !== undefined) {
+    rows.push({ key: "normal_trx_transfers_enabled", value: input.normalTrxTransfersEnabled });
+  }
+  if (input.gasfreeUsdtTransfersEnabled !== undefined) {
+    rows.push({ key: "gasfree_usdt_transfers_enabled", value: input.gasfreeUsdtTransfersEnabled });
   }
   if (input.onChainSendEnabled !== undefined) {
     rows.push({ key: "on_chain_send_enabled", value: input.onChainSendEnabled });
@@ -273,7 +317,42 @@ export async function writeSettings(input: {
       .eq("key", row.key);
     if (error) throw new Error(error.message);
   }
+  const feeWalletIds = [
+    input.feeCollectionWalletId,
+    input.feeCollectionWalletIdMainnet,
+    input.feeCollectionWalletIdNile,
+    input.usdtFeeCollectionWalletIdMainnet,
+    input.usdtFeeCollectionWalletIdNile,
+    input.trxFeeCollectionWalletIdMainnet,
+    input.trxFeeCollectionWalletIdNile,
+  ].filter(Boolean) as string[];
+  for (const walletId of Array.from(new Set(feeWalletIds))) {
+    await ensureWalletPurposeAssignment({
+      walletId,
+      purpose: "FEE_COLLECTION",
+      actorId: null,
+    });
+  }
   return { ok: true, updated: rows.length };
+}
+
+async function ensureWalletPurposeAssignment(input: {
+  walletId: string;
+  purpose: string;
+  actorId: string | null;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await supabaseAdmin.from("wallet_purpose_assignments" as never).upsert(
+    {
+      wallet_id: input.walletId,
+      purpose: input.purpose,
+      is_active: true,
+      assigned_by: input.actorId,
+      assigned_at: new Date().toISOString(),
+    } as never,
+    { onConflict: "wallet_id,purpose" },
+  );
+  if (error && error.code !== "42P01") throw new Error(error.message);
 }
 
 export async function fetchAdminDashboard() {
@@ -433,6 +512,11 @@ export async function createCompanyWallet(input: {
     .select("id")
     .single();
   if (error) throw new Error(error.message);
+  await ensureWalletPurposeAssignment({
+    walletId: data.id,
+    purpose: input.purpose ?? "USER_DEPOSIT",
+    actorId: input.actorId,
+  });
 
   await supabaseAdmin.from("audit_logs").insert({
     actor_id: input.actorId,
@@ -473,6 +557,11 @@ export async function saveCompanyWallet(input: {
     .select("id")
     .single();
   if (error) throw new Error(error.message);
+  await ensureWalletPurposeAssignment({
+    walletId: data.id,
+    purpose: input.purpose ?? "USER_DEPOSIT",
+    actorId: input.actorId,
+  });
   await supabaseAdmin.from("audit_logs").insert({
     actor_id: input.actorId,
     actor_type: "admin",

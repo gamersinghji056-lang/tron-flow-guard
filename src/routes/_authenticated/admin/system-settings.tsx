@@ -143,14 +143,25 @@ function SystemSettingsPage() {
             settings["fee_collection_wallet_id"] ||
             null,
           feeCollectionWalletIdNile: settings["fee_collection_wallet_id_trc20_nile"] || null,
+          usdtFeeCollectionWalletIdMainnet:
+            settings["fee_collection_wallet_id_usdt_trc20_mainnet"] || null,
+          usdtFeeCollectionWalletIdNile:
+            settings["fee_collection_wallet_id_usdt_trc20_nile"] || null,
+          trxFeeCollectionWalletIdMainnet:
+            settings["fee_collection_wallet_id_trx_trc20_mainnet"] || null,
+          trxFeeCollectionWalletIdNile: settings["fee_collection_wallet_id_trx_trc20_nile"] || null,
           usdtTotalTransferFee: Number(settings["usdt_total_transfer_fee"] ?? 1.5),
           tronEnergyRouteEnabled: settings["tron_energy_route_enabled"] === "true",
           tronEnergyProvider: "tronrental",
           tronEnergyBufferPercent: Number(settings["tron_energy_buffer_percent"] ?? 12),
-          usdtTrxTransferFeeMargin: Number(settings["usdt_trx_transfer_fee_margin"] ?? 1.5),
+          usdtTrxTransferFeeMargin: Number(settings["usdt_trx_transfer_fee_margin"] ?? 2),
           trxMinTransferFee: Number(settings["trx_min_transfer_fee"] ?? 5),
           trxMaxTransferFee: Number(settings["trx_max_transfer_fee"] ?? 8),
           trxTransferFeeMargin: Number(settings["trx_transfer_fee_margin"] ?? 4),
+          walletTransfersEnabled: settings["wallet_transfers_enabled"] !== "false",
+          normalUsdtTransfersEnabled: settings["normal_usdt_transfers_enabled"] !== "false",
+          normalTrxTransfersEnabled: settings["normal_trx_transfers_enabled"] !== "false",
+          gasfreeUsdtTransfersEnabled: settings["gasfree_usdt_transfers_enabled"] !== "false",
           onChainSendEnabled: settings["on_chain_send_enabled"] === "true",
           tronSigningMainnetEnabled: settings["tron_signing_mainnet_enabled"] === "true",
           feeSweepEnabled: settings["fee_sweep_enabled"] === "true",
@@ -179,8 +190,9 @@ function SystemSettingsPage() {
   }
 
   async function submitSweep() {
-    if (!selectedWallet) {
-      toast.error("Select a fee collection wallet first");
+    const sweepDestination = selectedMainnetUsdtFeeWallet ?? selectedWallet;
+    if (!sweepDestination) {
+      toast.error("Select a USDT fee wallet first");
       return;
     }
     const amount = Number(sweepAmount || pendingFees);
@@ -192,7 +204,7 @@ function SystemSettingsPage() {
     try {
       await requestSweep({
         data: {
-          destinationWalletId: selectedWallet.id,
+          destinationWalletId: sweepDestination.id,
           amount,
           idempotencyKey: crypto.randomUUID(),
         },
@@ -225,9 +237,8 @@ function SystemSettingsPage() {
   const selectedWallet = wallets.find(
     (wallet) => wallet.id === settings["fee_collection_wallet_id"],
   );
-  const feeWallets = wallets.filter((wallet) => wallet.purpose === "FEE_COLLECTION");
-  const mainnetFeeWallets = feeWallets.filter((wallet) => wallet.network === "trc20-mainnet");
-  const nileFeeWallets = feeWallets.filter((wallet) => wallet.network === "trc20-nile");
+  const mainnetWallets = wallets.filter((wallet) => wallet.network === "trc20-mainnet");
+  const nileWallets = wallets.filter((wallet) => wallet.network === "trc20-nile");
   const selectedMainnetFeeWallet =
     wallets.find(
       (wallet) =>
@@ -237,6 +248,20 @@ function SystemSettingsPage() {
     ) ?? null;
   const selectedNileFeeWallet =
     wallets.find((wallet) => wallet.id === settings["fee_collection_wallet_id_trc20_nile"]) ?? null;
+  const selectedMainnetUsdtFeeWallet =
+    wallets.find(
+      (wallet) => wallet.id === settings["fee_collection_wallet_id_usdt_trc20_mainnet"],
+    ) ?? selectedMainnetFeeWallet;
+  const selectedMainnetTrxFeeWallet =
+    wallets.find(
+      (wallet) => wallet.id === settings["fee_collection_wallet_id_trx_trc20_mainnet"],
+    ) ?? selectedMainnetFeeWallet;
+  const selectedNileUsdtFeeWallet =
+    wallets.find((wallet) => wallet.id === settings["fee_collection_wallet_id_usdt_trc20_nile"]) ??
+    selectedNileFeeWallet;
+  const selectedNileTrxFeeWallet =
+    wallets.find((wallet) => wallet.id === settings["fee_collection_wallet_id_trx_trc20_nile"]) ??
+    selectedNileFeeWallet;
 
   return (
     <div className="space-y-6">
@@ -279,7 +304,28 @@ function SystemSettingsPage() {
           onChange={(value) => setSettings({ ...settings, withdrawal_fee_usdt: value })}
         />
         <ToggleInput
-          label="On-chain Send"
+          label="All wallet transfers"
+          checked={settings["wallet_transfers_enabled"] !== "false"}
+          onChange={(checked) =>
+            setSettings({ ...settings, wallet_transfers_enabled: String(checked) })
+          }
+        />
+        <ToggleInput
+          label="Normal USDT sends"
+          checked={settings["normal_usdt_transfers_enabled"] !== "false"}
+          onChange={(checked) =>
+            setSettings({ ...settings, normal_usdt_transfers_enabled: String(checked) })
+          }
+        />
+        <ToggleInput
+          label="Normal TRX sends"
+          checked={settings["normal_trx_transfers_enabled"] !== "false"}
+          onChange={(checked) =>
+            setSettings({ ...settings, normal_trx_transfers_enabled: String(checked) })
+          }
+        />
+        <ToggleInput
+          label="Infrastructure signer switch"
           checked={settings["on_chain_send_enabled"] === "true"}
           onChange={(checked) =>
             setSettings({ ...settings, on_chain_send_enabled: String(checked) })
@@ -314,23 +360,19 @@ function SystemSettingsPage() {
           onChange={(value) => setSettings({ ...settings, fee_sweep_minimum_usdt: value })}
         />
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Mainnet fee collection wallet</label>
+          <label className="text-sm font-medium">WTRON USDT Fee Wallet</label>
           <select
             className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            value={
-              settings["fee_collection_wallet_id_trc20_mainnet"] ||
-              settings["fee_collection_wallet_id"] ||
-              ""
-            }
+            value={settings["fee_collection_wallet_id_usdt_trc20_mainnet"] || ""}
             onChange={(event) =>
               setSettings({
                 ...settings,
-                fee_collection_wallet_id_trc20_mainnet: event.target.value,
+                fee_collection_wallet_id_usdt_trc20_mainnet: event.target.value,
               })
             }
           >
-            <option value="">No Mainnet fee wallet selected</option>
-            {mainnetFeeWallets.map((wallet) => (
+            <option value="">No Mainnet USDT fee wallet selected</option>
+            {mainnetWallets.map((wallet) => (
               <option key={wallet.id} value={wallet.id}>
                 {wallet.name} - {wallet.address}
               </option>
@@ -338,16 +380,59 @@ function SystemSettingsPage() {
           </select>
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Nile testnet fee collection wallet</label>
+          <label className="text-sm font-medium">WTRON TRX Fee Wallet</label>
           <select
             className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            value={settings["fee_collection_wallet_id_trc20_nile"] ?? ""}
+            value={settings["fee_collection_wallet_id_trx_trc20_mainnet"] || ""}
             onChange={(event) =>
-              setSettings({ ...settings, fee_collection_wallet_id_trc20_nile: event.target.value })
+              setSettings({
+                ...settings,
+                fee_collection_wallet_id_trx_trc20_mainnet: event.target.value,
+              })
             }
           >
-            <option value="">No Nile fee wallet selected</option>
-            {nileFeeWallets.map((wallet) => (
+            <option value="">No Mainnet TRX fee wallet selected</option>
+            {mainnetWallets.map((wallet) => (
+              <option key={wallet.id} value={wallet.id}>
+                {wallet.name} - {wallet.address}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Nile USDT Fee Wallet</label>
+          <select
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            value={settings["fee_collection_wallet_id_usdt_trc20_nile"] ?? ""}
+            onChange={(event) =>
+              setSettings({
+                ...settings,
+                fee_collection_wallet_id_usdt_trc20_nile: event.target.value,
+              })
+            }
+          >
+            <option value="">No Nile USDT fee wallet selected</option>
+            {nileWallets.map((wallet) => (
+              <option key={wallet.id} value={wallet.id}>
+                {wallet.name} - {wallet.address}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Nile TRX Fee Wallet</label>
+          <select
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            value={settings["fee_collection_wallet_id_trx_trc20_nile"] ?? ""}
+            onChange={(event) =>
+              setSettings({
+                ...settings,
+                fee_collection_wallet_id_trx_trc20_nile: event.target.value,
+              })
+            }
+          >
+            <option value="">No Nile TRX fee wallet selected</option>
+            {nileWallets.map((wallet) => (
               <option key={wallet.id} value={wallet.id}>
                 {wallet.name} - {wallet.address}
               </option>
@@ -392,7 +477,7 @@ function SystemSettingsPage() {
             />
             <SettingInput
               label="Normal USDT WTRON margin TRX"
-              value={settings["usdt_trx_transfer_fee_margin"] ?? "1.5"}
+              value={settings["usdt_trx_transfer_fee_margin"] ?? "2"}
               onChange={(value) =>
                 setSettings({ ...settings, usdt_trx_transfer_fee_margin: value })
               }
@@ -415,7 +500,7 @@ function SystemSettingsPage() {
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-4">
             <Metric label="GasFree Revenue Rule" value="1.50 USDT - provider cost" />
-            <Metric label="Normal USDT Fee" value="provider TRX cost + WTRON TRX margin" />
+            <Metric label="Normal USDT Fee" value="One combined TRX fee to customer" />
             <Metric label="TRX Revenue Rule" value="customer fee - network cost" />
             <Metric label="TRX Loss Guard" value="TRX_NETWORK_COST_TOO_HIGH" />
             <Metric label="Provider Expense" value="Recorded after provider order/broadcast" />
@@ -432,15 +517,19 @@ function SystemSettingsPage() {
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             <Metric label="Legacy Wallet" value={selectedWallet?.name ?? "None"} />
-            <Metric label="Mainnet Wallet" value={selectedMainnetFeeWallet?.name ?? "None"} />
-            <Metric label="Nile Wallet" value={selectedNileFeeWallet?.name ?? "None"} />
-            <Metric label="Mainnet Address" value={selectedMainnetFeeWallet?.address ?? "-"} />
-            <Metric label="Nile Address" value={selectedNileFeeWallet?.address ?? "-"} />
+            <Metric label="USDT Fee Wallet" value={selectedMainnetUsdtFeeWallet?.name ?? "None"} />
+            <Metric label="TRX Fee Wallet" value={selectedMainnetTrxFeeWallet?.name ?? "None"} />
+            <Metric label="Nile USDT Wallet" value={selectedNileUsdtFeeWallet?.name ?? "None"} />
+            <Metric label="Nile TRX Wallet" value={selectedNileTrxFeeWallet?.name ?? "None"} />
+            <Metric label="USDT Address" value={selectedMainnetUsdtFeeWallet?.address ?? "-"} />
+            <Metric label="TRX Address" value={selectedMainnetTrxFeeWallet?.address ?? "-"} />
+            <Metric label="Nile USDT Address" value={selectedNileUsdtFeeWallet?.address ?? "-"} />
+            <Metric label="Nile TRX Address" value={selectedNileTrxFeeWallet?.address ?? "-"} />
             <Metric
               label="Balance"
               value={`${Number(
-                selectedMainnetFeeWallet?.onchain_usdt_balance ?? 0,
-              )} USDT / ${Number(selectedMainnetFeeWallet?.onchain_trx_balance ?? 0)} TRX`}
+                selectedMainnetUsdtFeeWallet?.onchain_usdt_balance ?? 0,
+              )} USDT / ${Number(selectedMainnetTrxFeeWallet?.onchain_trx_balance ?? 0)} TRX`}
             />
             <Metric label="Pending Fee Liability" value={`${pendingFees.toLocaleString()} USDT`} />
           </div>
@@ -483,7 +572,14 @@ function SystemSettingsPage() {
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <ToggleInput
-              label="GasFree transfers enabled"
+              label="GasFree USDT sends"
+              checked={settings["gasfree_usdt_transfers_enabled"] !== "false"}
+              onChange={(checked) =>
+                setSettings({ ...settings, gasfree_usdt_transfers_enabled: String(checked) })
+              }
+            />
+            <ToggleInput
+              label="GasFree provider route"
               checked={settings["gasfree_transfer_enabled"] === "true"}
               onChange={(checked) =>
                 setSettings({ ...settings, gasfree_transfer_enabled: String(checked) })

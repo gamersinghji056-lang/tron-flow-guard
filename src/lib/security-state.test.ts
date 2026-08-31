@@ -622,12 +622,12 @@ describe("server-side signer safety", () => {
     const quote = calculateNormalUsdtTrxFee({
       providerCostTrx: 1.8,
       providerCostUsdt: 0.62,
-      marginTrx: 1.5,
+      marginTrx: 2,
     });
-    assert.equal(quote.customerFeeTrx, 3.3);
+    assert.equal(quote.customerFeeTrx, 3.8);
     assert.equal(quote.providerCostTrx, 1.8);
     assert.equal(quote.providerCostUsdt, 0.62);
-    assert.equal(quote.wtronRevenueTrx, 1.5);
+    assert.equal(quote.wtronRevenueTrx, 2);
     assert.equal(quote.blocked, false);
   });
 
@@ -813,8 +813,7 @@ describe("server-side signer safety", () => {
     assert.match(signerServer, /signerReady/);
     assert.match(signerServer, /transactionPasswordConfigured/);
     assert.match(mini, /standardPreview\?\.mainnetSigningEnabled/);
-    assert.match(mini, /standardPreview\?\.energyRouteEnabled/);
-    assert.match(mini, /Energy-assisted/);
+    assert.match(mini, /\["Network Fee", standardFeeLabel\]/);
     assert.match(mini, /standardFeeLabel/);
     assert.match(mini, /standardTotalDebitLabel/);
     assert.match(mini, /submitStandardTransfer/);
@@ -2648,12 +2647,10 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /createGasFreeTransfer/);
     assert.match(mini, /openGasfreeSend/);
     assert.match(mini, /onSubmitGasfree=\{submitGasfreeSend\}/);
-    assert.match(mini, /NILE TESTNET/);
-    assert.match(mini, /Activation fee/);
-    assert.match(mini, /GasFree provider fee/);
-    assert.match(mini, /WTRON fee/);
+    assert.match(mini, /GasFree wallet supports USDT transfers/);
+    assert.doesNotMatch(mini, /GasFree provider fee/);
     assert.match(mini, /gasfreeSendIdempotencyKey/);
-    assert.match(mini, /txid \? \(/);
+    assert.match(mini, /isConfirmedTransferStatus\(providerStatus\)/);
     assert.doesNotMatch(mini, /fake.*txid|mock.*txid/i);
   });
 
@@ -2665,7 +2662,13 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /displayAsset = isGasfreeWallet \? "USDT" : asset/);
     assert.match(mini, /TransferResultReceipt/);
     assert.match(mini, /Transaction Successful|Transaction Submitted/);
+    assert.match(mini, /cleanTransferStatusLabel/);
+    assert.match(mini, /isConfirmedTransferStatus/);
+    assert.match(mini, /"broadcast", "broadcasting", "confirming", "pending", "submitted"/);
     assert.match(mini, /Not broadcast/);
+    assert.match(mini, /\["Fee", fee\]/);
+    assert.doesNotMatch(mini, /\["Network\/resource fee", networkFee\]/);
+    assert.doesNotMatch(mini, /\["WTRON fee", wtronFee\]/);
     assert.match(mini, /receiptShareText/);
     assert.doesNotMatch(mini, /JSON\.stringify\(standardResult|JSON\.stringify\(result/);
   });
@@ -2684,6 +2687,58 @@ describe("GasFree transfer service safety", () => {
     assert.match(signerServer, /assertFeeCollectionReady/);
     assert.match(signerServer, /reconcileWalletActiveSendRequests/);
     assert.match(adminSettings, /Normal USDT WTRON margin TRX/);
+    assert.match(adminSettings, /value=\{settings\["usdt_trx_transfer_fee_margin"\] \?\? "2"\}/);
+  });
+
+  it("enforces product transfer controls and separate fee wallet purposes", () => {
+    const signerServer = readFileSync(resolve(process.cwd(), "src/lib/signer.server.ts"), "utf8");
+    const gasfreeServer = readFileSync(
+      resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
+      "utf8",
+    );
+    const adminFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/admin.functions.ts"),
+      "utf8",
+    );
+    const adminSettings = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/system-settings.tsx"),
+      "utf8",
+    );
+    const adminWallets = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/user-wallets.tsx"),
+      "utf8",
+    );
+    const migration = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260831100000_transfer_controls_fee_wallet_assignments.sql",
+      ),
+      "utf8",
+    );
+    assert.match(signerServer, /assertProductTransferPolicy/);
+    assert.match(signerServer, /wallet_transfers_enabled/);
+    assert.match(signerServer, /normal_usdt_transfers_enabled/);
+    assert.match(signerServer, /normal_trx_transfers_enabled/);
+    assert.match(gasfreeServer, /gasfree_usdt_transfers_enabled/);
+    assert.match(signerServer, /fee_collection_wallet_id_\$\{currencySuffix\}_\$\{networkSuffix\}/);
+    assert.match(adminSettings, /fee_collection_wallet_id_usdt_trc20_mainnet/);
+    assert.match(adminSettings, /fee_collection_wallet_id_trx_trc20_mainnet/);
+    assert.match(adminSettings, /fee_collection_wallet_id_usdt_trc20_nile/);
+    assert.match(adminSettings, /fee_collection_wallet_id_trx_trc20_nile/);
+    assert.match(adminSettings, /const mainnetWallets = wallets\.filter/);
+    assert.match(adminSettings, /const nileWallets = wallets\.filter/);
+    assert.match(signerServer, /wallet_purpose_assignments/);
+    assert.match(adminFunctions, /setUserTransferAccess/);
+    assert.match(adminSettings, /All wallet transfers/);
+    assert.match(adminSettings, /WTRON USDT Fee Wallet/);
+    assert.match(adminSettings, /WTRON TRX Fee Wallet/);
+    assert.match(adminWallets, /transferState/);
+    assert.match(adminWallets, /toggleTransfers/);
+    assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.wallet_purpose_assignments/);
+    assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.user_transfer_controls/);
+    assert.match(migration, /CREATE OR REPLACE FUNCTION public\.create_manual_fee_sweep/);
+    assert.match(migration, /EXISTS \(\s*SELECT 1\s*FROM public\.wallet_purpose_assignments/s);
+    assert.doesNotMatch(adminWallets, /encrypted_mnemonic|privateKey|password_hash/);
   });
 
   it("ships a non-secret Admin Wallet Monitor with owner, Telegram and real wallet metrics", () => {

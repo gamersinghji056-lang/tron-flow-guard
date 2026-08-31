@@ -8,7 +8,11 @@ import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { networkConfig } from "@/lib/chain";
-import { getAdminGasFreeWalletDiagnostics, setNileTestWalletAccess } from "@/lib/admin.functions";
+import {
+  getAdminGasFreeWalletDiagnostics,
+  setNileTestWalletAccess,
+  setUserTransferAccess,
+} from "@/lib/admin.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/user-wallets")({
   head: () => ({ meta: [{ title: "Wallet Monitor - WTRON Admin" }] }),
@@ -49,6 +53,9 @@ interface WalletMonitorRow {
   } | null;
   lastBlockchainSync: string | null;
   nileTestWalletEnabled: boolean;
+  transferEnabled: boolean;
+  transferDisabledReason: string | null;
+  transferControlChangedAt: string | null;
   adminAction: string;
 }
 
@@ -69,12 +76,14 @@ interface WalletMonitorResult {
 function AdminUserWalletsPage() {
   const loadDiagnostics = useServerFn(getAdminGasFreeWalletDiagnostics);
   const setNileAccess = useServerFn(setNileTestWalletAccess);
+  const setTransferAccess = useServerFn(setUserTransferAccess);
   const [result, setResult] = useState<WalletMonitorResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [network, setNetwork] = useState("ALL");
   const [walletType, setWalletType] = useState("ALL");
   const [gasFreeState, setGasFreeState] = useState("ALL");
+  const [transferState, setTransferState] = useState("ALL");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,10 +121,12 @@ function AdminUserWalletsPage() {
         (!normalized || text.includes(normalized)) &&
         (network === "ALL" || row.network === network) &&
         (walletType === "ALL" || row.walletType === walletType) &&
-        (gasFreeState === "ALL" || row.gasFreeState === gasFreeState)
+        (gasFreeState === "ALL" || row.gasFreeState === gasFreeState) &&
+        (transferState === "ALL" ||
+          (transferState === "ENABLED" ? row.transferEnabled : !row.transferEnabled))
       );
     });
-  }, [gasFreeState, network, query, result?.rows, walletType]);
+  }, [gasFreeState, network, query, result?.rows, transferState, walletType]);
 
   async function toggleNile(row: WalletMonitorRow) {
     if (!row.userId) return;
@@ -131,6 +142,26 @@ function AdminUserWalletsPage() {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update Nile access");
+    }
+  }
+
+  async function toggleTransfers(row: WalletMonitorRow) {
+    if (!row.userId) return;
+    try {
+      await setTransferAccess({
+        data: {
+          userId: row.userId,
+          allTransfersEnabled: !row.transferEnabled,
+          normalUsdtEnabled: true,
+          normalTrxEnabled: true,
+          gasfreeUsdtEnabled: true,
+          reason: row.transferEnabled ? "Disabled from Admin Wallet Monitor" : "",
+        },
+      });
+      toast.success("User transfer access updated");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update transfer access");
     }
   }
 
@@ -171,7 +202,7 @@ function AdminUserWalletsPage() {
         </div>
       ) : null}
 
-      <div className="panel grid gap-3 p-3 md:grid-cols-[1fr_repeat(3,12rem)]">
+      <div className="panel grid gap-3 p-3 md:grid-cols-[1fr_repeat(4,12rem)]">
         <label className="relative">
           <Search className="absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
           <Input
@@ -192,6 +223,11 @@ function AdminUserWalletsPage() {
           options={["ALL", "standard", "gasfree"]}
         />
         <Select value={gasFreeState} onChange={setGasFreeState} options={["ALL", ...states]} />
+        <Select
+          value={transferState}
+          onChange={setTransferState}
+          options={["ALL", "ENABLED", "DISABLED"]}
+        />
       </div>
 
       <div className="panel overflow-x-auto">
@@ -230,7 +266,12 @@ function AdminUserWalletsPage() {
                 </tr>
               ) : (
                 rows.map((row) => (
-                  <WalletRow key={row.walletId} row={row} onToggleNile={toggleNile} />
+                  <WalletRow
+                    key={row.walletId}
+                    row={row}
+                    onToggleNile={toggleNile}
+                    onToggleTransfers={toggleTransfers}
+                  />
                 ))
               )}
             </tbody>
@@ -244,9 +285,11 @@ function AdminUserWalletsPage() {
 function WalletRow({
   row,
   onToggleNile,
+  onToggleTransfers,
 }: {
   row: WalletMonitorRow;
   onToggleNile: (row: WalletMonitorRow) => void;
+  onToggleTransfers: (row: WalletMonitorRow) => void;
 }) {
   const explorer =
     row.network && row.generalWalletAddress
@@ -287,7 +330,7 @@ function WalletRow({
       />
       <Cell
         primary={`${row.successfulTransferCount} successful / ${row.gasfreeTransferCount} GasFree`}
-        secondary={`Sent ${formatAmount(row.totalUsdtSent)} / Received ${formatAmount(row.totalUsdtReceived)} / Fees ${row.totalFees == null ? "Not available" : formatAmount(row.totalFees)}`}
+        secondary={`Sent ${formatAmount(row.totalUsdtSent)} / Received ${formatAmount(row.totalUsdtReceived)} / ${row.transferEnabled ? "Transfers enabled" : "Transfers disabled"}${row.transferDisabledReason ? ` / ${row.transferDisabledReason}` : ""}`}
       />
       <Cell
         primary={row.lastTransaction?.status ?? "Not available"}
@@ -312,6 +355,14 @@ function WalletRow({
             onClick={() => void onToggleNile(row)}
           >
             {row.nileTestWalletEnabled ? "Disable Nile Test" : "Enable Nile Test"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => void onToggleTransfers(row)}
+          >
+            {row.transferEnabled ? "Disable Transfers" : "Enable Transfers"}
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">

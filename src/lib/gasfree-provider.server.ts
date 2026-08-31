@@ -775,6 +775,7 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
     txRes,
     requestRes,
     nileAccessRes,
+    transferControlRes,
   ] = await Promise.all([
     parentIds.length
       ? supabaseAdmin
@@ -845,6 +846,14 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
           .select("user_id, enabled")
           .in("user_id", userIds as never)
       : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? supabaseAdmin
+          .from("user_transfer_controls" as never)
+          .select(
+            "user_id, all_transfers_enabled, normal_usdt_enabled, normal_trx_enabled, gasfree_usdt_enabled, reason, changed_at",
+          )
+          .in("user_id", userIds as never)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   for (const result of [
     parentsRes,
@@ -857,8 +866,9 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
     txRes,
     requestRes,
     nileAccessRes,
+    transferControlRes,
   ]) {
-    if (result.error) throw new Error(result.error.message);
+    if (result.error && result.error.code !== "42P01") throw new Error(result.error.message);
   }
 
   const parents = new Map(
@@ -917,6 +927,21 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
       .filter((row) => row.user_id && row.enabled)
       .map((row) => row.user_id),
   );
+  const transferControls = new Map(
+    (
+      (transferControlRes.data ?? []) as Array<{
+        user_id?: string | null;
+        all_transfers_enabled?: boolean | null;
+        normal_usdt_enabled?: boolean | null;
+        normal_trx_enabled?: boolean | null;
+        gasfree_usdt_enabled?: boolean | null;
+        reason?: string | null;
+        changed_at?: string | null;
+      }>
+    )
+      .filter((row) => row.user_id)
+      .map((row) => [row.user_id as string, row]),
+  );
   const gasfreeChildByParent = new Map(
     (
       (childrenRes.data ?? []) as Array<{
@@ -948,6 +973,7 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
     const profile = wallet.user_id ? profiles.get(wallet.user_id) : null;
     const telegram = wallet.user_id ? telegramByUser.get(wallet.user_id) : null;
     const password = wallet.user_id ? passwords.get(wallet.user_id) : null;
+    const transferControl = wallet.user_id ? transferControls.get(wallet.user_id) : null;
     const userRoles = wallet.user_id ? (rolesByUser.get(wallet.user_id) ?? []) : [];
     const walletTx = txByWallet.get(wallet.id) ?? [];
     const successfulUsdt = walletTx.filter(
@@ -1056,6 +1082,10 @@ export async function getAdminGasFreeWalletDiagnostics(limit = 50) {
         : null,
       lastBlockchainSync: wallet.onchain_checked_at ?? null,
       nileTestWalletEnabled: wallet.user_id ? nileAccess.has(wallet.user_id) : false,
+      transferEnabled: transferControl?.all_transfers_enabled !== false,
+      transferDisabledReason:
+        transferControl?.all_transfers_enabled === false ? (transferControl.reason ?? null) : null,
+      transferControlChangedAt: transferControl?.changed_at ?? null,
       adminAction: "User authorization required",
     });
   }
@@ -1144,17 +1174,23 @@ function mapProviderState(state?: string | null) {
   return "SUBMITTED_TO_PROVIDER";
 }
 
-function feeCollectionWalletSettingKeys(network: ChainNetwork) {
-  if (network === "trc20-nile") {
-    return ["fee_collection_wallet_id_trc20_nile", "fee_collection_wallet_id"] as const;
-  }
-  return ["fee_collection_wallet_id_trc20_mainnet", "fee_collection_wallet_id"] as const;
-}
-
 function parseFeeCollectionWalletSetting(value: unknown) {
   if (typeof value === "string") return value.replace(/^"|"$/g, "") || null;
   if (value == null) return null;
   return String(value).replace(/^"|"$/g, "") || null;
+}
+
+function gasfreeFeeCollectionWalletSettingKeys(network: ChainNetwork) {
+  const networkSuffix = network === "trc20-nile" ? "trc20_nile" : "trc20_mainnet";
+  const networkFallback =
+    network === "trc20-nile"
+      ? "fee_collection_wallet_id_trc20_nile"
+      : "fee_collection_wallet_id_trc20_mainnet";
+  return [
+    `fee_collection_wallet_id_usdt_${networkSuffix}`,
+    networkFallback,
+    "fee_collection_wallet_id",
+  ] as const;
 }
 
 async function readFeeCollectionWalletSetting(key: string) {
@@ -1167,8 +1203,20 @@ async function readFeeCollectionWalletSetting(key: string) {
   return parseFeeCollectionWalletSetting((data as { value?: unknown } | null)?.value);
 }
 
+async function walletHasPurposeAssignment(walletId: string, purpose: string) {
+  const { data, error } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .select("wallet_id")
+    .eq("wallet_id", walletId as never)
+    .eq("purpose", purpose as never)
+    .eq("is_active", true as never)
+    .maybeSingle();
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  return Boolean(data);
+}
+
 async function gasFreeFeeDestinationForNetwork(network: ChainNetwork) {
-  for (const settingKey of feeCollectionWalletSettingKeys(network)) {
+  for (const settingKey of gasfreeFeeCollectionWalletSettingKeys(network)) {
     const walletId = await readFeeCollectionWalletSetting(settingKey);
     if (!walletId) continue;
     const { data: wallet, error } = await supabaseAdmin
@@ -1187,7 +1235,8 @@ async function gasFreeFeeDestinationForNetwork(network: ChainNetwork) {
       row?.id &&
       row.network === network &&
       row.is_active === true &&
-      row.purpose === "FEE_COLLECTION"
+      (row.purpose === "FEE_COLLECTION" ||
+        (await walletHasPurposeAssignment(row.id, "FEE_COLLECTION")))
     ) {
       return row.id;
     }
@@ -1195,13 +1244,57 @@ async function gasFreeFeeDestinationForNetwork(network: ChainNetwork) {
   return null;
 }
 
+async function assertGasFreeProductTransferPolicy(userId: string) {
+  const { data: settings, error: settingsError } = await supabaseAdmin
+    .from("system_settings" as never)
+    .select("key, value")
+    .in("key", [
+      "wallet_transfers_enabled",
+      "gasfree_usdt_transfers_enabled",
+      "gasfree_transfer_enabled",
+    ] as never);
+  if (settingsError) throw new Error(settingsError.message);
+  const values = new Map(
+    ((settings ?? []) as Array<{ key?: string | null; value?: SettingValue }>).map((row) => [
+      row.key,
+      row.value,
+    ]),
+  );
+  const walletTransfersEnabled = parseBoolean(values.get("wallet_transfers_enabled") ?? null, true);
+  const gasfreeUsdtEnabled = parseBoolean(
+    values.get("gasfree_usdt_transfers_enabled") ?? null,
+    true,
+  );
+  const gasfreeProviderEnabled = parseBoolean(
+    values.get("gasfree_transfer_enabled") ?? null,
+    false,
+  );
+  if (!walletTransfersEnabled || !gasfreeUsdtEnabled || !gasfreeProviderEnabled) {
+    throw new Error("TRANSFERS_TEMPORARILY_UNAVAILABLE");
+  }
+  const { data, error } = await supabaseAdmin
+    .from("user_transfer_controls" as never)
+    .select("all_transfers_enabled, gasfree_usdt_enabled, reason")
+    .eq("user_id", userId as never)
+    .maybeSingle();
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  const row = data as {
+    all_transfers_enabled?: boolean | null;
+    gasfree_usdt_enabled?: boolean | null;
+    reason?: string | null;
+  } | null;
+  if (row?.all_transfers_enabled === false || row?.gasfree_usdt_enabled === false) {
+    throw new Error(row.reason || "TRANSFERS_UNAVAILABLE_FOR_ACCOUNT");
+  }
+}
+
 async function recordGasFreePlatformFeeLiability(input: {
   requestId: string;
   userId: string;
   network: ChainNetwork;
-  platformFee: number;
+  collectibleFee: number;
 }) {
-  if (!Number.isFinite(input.platformFee) || input.platformFee <= 0) return;
+  if (!Number.isFinite(input.collectibleFee) || input.collectibleFee <= 0) return;
   const destinationWalletId = await gasFreeFeeDestinationForNetwork(input.network);
   const { error } = await supabaseAdmin.from("fee_liabilities" as never).insert({
     source: "gasfree_transfer_request",
@@ -1209,7 +1302,7 @@ async function recordGasFreePlatformFeeLiability(input: {
     user_id: input.userId,
     vendor_id: null,
     fee_type: "gasfree_transfer_platform_fee",
-    amount: input.platformFee,
+    amount: input.collectibleFee,
     currency: "USDT",
     destination_wallet_id: destinationWalletId,
     status: destinationWalletId ? "PENDING_SWEEP" : "ACCRUED",
@@ -1229,7 +1322,7 @@ async function assertGasFreePlatformFeeCollectible(network: ChainNetwork, platfo
 export async function reconcileGasFreeTransferRequest(requestId: string) {
   const { data: request, error } = await supabaseAdmin
     .from("gasfree_transfer_requests" as never)
-    .select("id, user_id, network, provider_request_id, platform_fee")
+    .select("id, user_id, network, provider_request_id, platform_fee, provider_fee")
     .eq("id", requestId as never)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -1239,6 +1332,7 @@ export async function reconcileGasFreeTransferRequest(requestId: string) {
     network?: ChainNetwork | null;
     provider_request_id?: string | null;
     platform_fee?: number | string | null;
+    provider_fee?: number | string | null;
   } | null;
   if (!row?.provider_request_id || !row.network) throw new Error("GasFree trace ID is unavailable");
   const status = await getTransferStatus(row.network, row.provider_request_id);
@@ -1248,7 +1342,7 @@ export async function reconcileGasFreeTransferRequest(requestId: string) {
       requestId: row.id,
       userId: row.user_id,
       network: row.network,
-      platformFee: Number(row.platform_fee ?? 0),
+      collectibleFee: Math.max(Number(row.platform_fee ?? 0) - Number(row.provider_fee ?? 0), 0),
     });
   }
   await supabaseAdmin
@@ -1309,6 +1403,7 @@ export async function createGasFreeTransferRequest(input: {
   if (row.wallet_role !== "gasfree" || row.wallet_type !== "gasfree") {
     throw new Error("Select the GasFree wallet before using GasFree Send.");
   }
+  await assertGasFreeProductTransferPolicy(input.userId);
 
   const network = row.network as ChainNetwork;
   const nileTestAuthorized =
@@ -1361,8 +1456,13 @@ export async function createGasFreeTransferRequest(input: {
   });
   if (!quote.allowSubmit) throw new Error("GasFree account has a pending transfer.");
   const platformFee = await readTransferFee();
-  await assertGasFreePlatformFeeCollectible(network, platformFee);
-  const totalDebit = input.amount + platformFee + quote.maxFee / 10 ** quote.decimals;
+  const providerFee = quote.maxFee / 10 ** quote.decimals;
+  if (providerFee >= platformFee) {
+    throw new Error("GASFREE_PROVIDER_COST_TOO_HIGH");
+  }
+  const collectiblePlatformFee = Math.max(platformFee - providerFee, 0);
+  await assertGasFreePlatformFeeCollectible(network, collectiblePlatformFee);
+  const totalDebit = input.amount + platformFee;
   if (Number(row.onchain_balance ?? 0) < totalDebit) {
     throw new Error("Insufficient GasFree USDT balance");
   }
@@ -1431,13 +1531,15 @@ export async function createGasFreeTransferRequest(input: {
       deadline_at: deadline.toISOString(),
       status: "AUTHORIZED",
       platform_fee: platformFee,
-      provider_fee: quote.maxFee / 10 ** quote.decimals,
+      provider_fee: providerFee,
       total_debit: totalDebit,
       metadata: {
         protocol: "GasFree TIP-712 PermitTransfer",
         chain_id: gasfreeChainIdForNetwork(network),
         provider_address: quote.provider.address,
         token_address: quote.token.tokenAddress,
+        customer_fee_usdt: platformFee,
+        wtron_revenue_usdt: collectiblePlatformFee,
         permit_hash: prepared.ledgerHash.permitTransferMessageHash,
       },
     } as never)
@@ -1467,7 +1569,7 @@ export async function createGasFreeTransferRequest(input: {
         requestId,
         userId: input.userId,
         network,
-        platformFee,
+        collectibleFee: collectiblePlatformFee,
       });
     }
     await supabaseAdmin
