@@ -2647,6 +2647,12 @@ describe("GasFree transfer service safety", () => {
     assert.doesNotMatch(detailSendBlock, /total <= displayBalance/);
   });
 
+  it("keeps provider-approved GasFree activation eligible for Send", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    assert.match(source, /gasfreeSendEnabled[\s\S]*transferStatus === "ACTIVATION_REQUIRED"/);
+    assert.match(source, /disabled=\{!gasfreeSendEnabled\}/);
+  });
+
   it("keeps large GasFree history pagination bounded and duplicate-safe", async () => {
     const pages = [
       {

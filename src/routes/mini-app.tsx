@@ -4166,6 +4166,9 @@ function WalletGasFreeScreen({
             : t("notDiscovered");
   const transferStatus = readiness?.status ?? (discovered ? "NOT_CONFIGURED" : "DISABLED");
   const productDisabled = readiness?.productTransferAllowed === false;
+  const gasfreeSendEnabled =
+    !productDisabled &&
+    (transferStatus === "AVAILABLE" || transferStatus === "ACTIVATION_REQUIRED");
   const transferLabel =
     transferStatus === "AVAILABLE" && accountState === "READY"
       ? "Transfers Ready"
@@ -4267,7 +4270,7 @@ function WalletGasFreeScreen({
           <QuickAction
             icon={MiniIcons.send}
             label={t("send")}
-            disabled={transferStatus !== "AVAILABLE"}
+            disabled={!gasfreeSendEnabled}
             onClick={onSend}
           />
         </div>
