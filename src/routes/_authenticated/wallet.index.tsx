@@ -209,7 +209,12 @@ function WalletsPage() {
         toast.info("Choose the wallet network to finish import");
         return;
       }
-      toast.success("Wallet imported");
+      const importResult = result as { existing?: boolean; message?: string };
+      toast.success(
+        importResult.existing
+          ? (importResult.message ?? "This wallet is already in your WTRON account.")
+          : "Wallet imported",
+      );
       setImportOpen(false);
       setImportPhrase("");
       setImportNetworkRequired(null);

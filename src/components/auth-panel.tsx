@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import { authenticatedServerFnOptions } from "@/integrations/supabase/server-fn-auth";
 import {
   getCurrentAccountAccess,
   getCurrentAdminLoginAccess,
@@ -134,7 +135,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
     }
 
     if (audience === "admin") {
-      const adminAccess = await resolveAdminLoginAccess();
+      const adminAccess = await resolveAdminLoginAccess(await authenticatedServerFnOptions());
       if (adminAccess.status !== "allowed") {
         await supabase.auth.signOut();
         throw new Error(adminLoginErrorMessage(adminAccess.status));

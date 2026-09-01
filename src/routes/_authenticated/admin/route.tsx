@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { getAccess } from "@/lib/access.functions";
 import { AdminOpsShell } from "@/components/admin-ops-shell";
 import { isAdminProductionHostname } from "@/lib/domain-policy";
+import { authenticatedServerFnOptions } from "@/integrations/supabase/server-fn-auth";
 
 /**
  * Administrator subtree gate. The role is resolved by a *server* function that
@@ -15,7 +16,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
         ? "/admin/login"
         : "/dashboard";
     try {
-      const access = await getAccess();
+      const access = await getAccess(await authenticatedServerFnOptions());
       if (!access.isAdmin) throw redirect({ to: unauthorizedTarget, replace: true });
       return { access };
     } catch (error) {

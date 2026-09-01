@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { UserShell } from "@/components/user-shell";
 import { getCurrentAccountAccess } from "@/lib/accounts.functions";
 import { adminDomainClientRouteTarget } from "@/lib/domain-policy";
+import { authenticatedServerFnOptions } from "@/integrations/supabase/server-fn-auth";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -18,7 +19,7 @@ export const Route = createFileRoute("/_authenticated")({
       });
       if (possibleAdminTarget) {
         try {
-          const account = await getCurrentAccountAccess();
+          const account = await getCurrentAccountAccess(await authenticatedServerFnOptions());
           throw redirect({ to: account.isAdmin ? "/admin" : "/admin/login", replace: true });
         } catch (routeError) {
           if (routeError && typeof routeError === "object" && "to" in routeError) {

@@ -14,6 +14,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { authenticatedServerFnOptions } from "@/integrations/supabase/server-fn-auth";
 import { getCurrentAccountAccess } from "@/lib/accounts.functions";
 import { adminDomainClientRouteTarget } from "@/lib/domain-policy";
 import { miniAppErrorHomeHref } from "@/lib/mini-app-runtime";
@@ -169,7 +170,7 @@ function RootComponent() {
           return;
         }
         try {
-          const account = await resolveCurrentAccount();
+          const account = await resolveCurrentAccount(await authenticatedServerFnOptions());
           if (!active) return;
           const target = adminDomainClientRouteTarget({
             hostname: window.location.hostname,

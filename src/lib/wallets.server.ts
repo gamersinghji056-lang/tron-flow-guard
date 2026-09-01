@@ -443,6 +443,41 @@ async function detectImportedNetwork(address: string, requested: ChainNetwork, c
   return decideImportedWalletNetwork(requested, probes, confirmed);
 }
 
+async function deriveImportCandidateForUser(userId: string, mnemonic: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { deriveTronWalletFromMnemonic, TRON_BIP44_DERIVATION_PATH } =
+    await import("@/lib/tron-personal-wallet");
+
+  const defaultDerived = deriveTronWalletFromMnemonic(mnemonic);
+  const { data, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select("address, derivation_path")
+    .eq("user_id", userId as never)
+    .eq("is_archived", false as never)
+    .neq("wallet_type", "gasfree" as never);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as Array<{ address?: string | null; derivation_path?: string | null }>;
+  const candidatePaths = Array.from(
+    new Set(
+      rows
+        .map((row) => row.derivation_path)
+        .filter(
+          (path): path is string =>
+            Boolean(path) && path !== TRON_BIP44_DERIVATION_PATH && path!.startsWith("m/44'/195'"),
+        ),
+    ),
+  );
+
+  for (const path of candidatePaths) {
+    const derived = deriveTronWalletFromMnemonic(mnemonic, path);
+    if (rows.some((row) => row.address === derived.address && row.derivation_path === path)) {
+      return derived;
+    }
+  }
+
+  return defaultDerived;
+}
+
 export async function provisionPersonalWallet(params: {
   userId: string;
   name: string;
@@ -509,7 +544,14 @@ export async function provisionPersonalWallet(params: {
       kdf_salt: encrypted.kdfSalt,
       derivation_path: derived.derivationPath,
     } as never);
-  if (secretError) throw new Error(secretError.message);
+  if (secretError) {
+    await supabaseAdmin
+      .from("user_wallets" as never)
+      .delete()
+      .eq("id", row.id as never)
+      .eq("user_id", params.userId as never);
+    throw new Error("Wallet could not be secured. Please try again.");
+  }
 
   await supabaseAdmin.from("notifications").insert({
     user_id: params.userId,
@@ -532,7 +574,9 @@ export async function provisionPersonalWallet(params: {
     },
   });
 
-  await refreshWalletGasfreeCapability(params.userId, row.id, { force: true });
+  await refreshWalletGasfreeCapability(params.userId, row.id, { force: true }).catch(
+    () => undefined,
+  );
   await ensureGasFreeChildWalletForGeneral(params.userId, row.id).catch(() => undefined);
 
   return { wallet, recoveryPhrase: mnemonic };
@@ -549,13 +593,12 @@ export async function importPersonalWallet(params: {
   networkConfirmed?: boolean;
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { deriveTronWalletFromMnemonic } = await import("@/lib/tron-personal-wallet");
   const { encryptMnemonic, ensureTransactionPasswordForWalletAction } =
     await import("@/lib/wallet-security.server");
 
   await ensureTransactionPasswordForWalletAction(params.userId, params.transactionPassword);
 
-  const derived = deriveTronWalletFromMnemonic(params.mnemonic);
+  const derived = await deriveImportCandidateForUser(params.userId, params.mnemonic);
   const importedWalletType = "standard";
   const networkDecision = await detectImportedNetwork(
     derived.address,
@@ -651,7 +694,7 @@ export async function importPersonalWallet(params: {
           : {}),
       },
       existing: true,
-      message: "Wallet already exists. Existing wallet opened.",
+      message: "This wallet is already in your WTRON account. Open the existing wallet to use it.",
       detectedNetwork,
     };
   }
@@ -710,7 +753,8 @@ export async function importPersonalWallet(params: {
       return {
         wallet: row,
         existing: true,
-        message: "Wallet already exists. Existing wallet opened.",
+        message:
+          "This wallet is already in your WTRON account. Open the existing wallet to use it.",
         detectedNetwork,
       };
     }

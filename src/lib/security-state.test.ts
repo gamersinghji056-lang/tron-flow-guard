@@ -437,6 +437,14 @@ describe("personal TRON wallet recovery", () => {
     assert.equal(isTronAddress(imported.address), true);
   });
 
+  it("can re-derive a WTRON-created wallet from its stored BIP44 path", () => {
+    const mnemonic = createPersonalWalletMnemonic();
+    const created = deriveTronWalletFromMnemonic(mnemonic, "m/44'/195'/0'/0/7");
+    const importedWithStoredPath = deriveTronWalletFromMnemonic(mnemonic, created.derivationPath);
+    assert.equal(importedWithStoredPath.address, created.address);
+    assert.equal(importedWithStoredPath.derivationPath, created.derivationPath);
+  });
+
   it("encrypts and decrypts recovery phrases with the transaction password", () => {
     const mnemonic = createPersonalWalletMnemonic();
     const encrypted = encryptMnemonic(mnemonic, "wallet-password-1");
@@ -1561,14 +1569,39 @@ describe("admin login role resolution", () => {
     assert.match(source, /audience === "admin"[\s\S]*supabase\.auth\.signOut\(\)/);
     assert.match(source, /supabase\.auth\.setSession\(\{/);
     assert.match(source, /supabase\.auth\.getSession\(\)/);
-    assert.ok(
-      source.indexOf("supabase.auth.setSession({") <
-        source.indexOf("const adminAccess = await resolveAdminLoginAccess()"),
+    assert.match(
+      source,
+      /supabase\.auth\.setSession\(\{[\s\S]*const \{ data: currentSession \} = await supabase\.auth\.getSession\(\);[\s\S]*const adminAccess = await resolveAdminLoginAccess\(await authenticatedServerFnOptions\(\)\)/,
     );
     assert.match(source, /getCurrentAdminLoginAccess/);
     assert.match(source, /adminLoginErrorMessage\(adminAccess\.status\)/);
+    assert.match(source, /resolveAdminLoginAccess\(await authenticatedServerFnOptions\(\)\)/);
     assert.match(source, /authToastMessage\(error\)/);
     assert.doesNotMatch(source, /audience === "admin" && !isStaff/);
+  });
+
+  it("passes explicit bearer headers for admin-domain route guard server functions", () => {
+    const authHelper = readFileSync(
+      resolve(process.cwd(), "src/integrations/supabase/server-fn-auth.ts"),
+      "utf8",
+    );
+    const authenticatedRoute = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/route.tsx"),
+      "utf8",
+    );
+    const adminRoute = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/route.tsx"),
+      "utf8",
+    );
+    const rootRoute = readFileSync(resolve(process.cwd(), "src/routes/__root.tsx"), "utf8");
+
+    assert.match(authHelper, /Authorization: `Bearer \$\{token\}`/);
+    assert.match(
+      authenticatedRoute,
+      /getCurrentAccountAccess\(await authenticatedServerFnOptions\(\)\)/,
+    );
+    assert.match(adminRoute, /getAccess\(await authenticatedServerFnOptions\(\)\)/);
+    assert.match(rootRoute, /resolveCurrentAccount\(await authenticatedServerFnOptions\(\)\)/);
   });
 
   it("keeps admin logout clearing the Supabase session", () => {
@@ -2765,6 +2798,23 @@ describe("GasFree transfer service safety", () => {
     assert.doesNotMatch(mini, /\["WTRON fee", wtronFee\]/);
     assert.match(mini, /receiptShareText/);
     assert.doesNotMatch(mini, /JSON\.stringify\(standardResult|JSON\.stringify\(result/);
+  });
+
+  it("keeps created standard wallets importable and signer-safe", () => {
+    const walletsServer = readFileSync(resolve(process.cwd(), "src/lib/wallets.server.ts"), "utf8");
+    const signerServer = readFileSync(resolve(process.cwd(), "src/lib/signer.server.ts"), "utf8");
+
+    assert.match(walletsServer, /deriveImportCandidateForUser/);
+    assert.match(walletsServer, /path !== TRON_BIP44_DERIVATION_PATH/);
+    assert.match(walletsServer, /startsWith\("m\/44'\/195'"\)/);
+    assert.match(walletsServer, /\.delete\(\)[\s\S]*\.eq\("id", row\.id/);
+    assert.match(walletsServer, /Wallet could not be secured\. Please try again\./);
+    assert.match(
+      walletsServer,
+      /This wallet is already in your WTRON account\. Open the existing wallet to use it\./,
+    );
+    assert.match(signerServer, /if \(derived\.address !== wallet\.address\)/);
+    assert.match(signerServer, /Use GasFree Send for this USDT-only wallet\./);
   });
 
   it("models normal wallet USDT fees as TRX resource cost plus WTRON margin", () => {

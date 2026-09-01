@@ -2001,9 +2001,10 @@ function TelegramMiniApp() {
       setImportPhrase("");
       setWalletPassword("");
       setImportNetworkRequired(null);
+      const importResult = imported as { existing?: boolean; message?: string };
       toast.success(
-        (imported as { existing?: boolean }).existing
-          ? "Wallet already exists. Existing wallet opened."
+        importResult.existing
+          ? (importResult.message ?? "This wallet is already in your WTRON account.")
           : "Wallet imported",
       );
       await refresh("wallet-detail");
