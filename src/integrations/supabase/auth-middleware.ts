@@ -47,27 +47,37 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
     }
 
     const request = getRequest();
+    const diagnostic = request?.headers?.get("x-wtron-auth-diagnostic") ?? null;
+    const logDiagnostic = (stage: string, details?: Record<string, unknown>) => {
+      if (!diagnostic) return;
+      console.info(`[AdminAuth] ${stage}`, { diagnostic, ...(details ?? {}) });
+    };
 
     if (!request?.headers) {
+      logDiagnostic("SERVER_AUTH_FAIL", { reason: "missing_headers" });
       throw new Error("Unauthorized: No request headers available");
     }
 
     const authHeader = request.headers.get("authorization");
 
     if (!authHeader) {
+      logDiagnostic("SERVER_AUTH_FAIL", { reason: "missing_authorization_header" });
       throw new Error("Unauthorized: No authorization header provided");
     }
 
     if (!authHeader.startsWith("Bearer ")) {
+      logDiagnostic("SERVER_AUTH_FAIL", { reason: "unsupported_authorization_scheme" });
       throw new Error("Unauthorized: Only Bearer tokens are supported");
     }
 
     const token = authHeader.replace("Bearer ", "");
     if (!token) {
+      logDiagnostic("SERVER_AUTH_FAIL", { reason: "empty_bearer_token" });
       throw new Error("Unauthorized: No token provided");
     }
 
     if (token.split(".").length !== 3) {
+      logDiagnostic("SERVER_AUTH_FAIL", { reason: "malformed_bearer_token" });
       throw new Error("Unauthorized: Invalid token");
     }
 
@@ -91,14 +101,17 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
     if (claimsResult.error || !userId) {
       const userResult = await supabase.auth.getUser(token);
       if (userResult.error || !userResult.data.user) {
+        logDiagnostic("SERVER_AUTH_FAIL", { reason: "supabase_token_rejected" });
         throw new Error("Unauthorized: Invalid token");
       }
       userId = userResult.data.user.id;
     }
 
     if (!userId) {
+      logDiagnostic("SERVER_AUTH_FAIL", { reason: "missing_user_id" });
       throw new Error("Unauthorized: No user ID found in token");
     }
+    logDiagnostic("SERVER_AUTH_SUCCESS", { userIdPresent: true });
 
     return next({
       context: {

@@ -5,7 +5,11 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { authenticatedServerFnOptions } from "@/integrations/supabase/server-fn-auth";
+import {
+  authenticatedServerFnOptions,
+  clearAdminSessionToken,
+  rememberAdminSessionToken,
+} from "@/integrations/supabase/server-fn-auth";
 import {
   getCurrentAccountAccess,
   getCurrentAdminLoginAccess,
@@ -71,6 +75,11 @@ function authToastMessage(error: unknown) {
   return "Authentication failed";
 }
 
+function logAdminLoginDiagnostic(stage: string, details?: Record<string, unknown>) {
+  if (typeof window === "undefined") return;
+  console.info(`[AdminAuth] ${stage}`, details ?? {});
+}
+
 export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMode }) {
   const navigate = useNavigate();
   const resolveCurrentAccount = useServerFn(getCurrentAccountAccess);
@@ -105,6 +114,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
 
   async function signInAndRoute(credentials: { email: string; password: string }) {
     if (audience === "admin") {
+      clearAdminSessionToken();
       await supabase.auth.signOut().catch(() => undefined);
     }
 
@@ -122,6 +132,12 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
     if (!signInData.session?.access_token || !signInData.session.refresh_token) {
       throw new Error("Authentication session was not created.");
     }
+    if (audience === "admin") {
+      logAdminLoginDiagnostic("LOGIN_SIGNIN_SUCCESS", {
+        userIdPresent: Boolean(signInData.user?.id),
+        tokenPresent: Boolean(signInData.session.access_token),
+      });
+    }
 
     const { error: setSessionError } = await supabase.auth.setSession({
       access_token: signInData.session.access_token,
@@ -133,15 +149,29 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
     if (!currentSession.session?.access_token) {
       throw new Error("Authentication session was not saved for this domain.");
     }
+    if (audience === "admin") {
+      rememberAdminSessionToken(signInData.session.access_token);
+      logAdminLoginDiagnostic("TOKEN_PRESENT", {
+        storedSession: Boolean(currentSession.session.access_token),
+      });
+    }
 
     if (audience === "admin") {
       const adminAccess = await resolveAdminLoginAccess(
-        await authenticatedServerFnOptions(signInData.session.access_token),
+        await authenticatedServerFnOptions(signInData.session.access_token, {
+          diagnostic: "admin-login-access",
+        }),
+      );
+      logAdminLoginDiagnostic(
+        adminAccess.status === "allowed" ? "ADMIN_ROLE_SUCCESS" : "ADMIN_ROLE_FAIL",
+        { status: adminAccess.status },
       );
       if (adminAccess.status !== "allowed") {
+        clearAdminSessionToken();
         await supabase.auth.signOut();
         throw new Error(adminLoginErrorMessage(adminAccess.status));
       }
+      logAdminLoginDiagnostic("REDIRECT_TARGET", { to: "/admin" });
       navigate({ to: "/admin", replace: true });
       return;
     }

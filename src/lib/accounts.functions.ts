@@ -83,6 +83,10 @@ export const getCurrentAdminLoginAccess = createServerFn({ method: "GET" })
       roles: (roles ?? []).map((row) => row.role),
       permissions: (permissions ?? []).map((row) => row.permission),
     });
+    console.info(
+      `[AdminAuth] ${decision.status === "allowed" ? "ADMIN_ROLE_SUCCESS" : "ADMIN_ROLE_FAIL"}`,
+      { userIdPresent: Boolean(context.userId), status: decision.status },
+    );
 
     return {
       userId: context.userId,

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { clearAdminSessionToken } from "@/integrations/supabase/server-fn-auth";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
@@ -100,6 +101,7 @@ export function AdminOpsShell({ children }: { children: React.ReactNode }) {
   async function signOut() {
     await queryClient.cancelQueries();
     queryClient.clear();
+    clearAdminSessionToken();
     await supabase.auth.signOut();
     navigate({ to: "/admin/login", replace: true });
   }

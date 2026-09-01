@@ -16,7 +16,9 @@ export const Route = createFileRoute("/_authenticated/admin")({
         ? "/admin/login"
         : "/dashboard";
     try {
-      const access = await getAccess(await authenticatedServerFnOptions());
+      const access = await getAccess(
+        await authenticatedServerFnOptions(undefined, { diagnostic: "admin-route-guard" }),
+      );
       if (!access.isAdmin) throw redirect({ to: unauthorizedTarget, replace: true });
       return { access };
     } catch (error) {

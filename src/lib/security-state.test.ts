@@ -1590,6 +1590,10 @@ describe("admin login role resolution", () => {
     assert.match(source, /getCurrentAdminLoginAccess/);
     assert.match(source, /adminLoginErrorMessage\(adminAccess\.status\)/);
     assert.match(source, /authToastMessage\(error\)/);
+    assert.match(source, /rememberAdminSessionToken\(signInData\.session\.access_token\)/);
+    assert.match(source, /LOGIN_SIGNIN_SUCCESS/);
+    assert.match(source, /TOKEN_PRESENT/);
+    assert.match(source, /REDIRECT_TARGET/);
     assert.doesNotMatch(source, /audience === "admin" && !isStaff/);
   });
 
@@ -1609,17 +1613,25 @@ describe("admin login role resolution", () => {
     const rootRoute = readFileSync(resolve(process.cwd(), "src/routes/__root.tsx"), "utf8");
 
     assert.match(authHelper, /Authorization: `Bearer \$\{token\}`/);
-    assert.match(authHelper, /authenticatedServerFnOptions\(accessToken\?: string\)/);
+    assert.match(authHelper, /ADMIN_SESSION_BRIDGE_KEY/);
+    assert.match(authHelper, /readAdminSessionToken\(\)/);
+    assert.match(authHelper, /X-WTRON-Auth-Diagnostic/);
+    assert.match(authHelper, /authenticatedServerFnOptions\(\s*accessToken\?: string/);
     const authMiddleware = readFileSync(
       resolve(process.cwd(), "src/integrations/supabase/auth-middleware.ts"),
       "utf8",
     );
     assert.match(authMiddleware, /supabase\.auth\.getUser\(token\)/);
+    assert.match(authMiddleware, /SERVER_AUTH_SUCCESS/);
+    assert.match(authMiddleware, /SERVER_AUTH_FAIL/);
     assert.match(
       authenticatedRoute,
       /getCurrentAccountAccess\(await authenticatedServerFnOptions\(\)\)/,
     );
-    assert.match(adminRoute, /getAccess\(await authenticatedServerFnOptions\(\)\)/);
+    assert.match(
+      adminRoute,
+      /getAccess\(\s*await authenticatedServerFnOptions\(undefined, \{ diagnostic: "admin-route-guard" \}\)/,
+    );
     assert.match(rootRoute, /resolveCurrentAccount\(await authenticatedServerFnOptions\(\)\)/);
   });
 
@@ -1627,7 +1639,7 @@ describe("admin login role resolution", () => {
     const source = readFileSync(resolve(process.cwd(), "src/components/auth-panel.tsx"), "utf8");
     assert.match(
       source,
-      /resolveAdminLoginAccess\(\s*await authenticatedServerFnOptions\(signInData\.session\.access_token\)/,
+      /resolveAdminLoginAccess\(\s*await authenticatedServerFnOptions\(signInData\.session\.access_token,\s*\{\s*diagnostic: "admin-login-access"/,
     );
   });
 
@@ -1637,6 +1649,7 @@ describe("admin login role resolution", () => {
       "utf8",
     );
     assert.match(source, /supabase\.auth\.signOut\(\)/);
+    assert.match(source, /clearAdminSessionToken\(\)/);
     assert.match(source, /navigate\(\{ to: "\/admin\/login", replace: true \}\)/);
   });
 });
