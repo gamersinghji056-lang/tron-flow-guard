@@ -4656,7 +4656,6 @@ function SendScreen({
     previewAmount > 0 &&
     Boolean(standardPreview) &&
     standardCapabilityReady &&
-    standardSufficient &&
     !busy &&
     standardSubmitState !== "submitting";
   const standardFeeCurrency = standardPreview?.customerFeeCurrency ?? asset;

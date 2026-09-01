@@ -135,7 +135,9 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
     }
 
     if (audience === "admin") {
-      const adminAccess = await resolveAdminLoginAccess(await authenticatedServerFnOptions());
+      const adminAccess = await resolveAdminLoginAccess(
+        await authenticatedServerFnOptions(signInData.session.access_token),
+      );
       if (adminAccess.status !== "allowed") {
         await supabase.auth.signOut();
         throw new Error(adminLoginErrorMessage(adminAccess.status));
@@ -144,7 +146,9 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
       return;
     }
 
-    const account = await resolveCurrentAccount(await authenticatedServerFnOptions());
+    const account = await resolveCurrentAccount(
+      await authenticatedServerFnOptions(signInData.session.access_token),
+    );
     const isStaff = account.isAdmin;
 
     if (audience === "trader" && isStaff) {

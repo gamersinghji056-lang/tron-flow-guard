@@ -1572,11 +1572,10 @@ describe("admin login role resolution", () => {
     assert.match(source, /supabase\.auth\.getSession\(\)/);
     assert.match(
       source,
-      /supabase\.auth\.setSession\(\{[\s\S]*const \{ data: currentSession \} = await supabase\.auth\.getSession\(\);[\s\S]*const adminAccess = await resolveAdminLoginAccess\(await authenticatedServerFnOptions\(\)\)/,
+      /supabase\.auth\.setSession\(\{[\s\S]*const \{ data: currentSession \} = await supabase\.auth\.getSession\(\);[\s\S]*const adminAccess = await resolveAdminLoginAccess\([\s\S]*authenticatedServerFnOptions\(signInData\.session\.access_token\)/,
     );
     assert.match(source, /getCurrentAdminLoginAccess/);
     assert.match(source, /adminLoginErrorMessage\(adminAccess\.status\)/);
-    assert.match(source, /resolveAdminLoginAccess\(await authenticatedServerFnOptions\(\)\)/);
     assert.match(source, /authToastMessage\(error\)/);
     assert.doesNotMatch(source, /audience === "admin" && !isStaff/);
   });
@@ -1597,6 +1596,7 @@ describe("admin login role resolution", () => {
     const rootRoute = readFileSync(resolve(process.cwd(), "src/routes/__root.tsx"), "utf8");
 
     assert.match(authHelper, /Authorization: `Bearer \$\{token\}`/);
+    assert.match(authHelper, /authenticatedServerFnOptions\(accessToken\?: string\)/);
     const authMiddleware = readFileSync(
       resolve(process.cwd(), "src/integrations/supabase/auth-middleware.ts"),
       "utf8",
@@ -1608,6 +1608,14 @@ describe("admin login role resolution", () => {
     );
     assert.match(adminRoute, /getAccess\(await authenticatedServerFnOptions\(\)\)/);
     assert.match(rootRoute, /resolveCurrentAccount\(await authenticatedServerFnOptions\(\)\)/);
+  });
+
+  it("uses the fresh Supabase sign-in token for the first admin access check", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/components/auth-panel.tsx"), "utf8");
+    assert.match(
+      source,
+      /resolveAdminLoginAccess\(\s*await authenticatedServerFnOptions\(signInData\.session\.access_token\)/,
+    );
   });
 
   it("keeps admin logout clearing the Supabase session", () => {
@@ -2619,6 +2627,24 @@ describe("GasFree transfer service safety", () => {
       createFunction,
       /const collectiblePlatformFee = Math\.max\(platformFee - providerFee, 0\)/,
     );
+  });
+
+  it("does not disable Send solely because the wallet balance is insufficient", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const detail = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/wallet.$walletId.tsx"),
+      "utf8",
+    );
+    const miniSendBlock = mini.slice(
+      mini.indexOf("const canContinueStandard"),
+      mini.indexOf("const standardFeeCurrency"),
+    );
+    const detailSendBlock = detail.slice(
+      detail.indexOf("const canSend ="),
+      detail.indexOf("useEffect", detail.indexOf("const canSend =")),
+    );
+    assert.doesNotMatch(miniSendBlock, /standardSufficient/);
+    assert.doesNotMatch(detailSendBlock, /total <= displayBalance/);
   });
 
   it("keeps large GasFree history pagination bounded and duplicate-safe", async () => {

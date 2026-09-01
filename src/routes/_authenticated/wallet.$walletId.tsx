@@ -199,7 +199,6 @@ function WalletDetailPage() {
     !preview.blocked &&
     !previewLoading &&
     !previewError &&
-    total <= displayBalance &&
     !sending;
 
   useEffect(() => {
