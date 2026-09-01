@@ -583,9 +583,15 @@ export async function getGasFreeTransferReadiness(input: {
       quoteAvailable: Boolean(account && token),
     };
     if (!isGasFreeTransferExecutable(staticReadiness.status)) return enrichedBase;
+    const executableStatus =
+      account && accountActive !== true
+        ? allowSubmit === true
+          ? ("ACTIVATION_REQUIRED" as const)
+          : ("PENDING" as const)
+        : staticReadiness.status;
     return {
       ...enrichedBase,
-      status: "AVAILABLE",
+      status: executableStatus,
       reason: "GasFree provider is available for TRON USDT.",
       accountStatus: account && accountActive ? "READY" : accountStatus,
     };
@@ -1471,7 +1477,7 @@ export async function createGasFreeTransferRequest(input: {
     generalAddress: general.address,
     amount: input.amount,
   });
-  if (!quote.allowSubmit) throw new Error("GasFree account has a pending transfer.");
+  if (quote.allowSubmit !== true) throw new Error("GasFree account has a pending transfer.");
   const platformFee = await readTransferFee();
   const providerFee = quote.maxFee / 10 ** quote.decimals;
   if (providerFee - platformFee > 0.000001) {

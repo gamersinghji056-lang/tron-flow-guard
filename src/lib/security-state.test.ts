@@ -2516,6 +2516,8 @@ describe("GasFree transfer service safety", () => {
       }),
       "ACTIVATION_REQUIRED",
     );
+    assert.equal(isGasFreeTransferExecutable("ACTIVATION_REQUIRED"), true);
+    assert.equal(isGasFreeTransferExecutable("PENDING"), false);
     assert.equal(
       gasFreeAccountState({ active: false, allowSubmit: false, serviceStatus: "AVAILABLE" }),
       "ACTIVATING",

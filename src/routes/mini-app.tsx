@@ -4623,7 +4623,7 @@ function SendScreen({
   const recipientValid = isTronAddress(address);
   const canSubmitGasfree =
     gasfreeMode &&
-    readiness?.status === "AVAILABLE" &&
+    (readiness?.status === "AVAILABLE" || readiness?.status === "ACTIVATION_REQUIRED") &&
     recipientValid &&
     previewAmount > 0 &&
     Boolean(transactionPassword) &&

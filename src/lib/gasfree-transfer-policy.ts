@@ -281,7 +281,7 @@ export function providerTxidForPersistence(input: { txnHash?: string | null }) {
 }
 
 export function isGasFreeTransferExecutable(status: GasFreeServiceStatus) {
-  return status === "AVAILABLE";
+  return status === "AVAILABLE" || status === "ACTIVATION_REQUIRED";
 }
 
 export function gasFreeRequiresTransactionPassword(status: GasFreeServiceStatus) {

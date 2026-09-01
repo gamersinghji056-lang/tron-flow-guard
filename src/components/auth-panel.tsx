@@ -89,7 +89,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
     let active = true;
     supabase.auth.getSession().then(async ({ data }) => {
       if (!active || !data.session) return;
-      const account = await resolveCurrentAccount();
+      const account = await resolveCurrentAccount(await authenticatedServerFnOptions());
       if (audience === "admin") {
         if (account.isAdmin) navigate({ to: "/admin", replace: true });
         else await supabase.auth.signOut();
@@ -144,7 +144,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
       return;
     }
 
-    const account = await resolveCurrentAccount();
+    const account = await resolveCurrentAccount(await authenticatedServerFnOptions());
     const isStaff = account.isAdmin;
 
     if (audience === "trader" && isStaff) {
