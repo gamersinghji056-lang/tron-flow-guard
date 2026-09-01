@@ -1343,6 +1343,7 @@ async function assertGasFreePlatformFeeCollectible(network: ChainNetwork, platfo
   if (!destinationWalletId) {
     throw new Error("GasFree WTRON fee collection wallet is not configured for this network.");
   }
+  throw new Error("GasFree WTRON fee margin settlement is not available for this configuration.");
 }
 
 export async function reconcileGasFreeTransferRequest(requestId: string) {

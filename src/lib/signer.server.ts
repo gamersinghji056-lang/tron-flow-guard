@@ -120,6 +120,7 @@ async function recordWalletSendFeeLiability(input: {
   amount: number;
   currency: SendAsset;
   destinationWalletId?: string | null;
+  txid?: string | null;
 }) {
   if (!Number.isFinite(input.amount) || input.amount <= 0) return;
   const destinationWalletId =
@@ -136,6 +137,7 @@ async function recordWalletSendFeeLiability(input: {
     currency: input.currency,
     destination_wallet_id: destinationWalletId,
     status: destinationWalletId ? "PENDING_SWEEP" : "ACCRUED",
+    txid: input.txid ?? null,
     idempotency_key: `wallet-send:${input.requestId}:customer-fee`,
   } as never);
   if (error && error.code !== "23505") throw new Error(error.message);
@@ -144,20 +146,51 @@ async function recordWalletSendFeeLiability(input: {
 async function reconcileWalletActiveSendRequests(walletId: string, network: ChainNetwork) {
   const { data } = await supabaseAdmin
     .from("wallet_send_requests" as never)
-    .select("id, txid, wallet_transaction_id")
+    .select("id, txid, wallet_transaction_id, metadata")
     .eq("wallet_id", walletId as never)
     .eq("network", network as never)
     .in("status", ["BROADCAST", "CONFIRMING"] as never)
-    .not("txid", "is", null)
     .limit(10);
   const rows = (data ?? []) as Array<{
     id: string;
     txid?: string | null;
     wallet_transaction_id?: string | null;
+    metadata?: Record<string, unknown> | null;
   }>;
   if (!rows.length) return;
   const { getTransactionInfo } = await import("@/lib/tron.server");
   for (const row of rows) {
+    const metadata = row.metadata ?? {};
+    const feeTxid = typeof metadata["fee_txid"] === "string" ? metadata["fee_txid"] : null;
+    const feeWalletTransactionId =
+      typeof metadata["fee_wallet_transaction_id"] === "string"
+        ? metadata["fee_wallet_transaction_id"]
+        : null;
+    if (feeTxid) {
+      const feeInfo = await getTransactionInfo(network, feeTxid);
+      if (feeInfo.blockNumber) {
+        const feeStatus = feeInfo.success ? "completed" : "failed";
+        if (feeWalletTransactionId) {
+          await supabaseAdmin
+            .from("wallet_transactions" as never)
+            .update({
+              status: feeStatus,
+              block_number: feeInfo.blockNumber,
+              failure_reason: feeInfo.success ? null : feeInfo.status,
+            } as never)
+            .eq("id", feeWalletTransactionId as never);
+        }
+        await supabaseAdmin
+          .from("fee_liabilities" as never)
+          .update({
+            status: feeInfo.success ? "SETTLED" : "ACCRUED",
+            txid: feeTxid,
+            settled_at: feeInfo.success ? new Date().toISOString() : null,
+          } as never)
+          .eq("source", "wallet_send_request" as never)
+          .eq("order_id", row.id as never);
+      }
+    }
     if (!row.txid) continue;
     const info = await getTransactionInfo(network, row.txid);
     if (!info.blockNumber) {
@@ -364,7 +397,8 @@ export async function createAndBroadcastPersonalSend(input: {
   const platformFee = costQuote.platformFee;
   const totalDebit = costQuote.totalDebit;
   const feeCurrency = costQuote.feeCurrency;
-  const feeLiabilityAmount = platformFee;
+  const feeLiabilityAmount =
+    feeCurrency === "TRX" ? costQuote.wtronRevenueTrx : costQuote.wtronRevenueUsdt;
   const feeDestination = await assertFeeCollectionReady({
     network,
     amount: feeLiabilityAmount,
@@ -481,12 +515,12 @@ export async function createAndBroadcastPersonalSend(input: {
       asset: input.asset,
     });
     const feePermission =
-      input.asset === "USDT" && feeCurrency === "TRX" && platformFee > 0
+      feeLiabilityAmount > 0
         ? await assertTransferSignerAuthorized({
             network,
             ownerAddress: wallet.address,
             signerAddress: derived.address,
-            asset: "TRX",
+            asset: feeCurrency,
           })
         : null;
     await supabaseAdmin
@@ -556,16 +590,28 @@ export async function createAndBroadcastPersonalSend(input: {
 
     let feeTxid: string | null = null;
     let feeWalletTransactionId: string | null = null;
-    if (input.asset === "USDT" && feeCurrency === "TRX" && platformFee > 0) {
-      if (!feeDestination?.address) throw new Error("TRX_FEE_COLLECTION_WALLET_NOT_CONFIGURED");
-      const feeBroadcast = await broadcastSignedTrxTransfer({
-        network,
-        privateKeyHex: derived.privateKeyHex,
-        ownerAddress: wallet.address,
-        toAddress: feeDestination.address,
-        amount: platformFee,
-        permissionId: feePermission?.permissionId ?? null,
-      });
+    if (feeLiabilityAmount > 0) {
+      if (!feeDestination?.address) {
+        throw new Error(`${feeCurrency}_FEE_COLLECTION_WALLET_NOT_CONFIGURED`);
+      }
+      const feeBroadcast =
+        feeCurrency === "TRX"
+          ? await broadcastSignedTrxTransfer({
+              network,
+              privateKeyHex: derived.privateKeyHex,
+              ownerAddress: wallet.address,
+              toAddress: feeDestination.address,
+              amount: feeLiabilityAmount,
+              permissionId: feePermission?.permissionId ?? null,
+            })
+          : await broadcastSignedTrc20Transfer({
+              network,
+              privateKeyHex: derived.privateKeyHex,
+              ownerAddress: wallet.address,
+              toAddress: feeDestination.address,
+              amount: feeLiabilityAmount,
+              permissionId: feePermission?.permissionId ?? null,
+            });
       if (!feeBroadcast.ok || !feeBroadcast.txid) {
         throw new Error(feeBroadcast.error ?? "Fee transfer rejected");
       }
@@ -578,9 +624,9 @@ export async function createAndBroadcastPersonalSend(input: {
           direction: "out",
           kind: "fee",
           status: "broadcasting",
-          amount: platformFee,
+          amount: feeLiabilityAmount,
           fee: 0,
-          currency: "TRX",
+          currency: feeCurrency,
           counterparty_address: feeDestination.address,
           memo: "WTRON transfer fee",
           network,
@@ -607,6 +653,32 @@ export async function createAndBroadcastPersonalSend(input: {
           },
         } as never)
         .eq("id", requestId as never);
+    }
+
+    if (feeTxid && feeDestination?.id) {
+      try {
+        await recordWalletSendFeeLiability({
+          requestId,
+          userId: input.userId,
+          network,
+          amount: feeLiabilityAmount,
+          currency: feeCurrency,
+          destinationWalletId: feeDestination.id,
+          txid: feeTxid,
+        });
+      } catch (liabilityError) {
+        await supabaseAdmin
+          .from("wallet_send_requests" as never)
+          .update({
+            metadata: {
+              memo: input.memo ?? null,
+              customer_fee_currency: feeCurrency,
+              fee_liability_error:
+                liabilityError instanceof Error ? liabilityError.message : "Fee liability failed",
+            },
+          } as never)
+          .eq("id", requestId as never);
+      }
     }
 
     const broadcast =
@@ -670,29 +742,6 @@ export async function createAndBroadcastPersonalSend(input: {
       .eq("id", requestId as never)
       .select("*")
       .single();
-
-    try {
-      await recordWalletSendFeeLiability({
-        requestId,
-        userId: input.userId,
-        network,
-        amount: feeLiabilityAmount,
-        currency: feeCurrency,
-        destinationWalletId: feeDestination?.id ?? null,
-      });
-    } catch (liabilityError) {
-      await supabaseAdmin
-        .from("wallet_send_requests" as never)
-        .update({
-          metadata: {
-            memo: input.memo ?? null,
-            customer_fee_currency: feeCurrency,
-            fee_liability_error:
-              liabilityError instanceof Error ? liabilityError.message : "Fee liability failed",
-          },
-        } as never)
-        .eq("id", requestId as never);
-    }
 
     await writeServiceHeartbeat({
       service: "SIGNER",

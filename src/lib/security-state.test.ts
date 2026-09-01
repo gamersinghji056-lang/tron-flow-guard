@@ -690,6 +690,19 @@ describe("server-side signer safety", () => {
     );
   });
 
+  it("settles only WTRON-owned wallet-send revenue", () => {
+    const signerServer = readFileSync(resolve("src/lib/signer.server.ts"), "utf8");
+    const gasfreeServer = readFileSync(resolve("src/lib/gasfree-provider.server.ts"), "utf8");
+    assert.match(signerServer, /feeLiabilityAmount =\s*\n?\s*feeCurrency === "TRX"/);
+    assert.match(signerServer, /amount: feeLiabilityAmount/);
+    assert.match(signerServer, /asset: feeCurrency/);
+    assert.match(signerServer, /fee_liabilities[\s\S]*status: feeInfo\.success \? "SETTLED"/);
+    assert.match(
+      gasfreeServer,
+      /GasFree WTRON fee margin settlement is not available for this configuration\./,
+    );
+  });
+
   it("preflights TRON permissions before Energy purchase or broadcast", () => {
     const signerServer = readFileSync(resolve("src/lib/signer.server.ts"), "utf8");
     const tronTransfer = readFileSync(resolve("src/lib/tron-transfer.server.ts"), "utf8");
