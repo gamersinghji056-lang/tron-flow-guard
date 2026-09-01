@@ -66,6 +66,7 @@ import {
   gasFreeApiCredentialsState,
   gasFreeApiSigningPath,
   gasFreeAccountState,
+  gasFreeCustomerFee,
   gasFreeOperationalState,
   gasFreeProviderBaseUrl,
   gasFreeRequiresTransactionPassword,
@@ -1596,6 +1597,11 @@ describe("admin login role resolution", () => {
     const rootRoute = readFileSync(resolve(process.cwd(), "src/routes/__root.tsx"), "utf8");
 
     assert.match(authHelper, /Authorization: `Bearer \$\{token\}`/);
+    const authMiddleware = readFileSync(
+      resolve(process.cwd(), "src/integrations/supabase/auth-middleware.ts"),
+      "utf8",
+    );
+    assert.match(authMiddleware, /supabase\.auth\.getUser\(token\)/);
     assert.match(
       authenticatedRoute,
       /getCurrentAccountAccess\(await authenticatedServerFnOptions\(\)\)/,
@@ -2518,6 +2524,8 @@ describe("GasFree transfer service safety", () => {
     );
     assert.equal(isGasFreeTransferExecutable("ACTIVATION_REQUIRED"), true);
     assert.equal(isGasFreeTransferExecutable("PENDING"), false);
+    assert.equal(gasFreeCustomerFee(1.5, 3), 3);
+    assert.equal(gasFreeCustomerFee(1.5, 1.5), 1.5);
     assert.equal(
       gasFreeAccountState({ active: false, allowSubmit: false, serviceStatus: "AVAILABLE" }),
       "ACTIVATING",
@@ -2596,7 +2604,7 @@ describe("GasFree transfer service safety", () => {
     );
   });
 
-  it("allows GasFree provider cost to exactly consume the fixed customer fee", () => {
+  it("uses live GasFree provider cost as the customer fee floor", () => {
     const providerServer = readFileSync(
       resolve(process.cwd(), "src/lib/gasfree-provider.server.ts"),
       "utf8",
@@ -2605,8 +2613,8 @@ describe("GasFree transfer service safety", () => {
       providerServer.indexOf("export async function createGasFreeTransferRequest"),
     );
 
-    assert.match(createFunction, /providerFee - platformFee > 0\.000001/);
-    assert.doesNotMatch(createFunction, /providerFee >= platformFee/);
+    assert.match(createFunction, /gasFreeCustomerFee\(configuredPlatformFee, providerFee\)/);
+    assert.doesNotMatch(createFunction, /GASFREE_PROVIDER_COST_TOO_HIGH/);
     assert.match(
       createFunction,
       /const collectiblePlatformFee = Math\.max\(platformFee - providerFee, 0\)/,

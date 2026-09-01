@@ -85,20 +85,26 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
       },
     });
 
-    const { data, error } = await supabase.auth.getClaims(token);
-    if (error || !data?.claims) {
-      throw new Error("Unauthorized: Invalid token");
+    const claimsResult = await supabase.auth.getClaims(token);
+    const claims = claimsResult.data?.claims;
+    let userId = claims?.sub;
+    if (claimsResult.error || !userId) {
+      const userResult = await supabase.auth.getUser(token);
+      if (userResult.error || !userResult.data.user) {
+        throw new Error("Unauthorized: Invalid token");
+      }
+      userId = userResult.data.user.id;
     }
 
-    if (!data.claims.sub) {
+    if (!userId) {
       throw new Error("Unauthorized: No user ID found in token");
     }
 
     return next({
       context: {
         supabase,
-        userId: data.claims.sub,
-        claims: data.claims,
+        userId,
+        claims: claims ?? { sub: userId },
       },
     });
   },

@@ -12,6 +12,7 @@ import {
   GASFREE_SUPPORTED_ASSET,
   classifyTransactionPasswordAuthorizationError,
   gasFreeAccountState,
+  gasFreeCustomerFee,
   gasFreeOperationalState,
   gasFreeServiceReadiness,
   isGasFreeTransferExecutable,
@@ -115,6 +116,7 @@ export interface GasFreeTransferReadiness {
   tokenAddress?: string | null;
   transferFee?: number | null;
   activateFee?: number | null;
+  providerFee?: number | null;
   defaultDeadlineSeconds?: number | null;
   accountStatus?: string | null;
   activationState?: string | null;
@@ -566,6 +568,7 @@ export async function getGasFreeTransferReadiness(input: {
       tokenAddress: token.tokenAddress,
       transferFee,
       activateFee: accountActive ? 0 : activateFee,
+      providerFee: ((accountActive ? 0 : activateFee) + transferFee) / 10 ** 6,
       defaultDeadlineSeconds: parseNumber(provider.config?.defaultDeadlineDuration, 180),
       accountStatus:
         account && accountActive
@@ -1478,11 +1481,9 @@ export async function createGasFreeTransferRequest(input: {
     amount: input.amount,
   });
   if (quote.allowSubmit !== true) throw new Error("GasFree account has a pending transfer.");
-  const platformFee = await readTransferFee();
+  const configuredPlatformFee = await readTransferFee();
   const providerFee = quote.maxFee / 10 ** quote.decimals;
-  if (providerFee - platformFee > 0.000001) {
-    throw new Error("GASFREE_PROVIDER_COST_TOO_HIGH");
-  }
+  const platformFee = gasFreeCustomerFee(configuredPlatformFee, providerFee);
   const collectiblePlatformFee = Math.max(platformFee - providerFee, 0);
   await assertGasFreePlatformFeeCollectible(network, collectiblePlatformFee);
   const totalDebit = input.amount + platformFee;

@@ -284,6 +284,12 @@ export function isGasFreeTransferExecutable(status: GasFreeServiceStatus) {
   return status === "AVAILABLE" || status === "ACTIVATION_REQUIRED";
 }
 
+export function gasFreeCustomerFee(configuredFee: number, providerFee: number) {
+  const configured = Number.isFinite(configuredFee) && configuredFee > 0 ? configuredFee : 0;
+  const provider = Number.isFinite(providerFee) && providerFee > 0 ? providerFee : 0;
+  return Math.max(configured, provider);
+}
+
 export function gasFreeRequiresTransactionPassword(status: GasFreeServiceStatus) {
   return status === "AVAILABLE" || status === "ACTIVATION_REQUIRED";
 }

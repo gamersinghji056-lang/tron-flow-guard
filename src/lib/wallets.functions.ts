@@ -7,6 +7,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { gasFreeCustomerFee } from "@/lib/gasfree-transfer-policy";
 
 const createWalletInput = z.object({
   name: z.string().trim().min(1, "Wallet name is required").max(48),
@@ -256,7 +257,11 @@ export const getGasFreeSendReadiness = createServerFn({ method: "POST" })
       allowTestnet: nileTestAuthorized,
       userId: context.userId,
     });
-    return { ...readiness, platformFee: await readTransferFee() };
+    const configuredFee = await readTransferFee();
+    return {
+      ...readiness,
+      platformFee: gasFreeCustomerFee(configuredFee, Number(readiness.providerFee ?? 0)),
+    };
   });
 
 export const createGasFreeTransfer = createServerFn({ method: "POST" })
