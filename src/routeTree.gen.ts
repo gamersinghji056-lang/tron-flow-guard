@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AppRouteImport } from './routes/app'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as MiniAppRouteImport } from './routes/mini-app'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -34,6 +35,7 @@ import { Route as AuthenticatedTradeRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedWithdrawRouteImport } from './routes/_authenticated/withdraw'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminRegisterRouteImport } from './routes/admin.register'
+import { Route as DownloadAndroidRouteImport } from './routes/download.android'
 import { Route as TraderLoginRouteImport } from './routes/trader.login'
 import { Route as TraderRegisterRouteImport } from './routes/trader.register'
 import { Route as VendorLoginRouteImport } from './routes/vendor.login'
@@ -87,6 +89,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -206,6 +213,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
 const AdminRegisterRoute = AdminRegisterRouteImport.update({
   id: '/admin/register',
   path: '/admin/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadAndroidRoute = DownloadAndroidRouteImport.update({
+  id: '/download/android',
+  path: '/download/android',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TraderLoginRoute = TraderLoginRouteImport.update({
@@ -463,6 +475,7 @@ const ApiV1DepositsIdStatusRoute = ApiV1DepositsIdStatusRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
   '/auth': typeof AuthRoute
   '/mini-app': typeof MiniAppRoute
   '/privacy': typeof PrivacyRoute
@@ -486,6 +499,7 @@ export interface FileRoutesByFullPath {
   '/withdraw': typeof AuthenticatedWithdrawRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
+  '/download/android': typeof DownloadAndroidRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
   '/vendor/login': typeof VendorLoginRoute
@@ -534,6 +548,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
   '/auth': typeof AuthRoute
   '/mini-app': typeof MiniAppRoute
   '/privacy': typeof PrivacyRoute
@@ -556,6 +571,7 @@ export interface FileRoutesByTo {
   '/withdraw': typeof AuthenticatedWithdrawRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
+  '/download/android': typeof DownloadAndroidRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
   '/vendor/login': typeof VendorLoginRoute
@@ -606,6 +622,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/app': typeof AppRoute
   '/auth': typeof AuthRoute
   '/mini-app': typeof MiniAppRoute
   '/privacy': typeof PrivacyRoute
@@ -629,6 +646,7 @@ export interface FileRoutesById {
   '/_authenticated/withdraw': typeof AuthenticatedWithdrawRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
+  '/download/android': typeof DownloadAndroidRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
   '/vendor/login': typeof VendorLoginRoute
@@ -679,6 +697,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/app'
     | '/auth'
     | '/mini-app'
     | '/privacy'
@@ -702,6 +721,7 @@ export interface FileRouteTypes {
     | '/withdraw'
     | '/admin/login'
     | '/admin/register'
+    | '/download/android'
     | '/trader/login'
     | '/trader/register'
     | '/vendor/login'
@@ -750,6 +770,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/app'
     | '/auth'
     | '/mini-app'
     | '/privacy'
@@ -772,6 +793,7 @@ export interface FileRouteTypes {
     | '/withdraw'
     | '/admin/login'
     | '/admin/register'
+    | '/download/android'
     | '/trader/login'
     | '/trader/register'
     | '/vendor/login'
@@ -821,6 +843,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/app'
     | '/auth'
     | '/mini-app'
     | '/privacy'
@@ -844,6 +867,7 @@ export interface FileRouteTypes {
     | '/_authenticated/withdraw'
     | '/admin/login'
     | '/admin/register'
+    | '/download/android'
     | '/trader/login'
     | '/trader/register'
     | '/vendor/login'
@@ -894,6 +918,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AppRoute: typeof AppRoute
   AuthRoute: typeof AuthRoute
   MiniAppRoute: typeof MiniAppRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -901,6 +926,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminRegisterRoute: typeof AdminRegisterRoute
+  DownloadAndroidRoute: typeof DownloadAndroidRoute
   TraderLoginRoute: typeof TraderLoginRoute
   TraderRegisterRoute: typeof TraderRegisterRoute
   VendorLoginRoute: typeof VendorLoginRoute
@@ -928,6 +954,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -1089,6 +1122,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/register'
       fullPath: '/admin/register'
       preLoaderRoute: typeof AdminRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download/android': {
+      id: '/download/android'
+      path: '/download/android'
+      fullPath: '/download/android'
+      preLoaderRoute: typeof DownloadAndroidRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/trader/login': {
@@ -1577,6 +1617,7 @@ const ApiV1DirectSellRouteWithChildren = ApiV1DirectSellRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AppRoute: AppRoute,
   AuthRoute: AuthRoute,
   MiniAppRoute: MiniAppRoute,
   PrivacyRoute: PrivacyRoute,
@@ -1584,6 +1625,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminRegisterRoute: AdminRegisterRoute,
+  DownloadAndroidRoute: DownloadAndroidRoute,
   TraderLoginRoute: TraderLoginRoute,
   TraderRegisterRoute: TraderRegisterRoute,
   VendorLoginRoute: VendorLoginRoute,

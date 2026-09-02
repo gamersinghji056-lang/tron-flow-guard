@@ -253,14 +253,14 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
         : { to: "/admin/login", label: "Already an administrator? Sign in" };
 
   return (
-    <div className="grid min-h-screen place-items-center px-4 py-10">
+    <div className="grid min-h-screen place-items-center bg-[#050505] px-4 py-10 text-white">
       <div className="w-full max-w-sm">
         <Link to="/" className="mb-6 flex items-center justify-center gap-2">
           <WtronLogo markClassName="h-9 w-9" textClassName="font-semibold tracking-tight" />
         </Link>
 
-        <div className="panel p-6">
-          <p className="mono text-[10px] tracking-[0.2em] text-primary uppercase">
+        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)]">
+          <p className="mono text-[10px] tracking-[0.22em] text-primary uppercase">
             {audience === "admin" ? "Administrator area" : "Trader area"}
           </p>
           <h1 className="mt-2 text-lg font-semibold">{copy.title}</h1>

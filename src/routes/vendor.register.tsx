@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { registerVendorApplication } from "@/lib/vendor.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { WtronLogo } from "@/components/mini-app/crypto-icons";
 
 export const Route = createFileRoute("/vendor/register")({
   head: () => ({ meta: [{ title: "Vendor Register - WTRON" }] }),
@@ -57,24 +58,24 @@ function VendorRegisterPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#05070B] px-4 py-10 text-white">
+    <main className="min-h-screen bg-[#050505] px-4 py-10 text-white">
       <div className="mx-auto max-w-md">
-        <Link to="/" className="text-sm text-blue-300">
-          WTRON
+        <Link to="/" className="inline-flex" aria-label="WTRON home">
+          <WtronLogo markClassName="h-9 w-9" textClassName="font-semibold" />
         </Link>
         {done ? (
-          <section className="mt-8 rounded-lg border border-white/10 bg-white/6 p-6">
+          <section className="mt-8 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)]">
             <h1 className="text-2xl font-semibold">Vendor Application Under Review</h1>
             <p className="mt-3 text-sm text-slate-300">
               Registration submitted. Waiting for admin approval.
             </p>
-            <Button asChild className="mt-5 w-full bg-blue-600">
+            <Button asChild className="mt-5 w-full">
               <Link to="/vendor/login">Vendor Login</Link>
             </Button>
           </section>
         ) : (
           <form
-            className="mt-8 space-y-4 rounded-lg border border-white/10 bg-white/6 p-6"
+            className="mt-8 space-y-4 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)]"
             onSubmit={submit}
           >
             <div>
@@ -123,13 +124,13 @@ function VendorRegisterPage() {
               />
               I accept WTRON vendor terms and understand approval is required.
             </label>
-            <Button className="w-full bg-blue-600" disabled={pending}>
+            <Button className="w-full" disabled={pending}>
               {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Register
             </Button>
             <p className="text-center text-sm text-slate-400">
               Already applied?{" "}
-              <Link to="/vendor/login" className="text-blue-300">
+              <Link to="/vendor/login" className="text-primary">
                 Vendor Login
               </Link>
             </p>

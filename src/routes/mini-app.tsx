@@ -2368,7 +2368,7 @@ function TelegramMiniApp() {
         <div className="grid min-h-[70vh] place-items-center text-center">
           <div>
             <WtronMark className="mx-auto h-14 w-14" />
-            <Loader2 className="mx-auto mt-5 h-6 w-6 animate-spin text-emerald-300" />
+            <Loader2 className="mx-auto mt-5 h-6 w-6 animate-spin text-primary" />
             <p className="mt-4 text-sm text-slate-400">Connecting securely to WTRON</p>
           </div>
         </div>
@@ -2385,7 +2385,7 @@ function TelegramMiniApp() {
           body="Telegram launch data is required for secure account linking."
           action={
             <a
-              className="mt-5 inline-flex rounded-xl bg-emerald-500 text-white hover:bg-emerald-400 px-4 py-2 text-sm font-semibold"
+              className="mt-5 inline-flex rounded-xl bg-primary text-white hover:bg-primary/90 px-4 py-2 text-sm font-semibold"
               href="https://t.me/wtron_bot"
             >
               Open Bot
@@ -2913,7 +2913,7 @@ function MiniFrame({
       dir={isMiniRtl(locale) ? "rtl" : "ltr"}
       data-mini-theme={theme}
       className={`min-h-screen overflow-x-hidden antialiased ${
-        theme === "light" ? "bg-[#F7F9FC] text-slate-950" : "bg-[#05070B] text-white"
+        theme === "light" ? "bg-[#F7F9FC] text-slate-950" : "bg-[#050505] text-white"
       }`}
     >
       <div className="mx-auto min-h-screen max-w-md px-3 pt-[max(env(safe-area-inset-top),0.75rem)] sm:px-4">
@@ -2946,7 +2946,7 @@ function MiniHeader({
 }) {
   const isRoot = ["home", "p2p", "trade", "wallet", "more"].includes(screen);
   return (
-    <header className="sticky top-0 z-30 -mx-3 mb-3 flex h-12 items-center justify-between gap-3 border-b border-white/8 bg-[#05070B]/92 px-3 backdrop-blur sm:-mx-4 sm:px-4">
+    <header className="sticky top-0 z-30 -mx-3 mb-3 flex h-12 items-center justify-between gap-3 border-b border-white/8 bg-[#050505]/92 px-3 backdrop-blur sm:-mx-4 sm:px-4">
       {isRoot ? (
         <button className="flex min-w-0 items-center gap-2 text-left" onClick={onProfile}>
           <WtronMark className="h-9 w-9 rounded-xl" />
@@ -3015,7 +3015,7 @@ function AuthScreen(props: {
     <div className="space-y-6 pt-10">
       <WtronMark className="h-14 w-14" />
       <div>
-        <p className="text-xs font-semibold tracking-[0.2em] text-emerald-300 uppercase">
+        <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
           Telegram secure access
         </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-normal">
@@ -3027,7 +3027,7 @@ function AuthScreen(props: {
           Choose Trader for wallet/P2P/WTRON Trade, or Vendor for approved marketplace operations.
         </p>
         {props.notice ? (
-          <p className="mt-3 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-100">
+          <p className="mt-3 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-sm text-primary-foreground">
             {props.notice}
           </p>
         ) : null}
@@ -3042,7 +3042,7 @@ function AuthScreen(props: {
         </button>
         <button
           type="button"
-          className={`rounded-xl px-3 py-2 text-sm ${props.accountType === "vendor" ? "bg-violet-500 text-white hover:bg-violet-400" : "text-slate-400"}`}
+          className={`rounded-xl px-3 py-2 text-sm ${props.accountType === "vendor" ? "bg-primary text-white hover:bg-primary/90" : "text-slate-400"}`}
           onClick={() => props.setAccountType("vendor")}
         >
           Vendor
@@ -3050,13 +3050,13 @@ function AuthScreen(props: {
       </div>
       <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/6 p-1">
         <button
-          className={`rounded-xl px-3 py-2 text-sm ${props.authMode === "login" ? "bg-emerald-500 text-[#03130e] hover:bg-emerald-400" : "text-slate-400"}`}
+          className={`rounded-xl px-3 py-2 text-sm ${props.authMode === "login" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-slate-400"}`}
           onClick={() => props.setAuthMode("login")}
         >
           Login
         </button>
         <button
-          className={`rounded-xl px-3 py-2 text-sm ${props.authMode === "register" ? "bg-emerald-500 text-[#03130e] hover:bg-emerald-400" : "text-slate-400"}`}
+          className={`rounded-xl px-3 py-2 text-sm ${props.authMode === "register" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-slate-400"}`}
           onClick={() => props.setAuthMode("register")}
         >
           Register
@@ -3084,7 +3084,7 @@ function AuthScreen(props: {
           />
         ) : null}
         <Button
-          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={props.busy}
         >
           {props.busy ? (
@@ -3244,13 +3244,13 @@ function WalletScreen({
   if (!wallets.length) {
     return (
       <Screen title={t("walletSelector")} subtitle={t("selfCustodyWallet")}>
-        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-center">
-          <Wallet className="mx-auto h-10 w-10 text-emerald-300" />
+        <div className="rounded-2xl border border-primary/25 bg-primary/10 p-4 text-center">
+          <Wallet className="mx-auto h-10 w-10 text-primary" />
           <h2 className="mt-4 text-xl font-semibold tracking-normal">{t("createWallet")}</h2>
           <p className="mt-2 text-sm text-slate-400">{t("selfCustodyWallet")}</p>
           <div className="mt-5 grid gap-2">
             <Button
-              className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
               onClick={() => onNavigate("wallet-create")}
             >
               {t("createWallet")}
@@ -3279,7 +3279,7 @@ function WalletScreen({
       </Surface>
       <div className="grid grid-cols-2 gap-2">
         <Button
-          className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={() => onNavigate("wallet-create")}
         >
           <Plus className="mr-2 h-4 w-4" />
@@ -3337,7 +3337,7 @@ function WalletCreateScreen(props: {
         </FormCard>
         <FormCard title={`2. TRON Mainnet`}>
           <div className="space-y-2">
-            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-50">
+            <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary-foreground">
               WTRON creates a standard TRON Mainnet wallet for Send and Receive.
             </div>
           </div>
@@ -3359,7 +3359,7 @@ function WalletCreateScreen(props: {
           </div>
         </FormCard>
         <Button
-          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={props.busy}
         >
           {props.busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -3392,13 +3392,13 @@ function WalletImportScreen(props: {
           />
         </FormCard>
         <FormCard title="TRON Mainnet">
-          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-50">
+          <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary-foreground">
             Imports are added as standard TRON Mainnet wallets.
           </div>
         </FormCard>
         <FormCard title={props.t("recoveryPhrase")}>
           <textarea
-            className="min-h-28 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-emerald-500"
+            className="min-h-28 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-primary"
             value={props.phrase}
             onChange={(event) => props.setPhrase(event.target.value)}
             placeholder={props.t("enterRecoveryPhrase")}
@@ -3413,7 +3413,7 @@ function WalletImportScreen(props: {
           />
         </FormCard>
         <Button
-          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={props.busy}
         >
           {props.t("importWallet")}
@@ -3487,8 +3487,8 @@ function WalletDetailScreen({
             className="flex min-w-0 items-center gap-3 text-left"
             onClick={() => setSelectorOpen(true)}
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500/12">
-              <Wallet className="h-5 w-5 text-emerald-300" />
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/12">
+              <Wallet className="h-5 w-5 text-primary" />
             </span>
             <span className="min-w-0">
               <span className="flex items-center gap-1 text-lg font-semibold leading-tight">
@@ -3521,7 +3521,7 @@ function WalletDetailScreen({
             onClick={() => copyText(address, t("addressCopied"))}
           >
             <span className="truncate">{shortenHash(address, 9)}</span>
-            <Copy className="h-4 w-4 text-emerald-300" />
+            <Copy className="h-4 w-4 text-primary" />
           </button>
           <button
             className="flex shrink-0 items-center gap-2 text-sm text-slate-300"
@@ -3606,7 +3606,7 @@ function WalletDetailScreen({
           ) : (
             <div className="mt-3 flex items-center justify-between rounded-2xl bg-white/4 px-3 py-2">
               <span className="text-xs text-slate-500">{t("resourceUnavailable")}</span>
-              <button className="text-xs text-emerald-300" onClick={() => onRefresh()}>
+              <button className="text-xs text-primary" onClick={() => onRefresh()}>
                 {t("refresh")}
               </button>
             </div>
@@ -3759,7 +3759,7 @@ function WalletHistoryScreen({
       <WalletTransactionRows rows={filtered} t={t} onSelect={onSelectTransaction} />
       {hasMore ? (
         <Button
-          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={busy}
           onClick={onLoadMore}
         >
@@ -3901,7 +3901,7 @@ function WalletTransactionDetailScreen({
         </div>
         {transaction.txid ? (
           <Button
-            className="mt-3 w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={() =>
               window.open(
                 network.explorerTx(transaction.txid ?? ""),
@@ -4199,7 +4199,7 @@ function WalletGasFreeScreen({
         ) : null}
         <button
           type="button"
-          className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-medium text-[#03130e] disabled:opacity-60"
+          className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
           onClick={onDiscover}
           disabled={busy}
         >
@@ -4279,7 +4279,7 @@ function ReceiveScreen({
       </Surface>
       <div className="grid grid-cols-2 gap-2">
         <Button
-          className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={() => copyText(address, t("addressCopied"))}
         >
           <Copy className="mr-2 h-4 w-4" />
@@ -4331,7 +4331,7 @@ function BackupScreen({
             placeholder={t("transactionPassword")}
           />
           <Button
-            className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             disabled={busy}
           >
             {t("recoveryPhrase")}
@@ -4352,7 +4352,7 @@ function BackupScreen({
             ))}
           </div>
           <Button
-            className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={() => copyText(revealedPhrase, t("copied"))}
           >
             {t("copyAddress")}
@@ -4407,7 +4407,7 @@ function PlatformDepositScreen({
           placeholder="USDT amount"
         />
         <Button
-          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={busy}
         >
           Create Deposit
@@ -4424,7 +4424,7 @@ function PlatformDepositScreen({
           <p className="mono mt-1 break-all text-sm">{companyAddress}</p>
           <p className="mt-2 text-sm">Network: TRON (TRC20)</p>
           <Button
-            className="mt-3 w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={() => copyText(companyAddress)}
           >
             Copy Company Address
@@ -4660,7 +4660,7 @@ function SendScreen({
                       />
                       <button
                         type="button"
-                        className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
+                        className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-primary"
                         onClick={() => setAmount(String(Math.max(available - wtronFee, 0)))}
                       >
                         {t("max")}
@@ -4817,7 +4817,7 @@ function SendScreen({
                     />
                     <button
                       type="button"
-                      className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-emerald-300"
+                      className="rounded-xl bg-white/6 px-3 py-2 text-xs font-semibold text-primary"
                       onClick={() => setAmount(String(available || ""))}
                     >
                       {t("max")}
@@ -4964,7 +4964,7 @@ function TransferResultReceipt({
     <Surface className="space-y-4 p-4">
       <div className="text-center">
         {success ? (
-          <CircleCheck className="mx-auto h-12 w-12 text-emerald-300" />
+          <CircleCheck className="mx-auto h-12 w-12 text-primary" />
         ) : (
           <CircleX className="mx-auto h-12 w-12 text-red-300" />
         )}
@@ -5123,13 +5123,13 @@ function P2pScreen(props: {
             />
           )}
           <textarea
-            className="min-h-20 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-emerald-500"
+            className="min-h-20 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-primary"
             value={props.sellAd.terms}
             onChange={(event) => props.setSellAd({ ...props.sellAd, terms: event.target.value })}
             placeholder="Terms"
           />
           <Button
-            className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
           >
             Create Sell Ad
@@ -5233,7 +5233,7 @@ function TradeScreen(props: {
             </Button>
           ) : null}
           <Button
-            className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
           >
             Create Sell Order
@@ -5516,14 +5516,14 @@ function ProfileScreen({
   return (
     <Screen title="Profile" subtitle="WTRON trader profile">
       <Surface className="p-4 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-500/12">
-          <UserRound className="h-8 w-8 text-emerald-300" />
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-primary/12">
+          <UserRound className="h-8 w-8 text-primary" />
         </div>
         <h2 className="mt-3 text-xl font-semibold tracking-normal">
           {profile?.full_name || "WTRON Trader"}
         </h2>
         <p className="text-sm text-slate-400">{profile?.email || "Telegram linked account"}</p>
-        <p className="mt-2 text-xs text-emerald-200">Telegram linked</p>
+        <p className="mt-2 text-xs text-primary">Telegram linked</p>
         <p className="mono mt-2 text-[11px] text-slate-500" dir={technicalTextDirection()}>
           {profile?.id ? shortenHash(profile.id, 8) : "Account pending"}
         </p>
@@ -5664,7 +5664,7 @@ function SecurityScreen({
                 </Button>
               ) : null}
               <Button
-                className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
                 disabled={busy}
               >
                 {enabled ? "Update Password" : "Set Password"}
@@ -5712,7 +5712,7 @@ function ReferralScreen({ summary }: { summary: ReferralSummary | null }) {
         <p className="mono mt-2 break-all text-sm text-slate-400">{summary?.referralLink ?? ""}</p>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <Button
-            className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={() =>
               summary?.referralLink && copyText(summary.referralLink, "Referral link copied")
             }
@@ -5859,7 +5859,7 @@ function BankAccountsScreen(props: {
         />
         {limitFields}
         <Button
-          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={props.busy}
         >
           Add UPI
@@ -5920,7 +5920,7 @@ function BankAccountsScreen(props: {
         />
         {limitFields}
         <Button
-          className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={props.busy}
         >
           Add Bank
@@ -6048,8 +6048,8 @@ function IconButton({
 }
 function AssetCard({ total, profile }: { total: number; profile: ProfileSummary | null }) {
   return (
-    <div className="rounded-xl bg-emerald-500 p-4 text-[#03130e] shadow-[0_14px_34px_-28px_rgba(16,185,129,0.75)] hover:bg-emerald-400">
-      <p className="text-xs font-medium uppercase text-emerald-100">Total Assets</p>
+    <div className="rounded-xl bg-primary p-4 text-primary-foreground shadow-[0_14px_34px_-28px_rgba(240,68,68,0.75)] hover:bg-primary/90">
+      <p className="text-xs font-medium uppercase text-primary-foreground">Total Assets</p>
       <p className="mono mt-2 text-2xl font-semibold">{money(total)}</p>
       <div className="mt-5 grid grid-cols-3 gap-2">
         <MiniMetric label="Available" value={money(profile?.balance)} />
@@ -6088,7 +6088,7 @@ function SectionHeader({
     <div className="flex w-full items-center justify-between gap-3">
       <h2 className="text-[15px] font-medium">{title}</h2>
       {action ? (
-        <button className="text-xs font-medium text-emerald-300" onClick={() => void onAction?.()}>
+        <button className="text-xs font-medium text-primary" onClick={() => void onAction?.()}>
           {action}
         </button>
       ) : null}
@@ -6107,7 +6107,7 @@ function Action({
 }) {
   return (
     <button className="text-center" onClick={() => void onClick()}>
-      <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white/6 text-emerald-300 ">
+      <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white/6 text-primary ">
         <Icon className="h-5 w-5" />
       </span>
       <span className="mt-2 block text-[11px] text-slate-200">{label}</span>
@@ -6131,7 +6131,7 @@ function QuickAction({
       disabled={disabled}
       onClick={() => void onClick()}
     >
-      <span className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-white/6 text-emerald-300">
+      <span className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-white/6 text-primary">
         <Icon className="h-4 w-4" />
       </span>
       <span className="mt-2 block text-[11px] font-normal text-slate-300">{label}</span>
@@ -6183,7 +6183,7 @@ function EmptyState({
   return (
     <div className="grid min-h-[70vh] place-items-center text-center">
       <div>
-        <Icon className="mx-auto h-10 w-10 text-emerald-300" />
+        <Icon className="mx-auto h-10 w-10 text-primary" />
         <h1 className="mt-4 text-2xl font-semibold tracking-normal">{title}</h1>
         <p className="mt-2 text-sm text-slate-400">{body}</p>
         {action}
@@ -6205,7 +6205,7 @@ function Tabs({
       {items.map(([key, label]) => (
         <button
           key={key}
-          className={`shrink-0 rounded-lg px-3 py-2 text-sm ${value === key ? "bg-emerald-500 text-[#03130e] hover:bg-emerald-400" : "text-slate-400"}`}
+          className={`shrink-0 rounded-lg px-3 py-2 text-sm ${value === key ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-slate-400"}`}
           onClick={() => setValue(key)}
         >
           {label}
@@ -6229,7 +6229,9 @@ function SegmentedControl({
         <button
           key={key}
           className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${
-            value === key ? "bg-emerald-500 text-[#03130e] hover:bg-emerald-400" : "text-slate-400"
+            value === key
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "text-slate-400"
           }`}
           onClick={() => setValue(key)}
         >
@@ -6285,14 +6287,14 @@ function PaymentMethodPicker({
             type="button"
             className={`w-full rounded-xl border p-3 text-left ${
               selectedId === method.id
-                ? "border-emerald-500 bg-emerald-500/12"
+                ? "border-primary bg-primary/12"
                 : "border-white/10 bg-white/6"
             }`}
             onClick={() => setSelectedId(method.id)}
           >
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold">{display.title}</p>
-              {method.is_default ? <span className="text-xs text-emerald-300">Default</span> : null}
+              {method.is_default ? <span className="text-xs text-primary">Default</span> : null}
             </div>
             <div className="mt-2 space-y-1 text-xs text-slate-400">
               {display.lines.map((line) => (
@@ -6370,7 +6372,7 @@ function ResourceBar({ label, used, limit }: { label: string; used: number; limi
         </span>
       </div>
       <div className="mt-2 h-1.5 rounded-full bg-white/8">
-        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -6385,7 +6387,7 @@ function StatusPill({
 }) {
   const toneClass =
     tone === "success"
-      ? "bg-emerald-500/12 text-emerald-300"
+      ? "bg-primary/12 text-primary"
       : tone === "warning"
         ? "bg-amber-500/12 text-amber-300"
         : tone === "danger"
@@ -6424,7 +6426,7 @@ function WalletSelectorSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/65 p-3" onClick={onClose}>
       <div
-        className="mx-auto max-h-[82vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-[#0D121C] p-3 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]"
+        className="mx-auto max-h-[82vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-[#111111] p-3 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
@@ -6439,7 +6441,7 @@ function WalletSelectorSheet({
             <button
               key={wallet.id}
               className={`w-full rounded-xl p-3 text-left ${
-                wallet.id === selectedWalletId ? "bg-emerald-500/12" : "bg-white/5"
+                wallet.id === selectedWalletId ? "bg-primary/12" : "bg-white/5"
               }`}
               onClick={() => onSelect(wallet)}
             >
@@ -6475,7 +6477,7 @@ function WalletSelectorSheet({
         <div className="mt-4 grid grid-cols-3 gap-2">
           <Button
             size="sm"
-            className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={onCreate}
           >
             {t("createWallet")}
@@ -6507,7 +6509,7 @@ function WalletCard({
 }) {
   return (
     <button
-      className={`min-w-[74%] snap-center rounded-2xl border p-3 text-left ${active ? "border-emerald-500 bg-emerald-500/12" : "border-white/10 bg-white/6"}`}
+      className={`min-w-[74%] snap-center rounded-2xl border p-3 text-left ${active ? "border-primary bg-primary/12" : "border-white/10 bg-white/6"}`}
       onClick={() => {
         onSelect();
         onOpen();
@@ -6527,7 +6529,7 @@ function WalletCard({
           <p className="mono text-xl font-semibold">{money(walletDisplayBalance(wallet))}</p>
         </div>
         {wallet.is_default ? (
-          <span className="rounded-full bg-emerald-500 px-2 py-1 text-[10px] font-semibold text-[#03130e]">
+          <span className="rounded-full bg-primary px-2 py-1 text-[10px] font-semibold text-primary-foreground">
             {t("active")}
           </span>
         ) : null}
@@ -6639,7 +6641,7 @@ function ListRow({
       onClick={() => void onClick()}
     >
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/6">
-        <Icon className="h-5 w-5 text-emerald-300" />
+        <Icon className="h-5 w-5 text-primary" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold">{title}</span>
@@ -6666,7 +6668,7 @@ function SettingRow({
       onClick={() => void onClick()}
     >
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/6">
-        <Icon className="h-5 w-5 text-emerald-300" />
+        <Icon className="h-5 w-5 text-primary" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold">{title}</span>
@@ -6725,7 +6727,7 @@ function AdCard({ ad, onTake }: { ad: AdRow; onTake: () => void }) {
         ]}
       />
       <Button
-        className="mt-3 w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+        className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
         onClick={onTake}
       >
         {ad.side === "sell" ? "Buy USDT" : "Sell USDT"}
@@ -6757,7 +6759,7 @@ function VendorCard({ listing, onBuy }: { listing: VendorListingRow; onBuy: () =
         ]}
       />
       <Button
-        className="mt-3 w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+        className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
         onClick={onBuy}
       >
         Buy from Vendor
@@ -6846,7 +6848,7 @@ function DirectSellDetailScreen(props: {
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
-                className="w-full bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
                 disabled={!address}
                 onClick={() => props.onCopy(address, "Address copied")}
               >
@@ -6880,7 +6882,7 @@ function DirectSellDetailScreen(props: {
                   key={label}
                   className={`rounded-2xl border p-2 text-center text-[11px] ${
                     index <= Math.max(0, currentStep)
-                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                      ? "border-primary/40 bg-primary/15 text-primary-foreground"
                       : "border-white/10 bg-white/6 text-slate-500"
                   }`}
                 >
@@ -6938,7 +6940,7 @@ function DirectSellDetailScreen(props: {
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <Button
                         type="button"
-                        className="bg-emerald-500 text-[#03130e] hover:bg-emerald-400"
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
                         disabled={props.busy}
                         onClick={() => props.onConfirm(item.id)}
                       >
@@ -7093,7 +7095,7 @@ function WalletTransactionRows({
             <span className="text-right">
               <span
                 className={`mono block text-sm font-semibold ${
-                  incoming ? "text-emerald-300" : "text-white"
+                  incoming ? "text-primary" : "text-white"
                 }`}
               >
                 {incoming ? "+" : "-"}
@@ -7134,7 +7136,7 @@ function MiniChart({ rows }: { rows: { date: string; usdt: number }[] }) {
           .map((row, index) => (
             <div
               key={`${row.date}-${index}`}
-              className="flex-1 rounded-t bg-emerald-500"
+              className="flex-1 rounded-t bg-primary"
               style={{ height: `${Math.max(4, (Number(row.usdt ?? 0) / max) * 100)}%` }}
             />
           ))
@@ -7158,7 +7160,7 @@ function PendingVendorScreen({
     <div className="grid min-h-[80vh] place-items-center pb-10 text-center">
       <div className="w-full rounded-3xl border border-white/10 bg-white/6 p-6">
         <WtronMark className="mx-auto h-14 w-14" />
-        <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-violet-300">
+        <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
           Vendor application
         </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-normal">
@@ -7196,18 +7198,18 @@ function VendorBottomNav({
     ["more", "More", MoreHorizontal],
   ];
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 bg-[#05070B]/94 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-xl">
-      <div className="mx-auto grid max-w-md grid-cols-5 rounded-2xl bg-[#0D121C]/95 p-1">
+    <nav className="fixed inset-x-0 bottom-0 z-40 bg-[#050505]/94 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-xl">
+      <div className="mx-auto grid max-w-md grid-cols-5 rounded-2xl bg-[#111111]/95 p-1">
         {items.map(([key, label, Icon]) => (
           <button
             key={key}
             className={`relative rounded-2xl px-1 py-2 text-[11px] font-medium transition ${
-              screen === key ? "text-violet-300" : "text-slate-500"
+              screen === key ? "text-primary" : "text-slate-500"
             }`}
             onClick={() => setScreen(key)}
           >
             {screen === key ? (
-              <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-violet-400" />
+              <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-primary" />
             ) : null}
             <Icon className="mx-auto mb-1 h-5 w-5" />
             {label}
@@ -7235,18 +7237,18 @@ function BottomNav({
     ["more", t("more"), MoreHorizontal],
   ];
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 bg-[#05070B]/94 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-xl">
-      <div className="mx-auto grid max-w-md grid-cols-5 rounded-2xl bg-[#0D121C]/95 p-1">
+    <nav className="fixed inset-x-0 bottom-0 z-40 bg-[#050505]/94 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 backdrop-blur-xl">
+      <div className="mx-auto grid max-w-md grid-cols-5 rounded-2xl bg-[#111111]/95 p-1">
         {items.map(([key, label, Icon]) => (
           <button
             key={key}
             className={`relative rounded-2xl px-1 py-2 text-[11px] font-medium transition ${
-              tab === key ? "text-emerald-300" : "text-slate-500"
+              tab === key ? "text-primary" : "text-slate-500"
             }`}
             onClick={() => setTab(key)}
           >
             {tab === key ? (
-              <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-emerald-400" />
+              <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-primary" />
             ) : null}
             <Icon className="mx-auto mb-1 h-5 w-5" />
             {label}

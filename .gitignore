@@ -23,6 +23,16 @@ supabase/.temp/
 .wrangler/
 .dev.vars
 
+# Android release artifacts and signing material
+*.apk
+*.aab
+*.keystore
+*.jks
+android/local.properties
+android/**/*.iml
+public/downloads/*.apk
+public/downloads/*.sha256
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

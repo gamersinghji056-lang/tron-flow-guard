@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Copy,
@@ -45,7 +45,15 @@ export const Route = createFileRoute("/_authenticated/vendor/")({
 });
 
 type VendorTab =
-  "home" | "wallet" | "trade" | "orders" | "transactions" | "history" | "accounts" | "settings";
+  | "home"
+  | "wallet"
+  | "trade"
+  | "orders"
+  | "transactions"
+  | "history"
+  | "accounts"
+  | "settings"
+  | "more";
 type VendorOrderFilter =
   "all" | "active" | "payment_submitted" | "completed" | "disputed" | "expired" | "cancelled";
 
@@ -139,6 +147,7 @@ function inr(value: unknown) {
 
 function VendorPortalPage() {
   const navigate = useNavigate();
+  const search = useRouterState({ select: (state) => state.location.search });
   const getApplication = useServerFn(fetchVendorApplication);
   const getPortal = useServerFn(fetchVendorPortal);
   const saveAccount = useServerFn(saveVendorAccount);
@@ -153,7 +162,7 @@ function VendorPortalPage() {
   const revealVendorWallet = useServerFn(revealRecoveryPhrase);
   const setVendorWalletDefault = useServerFn(setDefaultWallet);
   const setVendorWalletPassword = useServerFn(setWalletTransactionPassword);
-  const [tab, setTab] = useState<VendorTab>("home");
+  const [tab, setTab] = useState<VendorTab>(() => vendorTabFromSearch(search));
   const [application, setApplication] = useState<VendorRow | null>(null);
   const [portal, setPortal] = useState<PortalData | null>(null);
   const [pending, setPending] = useState(true);
@@ -219,6 +228,10 @@ function VendorPortalPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setTab(vendorTabFromSearch(search));
+  }, [search]);
 
   const orders = portal?.orders ?? [];
   const filteredOrders = orders.filter((order) => {
@@ -397,7 +410,7 @@ function VendorPortalPage() {
   if (pending) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#05070B] text-white">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </main>
     );
   }
@@ -420,7 +433,7 @@ function VendorPortalPage() {
               application?.suspension_reason ||
               "Admin approval is required before the full Vendor Portal is available."}
           </p>
-          <Button className="mt-5 bg-blue-600" onClick={() => void signOut()}>
+          <Button className="mt-5 bg-primary" onClick={() => void signOut()}>
             Sign out
           </Button>
         </section>
@@ -437,6 +450,7 @@ function VendorPortalPage() {
     "history",
     "accounts",
     "settings",
+    "more",
   ];
 
   return (
@@ -450,8 +464,15 @@ function VendorPortalPage() {
             {tabs.map((item) => (
               <button
                 key={item}
-                className={`rounded-md px-3 py-1.5 text-sm capitalize ${tab === item ? "bg-blue-600" : "text-slate-400 hover:bg-white/10"}`}
-                onClick={() => setTab(item)}
+                className={`rounded-md px-3 py-1.5 text-sm capitalize ${tab === item ? "bg-primary" : "text-slate-400 hover:bg-secondary"}`}
+                onClick={() => {
+                  setTab(item);
+                  window.history.replaceState(
+                    null,
+                    "",
+                    item === "home" ? "/vendor" : `/vendor?tab=${item}`,
+                  );
+                }}
               >
                 {item}
               </button>
@@ -465,8 +486,15 @@ function VendorPortalPage() {
           {tabs.map((item) => (
             <button
               key={item}
-              className={`rounded-md px-3 py-1.5 text-sm capitalize ${tab === item ? "bg-blue-600" : "bg-white/6 text-slate-300"}`}
-              onClick={() => setTab(item)}
+              className={`rounded-md px-3 py-1.5 text-sm capitalize ${tab === item ? "bg-primary" : "bg-white/6 text-slate-300"}`}
+              onClick={() => {
+                setTab(item);
+                window.history.replaceState(
+                  null,
+                  "",
+                  item === "home" ? "/vendor" : `/vendor?tab=${item}`,
+                );
+              }}
             >
               {item}
             </button>
@@ -548,7 +576,7 @@ function VendorPortalPage() {
                   }
                 />
               ) : null}
-              <Button className="bg-blue-600 md:col-span-4">
+              <Button className="bg-primary md:col-span-4">
                 {walletForm.mode === "password"
                   ? "Save Transaction Password"
                   : walletForm.mode === "import"
@@ -753,7 +781,7 @@ function VendorPortalPage() {
                 />
                 Frozen
               </label>
-              <Button className="bg-blue-600 md:col-span-3">
+              <Button className="bg-primary md:col-span-3">
                 {accountForm.id ? "Update Account" : "Add Account"}
               </Button>
             </form>
@@ -855,7 +883,7 @@ function VendorPortalPage() {
                 value={listingForm.terms}
                 onChange={(event) => setListingForm({ ...listingForm, terms: event.target.value })}
               />
-              <Button className="bg-blue-600 md:col-span-3">Create Listing</Button>
+              <Button className="bg-primary md:col-span-3">Create Listing</Button>
             </form>
             <ListingRows
               rows={portal.listings}
@@ -904,7 +932,7 @@ function VendorPortalPage() {
                   type="button"
                   size="sm"
                   variant={orderFilter === value ? "default" : "secondary"}
-                  className={orderFilter === value ? "bg-blue-600" : ""}
+                  className={orderFilter === value ? "bg-primary" : ""}
                   onClick={() => setOrderFilter(value)}
                 >
                   {label}
@@ -954,7 +982,42 @@ function VendorPortalPage() {
                 ["Telegram", portal.vendor.telegram_username ?? "-"],
               ]}
             />
-            <Button className="mt-4 bg-blue-600" onClick={() => void signOut()}>
+            <Button className="mt-4 bg-primary" onClick={() => void signOut()}>
+              Logout
+            </Button>
+          </Panel>
+        ) : null}
+
+        {tab === "more" ? (
+          <Panel title="More">
+            <MetricGrid
+              items={[
+                ["Business", portal.vendor.name ?? "-"],
+                ["Contact", portal.vendor.contact_name ?? "-"],
+                ["Email", portal.vendor.email ?? "-"],
+                ["Telegram", portal.vendor.telegram_username ?? "-"],
+              ]}
+            />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ["Payment Accounts", "accounts"],
+                ["Transaction Review", "transactions"],
+                ["History", "history"],
+                ["Settings", "settings"],
+              ].map(([label, nextTab]) => (
+                <button
+                  key={label}
+                  className="rounded-lg border border-white/10 bg-black/30 p-4 text-left text-sm font-medium text-slate-100 transition hover:border-primary/60"
+                  onClick={() => {
+                    setTab(nextTab as VendorTab);
+                    window.history.replaceState(null, "", `/vendor?tab=${nextTab}`);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <Button className="mt-4 bg-primary" onClick={() => void signOut()}>
               Logout
             </Button>
           </Panel>
@@ -962,6 +1025,25 @@ function VendorPortalPage() {
       </div>
     </main>
   );
+}
+
+function vendorTabFromSearch(search: Record<string, unknown>): VendorTab {
+  const value = typeof search["tab"] === "string" ? search["tab"] : "home";
+  return isVendorTab(value) ? value : "home";
+}
+
+function isVendorTab(value: string): value is VendorTab {
+  return [
+    "home",
+    "wallet",
+    "trade",
+    "orders",
+    "transactions",
+    "history",
+    "accounts",
+    "settings",
+    "more",
+  ].includes(value);
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
@@ -1183,7 +1265,7 @@ function OrderRows({
           />
           {row.status === "payment_submitted" ? (
             <div className="mt-3 flex gap-2">
-              <Button className="bg-blue-600" onClick={() => void confirm(row.id)}>
+              <Button className="bg-primary" onClick={() => void confirm(row.id)}>
                 Confirm
               </Button>
               <Button variant="secondary" onClick={() => void dispute(row.id)}>

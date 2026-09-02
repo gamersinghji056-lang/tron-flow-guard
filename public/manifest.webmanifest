@@ -1,0 +1,43 @@
+{
+  "name": "WTRON",
+  "short_name": "WTRON",
+  "description": "WTRON TRON Mainnet wallet and USDT trading app.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#f04444",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/branding/wtron-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/branding/wtron-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Wallet",
+      "url": "/wallet",
+      "description": "Open WTRON wallet"
+    },
+    {
+      "name": "P2P",
+      "url": "/p2p",
+      "description": "Open WTRON P2P"
+    },
+    {
+      "name": "Trade",
+      "url": "/trade",
+      "description": "Trade with WTRON"
+    }
+  ]
+}

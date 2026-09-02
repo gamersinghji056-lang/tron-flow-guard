@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { UserShell } from "@/components/user-shell";
+import { UserShell, VendorShell } from "@/components/user-shell";
 import { getCurrentAccountAccess } from "@/lib/accounts.functions";
 import { adminDomainClientRouteTarget } from "@/lib/domain-policy";
 import { authenticatedServerFnOptions } from "@/integrations/supabase/server-fn-auth";
@@ -37,7 +37,13 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
   const pathname = window.location.pathname;
   if (pathname.startsWith("/admin")) return <Outlet />;
-  if (pathname.startsWith("/vendor")) return <Outlet />;
+  if (pathname.startsWith("/vendor")) {
+    return (
+      <VendorShell>
+        <Outlet />
+      </VendorShell>
+    );
+  }
   return (
     <UserShell>
       <Outlet />

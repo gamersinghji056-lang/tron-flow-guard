@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchVendorApplication } from "@/lib/vendor.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { WtronLogo } from "@/components/mini-app/crypto-icons";
 
 export const Route = createFileRoute("/vendor/login")({
   head: () => ({ meta: [{ title: "Vendor Login - WTRON" }] }),
@@ -71,13 +72,13 @@ function VendorLoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#05070B] px-4 py-10 text-white">
+    <main className="min-h-screen bg-[#050505] px-4 py-10 text-white">
       <form
-        className="mx-auto mt-12 max-w-md space-y-4 rounded-lg border border-white/10 bg-white/6 p-6"
+        className="mx-auto mt-12 max-w-md space-y-4 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)]"
         onSubmit={submit}
       >
-        <Link to="/" className="text-sm text-blue-300">
-          WTRON
+        <Link to="/" className="inline-flex" aria-label="WTRON home">
+          <WtronLogo markClassName="h-9 w-9" textClassName="font-semibold" />
         </Link>
         <div>
           <h1 className="text-2xl font-semibold">Vendor Login</h1>
@@ -97,13 +98,13 @@ function VendorLoginPage() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
-        <Button className="w-full bg-blue-600" disabled={pending}>
+        <Button className="w-full" disabled={pending}>
           {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Login
         </Button>
         <p className="text-center text-sm text-slate-400">
           New vendor?{" "}
-          <Link to="/vendor/register" className="text-blue-300">
+          <Link to="/vendor/register" className="text-primary">
             Register
           </Link>
         </p>
