@@ -38,7 +38,14 @@ WTRON_RELEASE_KEY_ALIAS=...
 WTRON_RELEASE_KEY_PASSWORD=...
 ```
 
-Do not commit signing files, passwords, APKs or AABs. After signing, publish the APK to:
+Do not commit signing files, passwords, APKs or AABs. After signing, publish the APK and checksum to the website
+download path:
+
+```bash
+npm run android:publish-apk -- android/app/build/outputs/apk/release/app-release.apk
+```
+
+This creates:
 
 ```text
 public/downloads/wtron-android-release.apk

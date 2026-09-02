@@ -15,6 +15,7 @@
     "preview": "vite preview",
     "android:doctor": "node scripts/android-release-check.mjs",
     "android:assemble:release": "gradle -p android :app:assembleRelease",
+    "android:publish-apk": "node scripts/publish-android-apk.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

@@ -1,6 +1,12 @@
 # WTRON Downloads
 
-Publish signed Android release artifacts here during deployment:
+Publish signed Android release artifacts here during deployment with:
+
+```bash
+npm run android:publish-apk -- <path-to-signed-release.apk>
+```
+
+That command writes:
 
 - `wtron-android-release.apk`
 - `wtron-android-release.apk.sha256`
