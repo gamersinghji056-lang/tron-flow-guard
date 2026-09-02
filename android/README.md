@@ -54,3 +54,16 @@ public/downloads/wtron-android-release.apk.sha256
 
 Those files are intentionally ignored by Git and should be attached through the deployment/release
 artifact process.
+
+## GitHub release build
+
+The `Android Release` workflow can build the APK from a clean runner. For a signed release, configure
+these repository secrets:
+
+- `WTRON_RELEASE_STORE_BASE64`
+- `WTRON_RELEASE_STORE_PASSWORD`
+- `WTRON_RELEASE_KEY_ALIAS`
+- `WTRON_RELEASE_KEY_PASSWORD`
+
+The workflow uploads `wtron-android-release.apk` and `wtron-android-release.apk.sha256` as artifacts
+ready for the website download deployment.

@@ -1,0 +1,89 @@
+name: Android Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    env:
+      WTRON_RELEASE_STORE_BASE64: ${{ secrets.WTRON_RELEASE_STORE_BASE64 }}
+      WTRON_RELEASE_STORE_PASSWORD: ${{ secrets.WTRON_RELEASE_STORE_PASSWORD }}
+      WTRON_RELEASE_KEY_ALIAS: ${{ secrets.WTRON_RELEASE_KEY_ALIAS }}
+      WTRON_RELEASE_KEY_PASSWORD: ${{ secrets.WTRON_RELEASE_KEY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Prepare release signing
+        shell: bash
+        run: |
+          if [[ -n "${WTRON_RELEASE_STORE_BASE64}" && -n "${WTRON_RELEASE_STORE_PASSWORD}" && -n "${WTRON_RELEASE_KEY_ALIAS}" && -n "${WTRON_RELEASE_KEY_PASSWORD}" ]]; then
+            keystore="${RUNNER_TEMP}/wtron-release.jks"
+            printf '%s' "${WTRON_RELEASE_STORE_BASE64}" | base64 --decode > "${keystore}"
+            echo "WTRON_RELEASE_STORE_FILE=${keystore}" >> "${GITHUB_ENV}"
+            echo "WTRON_SIGNED_RELEASE=true" >> "${GITHUB_ENV}"
+          else
+            echo "WTRON_SIGNED_RELEASE=false" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Check Android release readiness
+        run: npm run android:doctor
+        continue-on-error: true
+
+      - name: Build release APK
+        run: npm run android:assemble:release
+
+      - name: Publish APK download artifacts
+        shell: bash
+        run: |
+          signed_apk="android/app/build/outputs/apk/release/app-release.apk"
+          unsigned_apk="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          if [[ "${WTRON_SIGNED_RELEASE}" == "true" ]]; then
+            apk="${signed_apk}"
+          elif [[ -f "${unsigned_apk}" ]]; then
+            apk="${unsigned_apk}"
+          else
+            apk="${signed_apk}"
+          fi
+          if [[ ! -f "${apk}" ]]; then
+            echo "Release APK was not produced at ${apk}." >&2
+            exit 1
+          fi
+          npm run android:publish-apk -- "${apk}"
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wtron-android-release
+          path: |
+            public/downloads/wtron-android-release.apk
+            public/downloads/wtron-android-release.apk.sha256
+          if-no-files-found: error
