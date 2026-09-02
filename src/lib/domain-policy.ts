@@ -10,6 +10,7 @@ const PASS_THROUGH_PREFIXES = [
   "/favicon",
   "/assets/",
   "/_build/",
+  "/_server",
   "/_server/",
   "/robots.txt",
   "/sitemap.xml",

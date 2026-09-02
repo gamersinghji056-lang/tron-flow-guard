@@ -1709,6 +1709,22 @@ describe("public website auth surface", () => {
       null,
     );
     assert.equal(
+      domainRedirectTarget({
+        hostname: "admin.wtron.org",
+        pathname: "/_server",
+        search: "?_serverFnId=admin-access",
+      }),
+      null,
+    );
+    assert.equal(
+      domainRedirectTarget({
+        hostname: "admin.wtron.org",
+        pathname: "/_server/",
+        search: "?_serverFnId=admin-access",
+      }),
+      null,
+    );
+    assert.equal(
       domainRedirectTarget({ hostname: "wtron.org", pathname: "/admin/wallets", search: "?x=1" }),
       "https://admin.wtron.org/admin/wallets?x=1",
     );
