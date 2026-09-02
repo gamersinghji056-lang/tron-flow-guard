@@ -65,5 +65,9 @@ these repository secrets:
 - `WTRON_RELEASE_KEY_ALIAS`
 - `WTRON_RELEASE_KEY_PASSWORD`
 
-The workflow uploads `wtron-android-release.apk` and `wtron-android-release.apk.sha256` as artifacts
-ready for the website download deployment.
+The workflow uploads `wtron-android-release.apk` and `wtron-android-release.apk.sha256` as build
+artifacts for every successful build. Unsigned builds are labeled `wtron-android-unsigned-test`.
+When all signing secrets are present, the workflow labels the artifact `wtron-android-signed-release`,
+publishes a non-draft GitHub Release and marks it as latest. The website's stable `/downloads/...`
+URLs redirect to the latest GitHub Release assets, so failed workflow runs do not replace the last
+valid signed APK.

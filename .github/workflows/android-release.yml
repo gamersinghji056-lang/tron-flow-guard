@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-android:
@@ -79,10 +79,38 @@ jobs:
           fi
           npm run android:publish-apk -- "${apk}"
 
-      - name: Upload release APK
+      - name: Publish signed APK to GitHub Releases
+        if: env.WTRON_SIGNED_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version="$(grep -E 'WTRON_ANDROID_VERSION\s*=' src/lib/app-release.ts | sed -E 's/.*"([^"]+)".*/\1/')"
+          tag="wtron-android-v${version}-${GITHUB_RUN_NUMBER}"
+          notes="Signed WTRON Android release ${version} built from ${GITHUB_SHA}."
+          gh release create "${tag}" \
+            public/downloads/wtron-android-release.apk \
+            public/downloads/wtron-android-release.apk.sha256 \
+            --draft \
+            --title "WTRON Android ${version}" \
+            --notes "${notes}"
+          gh release edit "${tag}" --draft=false --latest
+
+      - name: Upload signed release APK artifact
+        if: env.WTRON_SIGNED_RELEASE == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: wtron-android-release
+          name: wtron-android-signed-release
+          path: |
+            public/downloads/wtron-android-release.apk
+            public/downloads/wtron-android-release.apk.sha256
+          if-no-files-found: error
+
+      - name: Upload unsigned test APK artifact
+        if: env.WTRON_SIGNED_RELEASE != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wtron-android-unsigned-test
           path: |
             public/downloads/wtron-android-release.apk
             public/downloads/wtron-android-release.apk.sha256

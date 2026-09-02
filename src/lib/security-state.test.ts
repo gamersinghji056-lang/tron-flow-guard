@@ -49,6 +49,13 @@ import {
 } from "./production-url.ts";
 import { adminDomainClientRouteTarget, domainRedirectTarget } from "./domain-policy.ts";
 import {
+  WTRON_ANDROID_APK_PATH,
+  WTRON_ANDROID_RELEASE_APK_URL,
+  WTRON_ANDROID_RELEASE_REPOSITORY,
+  WTRON_ANDROID_RELEASE_SHA256_URL,
+  WTRON_ANDROID_SHA256_PATH,
+} from "./app-release.ts";
+import {
   createPersonalWalletMnemonic,
   deriveTronWalletFromMnemonic,
 } from "./tron-personal-wallet.ts";
@@ -1794,6 +1801,31 @@ describe("public website auth surface", () => {
       }),
       null,
     );
+  });
+
+  it("keeps Android download URLs stable while using persistent signed release assets", () => {
+    assert.equal(WTRON_ANDROID_APK_PATH, "/downloads/wtron-android-release.apk");
+    assert.equal(WTRON_ANDROID_SHA256_PATH, "/downloads/wtron-android-release.apk.sha256");
+    assert.equal(WTRON_ANDROID_RELEASE_REPOSITORY, "gamersinghji056-lang/tron-flow-guard");
+    assert.equal(
+      WTRON_ANDROID_RELEASE_APK_URL,
+      "https://github.com/gamersinghji056-lang/tron-flow-guard/releases/latest/download/wtron-android-release.apk",
+    );
+    assert.equal(
+      WTRON_ANDROID_RELEASE_SHA256_URL,
+      "https://github.com/gamersinghji056-lang/tron-flow-guard/releases/latest/download/wtron-android-release.apk.sha256",
+    );
+  });
+
+  it("publishes production Android downloads only from signed GitHub Releases", () => {
+    const workflow = readFileSync(resolve(".github/workflows/android-release.yml"), "utf8");
+    assert.match(workflow, /contents: write/);
+    assert.match(workflow, /Publish signed APK to GitHub Releases/);
+    assert.match(workflow, /if: env\.WTRON_SIGNED_RELEASE == 'true'/);
+    assert.match(workflow, /gh release create/);
+    assert.match(workflow, /--draft/);
+    assert.match(workflow, /gh release edit "\$\{tag\}" --draft=false --latest/);
+    assert.match(workflow, /actions\/upload-artifact@v4/);
   });
 
   it("accepts only the authoritative production Supabase URL", () => {

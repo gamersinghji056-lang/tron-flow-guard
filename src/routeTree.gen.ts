@@ -36,6 +36,7 @@ import { Route as AuthenticatedWithdrawRouteImport } from './routes/_authenticat
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminRegisterRouteImport } from './routes/admin.register'
 import { Route as DownloadAndroidRouteImport } from './routes/download.android'
+import { Route as DownloadsSplatRouteImport } from './routes/downloads.$'
 import { Route as TraderLoginRouteImport } from './routes/trader.login'
 import { Route as TraderRegisterRouteImport } from './routes/trader.register'
 import { Route as VendorLoginRouteImport } from './routes/vendor.login'
@@ -218,6 +219,11 @@ const AdminRegisterRoute = AdminRegisterRouteImport.update({
 const DownloadAndroidRoute = DownloadAndroidRouteImport.update({
   id: '/download/android',
   path: '/download/android',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadsSplatRoute = DownloadsSplatRouteImport.update({
+  id: '/downloads/$',
+  path: '/downloads/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TraderLoginRoute = TraderLoginRouteImport.update({
@@ -500,6 +506,7 @@ export interface FileRoutesByFullPath {
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
   '/download/android': typeof DownloadAndroidRoute
+  '/downloads/$': typeof DownloadsSplatRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
   '/vendor/login': typeof VendorLoginRoute
@@ -572,6 +579,7 @@ export interface FileRoutesByTo {
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
   '/download/android': typeof DownloadAndroidRoute
+  '/downloads/$': typeof DownloadsSplatRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
   '/vendor/login': typeof VendorLoginRoute
@@ -647,6 +655,7 @@ export interface FileRoutesById {
   '/admin/login': typeof AdminLoginRoute
   '/admin/register': typeof AdminRegisterRoute
   '/download/android': typeof DownloadAndroidRoute
+  '/downloads/$': typeof DownloadsSplatRoute
   '/trader/login': typeof TraderLoginRoute
   '/trader/register': typeof TraderRegisterRoute
   '/vendor/login': typeof VendorLoginRoute
@@ -722,6 +731,7 @@ export interface FileRouteTypes {
     | '/admin/login'
     | '/admin/register'
     | '/download/android'
+    | '/downloads/$'
     | '/trader/login'
     | '/trader/register'
     | '/vendor/login'
@@ -794,6 +804,7 @@ export interface FileRouteTypes {
     | '/admin/login'
     | '/admin/register'
     | '/download/android'
+    | '/downloads/$'
     | '/trader/login'
     | '/trader/register'
     | '/vendor/login'
@@ -868,6 +879,7 @@ export interface FileRouteTypes {
     | '/admin/login'
     | '/admin/register'
     | '/download/android'
+    | '/downloads/$'
     | '/trader/login'
     | '/trader/register'
     | '/vendor/login'
@@ -927,6 +939,7 @@ export interface RootRouteChildren {
   AdminLoginRoute: typeof AdminLoginRoute
   AdminRegisterRoute: typeof AdminRegisterRoute
   DownloadAndroidRoute: typeof DownloadAndroidRoute
+  DownloadsSplatRoute: typeof DownloadsSplatRoute
   TraderLoginRoute: typeof TraderLoginRoute
   TraderRegisterRoute: typeof TraderRegisterRoute
   VendorLoginRoute: typeof VendorLoginRoute
@@ -1129,6 +1142,13 @@ declare module '@tanstack/react-router' {
       path: '/download/android'
       fullPath: '/download/android'
       preLoaderRoute: typeof DownloadAndroidRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/downloads/$': {
+      id: '/downloads/$'
+      path: '/downloads/$'
+      fullPath: '/downloads/$'
+      preLoaderRoute: typeof DownloadsSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/trader/login': {
@@ -1626,6 +1646,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminLoginRoute: AdminLoginRoute,
   AdminRegisterRoute: AdminRegisterRoute,
   DownloadAndroidRoute: DownloadAndroidRoute,
+  DownloadsSplatRoute: DownloadsSplatRoute,
   TraderLoginRoute: TraderLoginRoute,
   TraderRegisterRoute: TraderRegisterRoute,
   VendorLoginRoute: VendorLoginRoute,
