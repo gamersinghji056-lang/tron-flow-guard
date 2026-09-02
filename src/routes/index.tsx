@@ -3,11 +3,16 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   Banknote,
+  Bell,
+  CheckCircle2,
+  Clock3,
   Download,
   HandCoins,
   History,
+  LockKeyhole,
   Menu,
   MessageCircle,
+  QrCode,
   ShieldCheck,
   Smartphone,
   Wallet2,
@@ -168,6 +173,12 @@ function Landing() {
         title="Mainnet wallet workflows without testnet choices."
         body="Create or import a TRON Mainnet wallet, switch wallets, view USDT/TRX balances, receive with QR, scan, send through protected server-side policy and inspect wallet-specific history."
         icon={Wallet2}
+        preview={[
+          "Standard and GasFree capability states",
+          "Receive QR and address copy",
+          "Send guarded by transaction password",
+          "Wallet-specific activity history",
+        ]}
       />
       <FeatureSection
         id="p2p"
@@ -175,6 +186,12 @@ function Landing() {
         title="Real orderbook flows with proof, timers and disputes."
         body="Trader P2P uses existing marketplace, payment method, proof, chat, escrow, timer and dispute logic. Vendor accounts remain separated from buyer functionality."
         icon={Banknote}
+        preview={[
+          "Buy and sell tabs for Traders",
+          "Counterparty profile and ranking inputs",
+          "Payment proof and UTR capture",
+          "Dispute state retained in orders",
+        ]}
         flip
       />
       <FeatureSection
@@ -183,6 +200,12 @@ function Landing() {
         title="Direct company sell orders with assigned Mainnet addresses."
         body="WTRON assigns the configured company receiving wallet and the existing listener verifies TRC20 USDT deposits before settlement state advances."
         icon={HandCoins}
+        preview={[
+          "Company receiving address assignment",
+          "TRC20 deposit confirmation tracking",
+          "INR payout method selection",
+          "Separate settlement states",
+        ]}
       />
       <FeatureSection
         id="vendors"
@@ -190,6 +213,12 @@ function Landing() {
         title="Approved vendors operate SELL-only tools."
         body="Vendor approval, wallet setup, payment accounts, sell listings, reservations, order review and history stay in a separate role-aware interface."
         icon={History}
+        preview={[
+          "Vendor approval gate",
+          "SELL listing creation",
+          "Payment account rails",
+          "Order review and confirmation",
+        ]}
         flip
       />
       <FeatureSection
@@ -198,6 +227,12 @@ function Landing() {
         title="Backend authority remains the source of truth."
         body="Transaction passwords, signer authorization, idempotency, fee reconciliation, RBAC, domain routing and listener architecture remain enforced server-side."
         icon={ShieldCheck}
+        preview={[
+          "Mainnet transfer policy checks",
+          "Signer authorization",
+          "Idempotent order actions",
+          "Admin isolation and RBAC",
+        ]}
       />
 
       <section id="about" className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
@@ -331,34 +366,57 @@ function FlowCard({ title, steps }: { title: string; steps: string[] }) {
 }
 
 function ProductPreview() {
+  const actions = [
+    { icon: Wallet2, label: "Wallet" },
+    { icon: Banknote, label: "P2P" },
+    { icon: HandCoins, label: "Trade" },
+    { icon: History, label: "Orders" },
+  ];
   return (
     <div className="mx-auto w-full max-w-[430px] rounded-[28px] border border-white/10 bg-[#0b0b0b] p-3 shadow-[0_40px_120px_-70px_rgba(240,68,68,0.7)]">
-      <div className="rounded-[22px] border border-white/10 bg-[#050505] p-5">
+      <div className="rounded-[22px] border border-white/10 bg-[#050505] p-4">
         <div className="flex items-center justify-between">
           <WtronLogo markClassName="h-8 w-8" textClassName="font-semibold" />
           <span className="rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-xs text-primary">
             TRON Mainnet
           </span>
         </div>
-        <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.04] p-4">
-          <p className="text-xs text-slate-500">Production wallet</p>
-          <p className="mt-2 text-2xl font-semibold">Send / Receive / Trade</p>
-          <p className="mt-2 text-sm leading-6 text-slate-400">
-            Live balances, orders and transaction states load only after authentication.
-          </p>
+        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Total assets</p>
+              <p className="mt-2 text-2xl font-semibold">Live after login</p>
+            </div>
+            <ShieldCheck className="h-5 w-5 text-primary" />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <span className="rounded-xl bg-black/30 p-3 text-slate-300">USDT / TRX balances</span>
+            <span className="rounded-xl bg-black/30 p-3 text-slate-300">Mainnet only UX</span>
+          </div>
         </div>
-        <div className="mt-5 grid grid-cols-4 gap-3 text-center text-xs text-slate-300">
-          {[
-            { icon: Wallet2, label: "Wallet" },
-            { icon: Banknote, label: "P2P" },
-            { icon: HandCoins, label: "Trade" },
-            { icon: History, label: "Orders" },
-          ].map(({ icon: PreviewIcon, label }) => (
+        <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs text-slate-300">
+          {actions.map(({ icon: PreviewIcon, label }) => (
             <div key={label}>
-              <span className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-white/8 text-primary">
+              <span className="mx-auto grid h-10 w-10 place-items-center rounded-2xl bg-white/8 text-primary">
                 <PreviewIcon className="h-4 w-4" />
               </span>
               <span className="mt-2 block">{label}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 space-y-2">
+          {[
+            { label: "Receive", icon: QrCode },
+            { label: "Payment proof", icon: Clock3 },
+            { label: "Notifications", icon: Bell },
+          ].map(({ label, icon: Icon }) => (
+            <div
+              key={label}
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-sm"
+            >
+              <Icon className="h-4 w-4 text-primary" />
+              <span className="flex-1 text-slate-300">{label}</span>
+              <CheckCircle2 className="h-4 w-4 text-primary" />
             </div>
           ))}
         </div>
@@ -382,6 +440,7 @@ function FeatureSection({
   title,
   body,
   icon: Icon,
+  preview,
   flip = false,
 }: {
   id: string;
@@ -389,6 +448,7 @@ function FeatureSection({
   title: string;
   body: string;
   icon: typeof Wallet2;
+  preview: string[];
   flip?: boolean;
 }) {
   return (
@@ -404,20 +464,28 @@ function FeatureSection({
         <p className="mt-5 max-w-xl text-sm leading-7 text-slate-400">{body}</p>
       </div>
       <div
-        className={`rounded-lg border border-white/10 bg-white/[0.035] p-6 ${
+        className={`rounded-2xl border border-white/10 bg-white/[0.035] p-5 ${
           flip ? "lg:order-1" : ""
         }`}
       >
-        <span className="grid h-12 w-12 place-items-center rounded-lg bg-primary/15 text-primary">
-          <Icon className="h-6 w-6" />
-        </span>
-        <div className="mt-8 h-2 rounded-full bg-white/8">
-          <div className="h-full w-2/3 rounded-full bg-primary" />
+        <div className="flex items-center justify-between gap-3">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/15 text-primary">
+            <Icon className="h-6 w-6" />
+          </span>
+          <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-400">
+            Production flow
+          </span>
         </div>
-        <div className="mt-4 grid gap-2">
-          <div className="h-10 rounded-md border border-white/10 bg-black/30" />
-          <div className="h-10 rounded-md border border-white/10 bg-black/30" />
-          <div className="h-10 rounded-md border border-white/10 bg-black/30" />
+        <div className="mt-5 grid gap-2">
+          {preview.map((item) => (
+            <div
+              key={item}
+              className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-slate-300"
+            >
+              <LockKeyhole className="h-4 w-4 shrink-0 text-primary" />
+              <span>{item}</span>
+            </div>
+          ))}
         </div>
       </div>
     </section>

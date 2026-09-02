@@ -454,8 +454,8 @@ function VendorPortalPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#05070B] text-white">
-      <header className="border-b border-white/10 bg-black/40">
+    <main className="min-h-screen bg-[#050505] pb-24 text-white md:pb-0">
+      <header className="hidden border-b border-white/10 bg-black/40 md:block">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4">
           <Link to="/" className="text-lg font-semibold">
             WTRON Vendor
@@ -482,27 +482,9 @@ function VendorPortalPage() {
             <LogOut className="h-5 w-5" />
           </Button>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-4 pb-3 md:hidden">
-          {tabs.map((item) => (
-            <button
-              key={item}
-              className={`rounded-md px-3 py-1.5 text-sm capitalize ${tab === item ? "bg-primary" : "bg-white/6 text-slate-300"}`}
-              onClick={() => {
-                setTab(item);
-                window.history.replaceState(
-                  null,
-                  "",
-                  item === "home" ? "/vendor" : `/vendor?tab=${item}`,
-                );
-              }}
-            >
-              {item}
-            </button>
-          ))}
-        </nav>
       </header>
 
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
+      <div className="mx-auto max-w-7xl space-y-6 px-3 py-4 sm:px-4 sm:py-6">
         {tab === "home" ? (
           <>
             <h1 className="text-2xl font-semibold">{portal.vendor.name}</h1>

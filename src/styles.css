@@ -195,6 +195,81 @@
   font-variant-numeric: tabular-nums;
 }
 
+.wtron-product-shell {
+  --product-bottom-nav: 5.75rem;
+}
+
+.wtron-product-shell .panel,
+.wtron-product-shell .wtron-surface {
+  background: color-mix(in oklch, var(--color-card) 86%, black);
+  border-color: color-mix(in oklch, var(--color-border) 75%, white);
+}
+
+.wtron-product-shell input,
+.wtron-product-shell textarea,
+.wtron-product-shell select {
+  min-height: 2.75rem;
+  border-color: rgb(255 255 255 / 0.1);
+  background-color: rgb(0 0 0 / 0.32);
+}
+
+.wtron-product-shell button,
+.wtron-product-shell a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 767px) {
+  .wtron-product-shell {
+    background:
+      radial-gradient(circle at 50% -10%, rgb(240 68 68 / 0.16), transparent 19rem), #050505;
+  }
+
+  .wtron-product-shell h1 {
+    font-size: 1.35rem;
+    line-height: 1.2;
+  }
+
+  .wtron-product-shell h2 {
+    font-size: 1rem;
+    line-height: 1.3;
+  }
+
+  .wtron-product-shell .panel {
+    border-radius: 1.25rem;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.04) inset,
+      0 18px 44px -34px rgb(0 0 0 / 1);
+  }
+
+  .wtron-product-shell .panel.p-5,
+  .wtron-product-shell .panel .p-5 {
+    padding: 1rem;
+  }
+
+  .wtron-product-shell .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1rem;
+  }
+
+  .wtron-product-shell .grid {
+    gap: 0.75rem;
+  }
+
+  .wtron-product-shell table {
+    display: block;
+    min-width: 42rem;
+  }
+
+  .wtron-product-shell .overflow-x-auto,
+  .wtron-product-shell .panel.overflow-hidden {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .wtron-product-shell main {
+    padding-bottom: calc(var(--product-bottom-nav) + env(safe-area-inset-bottom));
+  }
+}
+
 [data-mini-theme="light"] {
   color-scheme: light;
 }

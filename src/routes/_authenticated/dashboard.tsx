@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import QRCode from "qrcode";
-import { Copy, ExternalLink, Loader2, RefreshCw, ShieldCheck, Wallet2 } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Banknote,
+  Copy,
+  ExternalLink,
+  HandCoins,
+  Loader2,
+  RefreshCw,
+  ShieldCheck,
+  Wallet2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { createDepositRequest } from "@/lib/deposits.functions";
@@ -112,6 +123,26 @@ function useDeposits(userId: string | undefined) {
   return { deposits, wallets, loading, reload: () => void 0 };
 }
 
+function HomeAction({
+  to,
+  icon: Icon,
+  label,
+}: {
+  to: string;
+  icon: typeof Wallet2;
+  label: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-sm font-medium transition hover:border-primary/50 hover:bg-white/8"
+    >
+      <Icon className="h-5 w-5 text-primary" />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
 function Countdown({ expiresAt }: { expiresAt: string }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -188,6 +219,40 @@ function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <section className="panel overflow-hidden p-5">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+              WTRON Mainnet
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-normal">Home</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Wallet, P2P, direct WTRON trade and order activity use your live account state.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <Button asChild variant="secondary">
+              <Link to="/wallet">
+                <ArrowDownLeft className="mr-1.5 h-4 w-4" />
+                Receive
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/wallet">
+                <ArrowUpRight className="mr-1.5 h-4 w-4" />
+                Send
+              </Link>
+            </Button>
+          </div>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <HomeAction to="/wallet" icon={Wallet2} label="Wallet" />
+          <HomeAction to="/p2p" icon={Banknote} label="P2P" />
+          <HomeAction to="/trade" icon={HandCoins} label="Trade" />
+          <HomeAction to="/orders" icon={ShieldCheck} label="Orders" />
+        </div>
+      </section>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Available balance"
