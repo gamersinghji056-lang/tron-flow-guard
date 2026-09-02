@@ -1278,6 +1278,7 @@ export async function fetchTelegramOverview(initData: string) {
       )
       .eq("user_id", userId as never)
       .eq("is_archived", false as never)
+      .eq("network", "trc20-mainnet" as never)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true })
       .limit(20),

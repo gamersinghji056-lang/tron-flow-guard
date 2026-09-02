@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, Plus, Power, Star } from "lucide-react";
+import { Loader2, Plus, Power, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import {
   addCompanyWallet,
   makeCompanyWalletDefault,
+  removeCompanyWalletPurpose,
   setCompanyWalletActive,
   updateCompanyWallet,
 } from "@/lib/admin.functions";
@@ -70,13 +71,21 @@ interface WalletDetailRow {
   created_at?: string | null;
 }
 
+interface PurposeAssignmentRow {
+  wallet_id: string;
+  purpose: string;
+  is_active?: boolean | null;
+}
+
 function AdminWallets() {
   const { isAdmin, loading } = useAuth();
   const addCompanyWalletFn = useServerFn(addCompanyWallet);
   const updateCompanyWalletFn = useServerFn(updateCompanyWallet);
+  const removeCompanyWalletPurposeFn = useServerFn(removeCompanyWalletPurpose);
   const setCompanyWalletActiveFn = useServerFn(setCompanyWalletActive);
   const makeCompanyWalletDefaultFn = useServerFn(makeCompanyWalletDefault);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
+  const [purposeAssignments, setPurposeAssignments] = useState<Record<string, string[]>>({});
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [network, setNetwork] = useState<ChainNetwork>("trc20-nile");
@@ -92,14 +101,31 @@ function AdminWallets() {
   const [pending, setPending] = useState(false);
 
   async function load() {
-    const { data } = await supabase
-      .from("wallets")
-      .select(
-        "id, name, address, network, purpose, priority, min_deposit, max_deposit, onchain_usdt_balance, onchain_trx_balance, onchain_checked_at, last_listener_scan_at, is_active, is_default, created_at",
-      )
-      .order("priority", { ascending: true })
-      .order("created_at", { ascending: true });
+    const [{ data }, assignments] = await Promise.all([
+      supabase
+        .from("wallets")
+        .select(
+          "id, name, address, network, purpose, priority, min_deposit, max_deposit, onchain_usdt_balance, onchain_trx_balance, onchain_checked_at, last_listener_scan_at, is_active, is_default, created_at",
+        )
+        .order("priority", { ascending: true })
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("wallet_purpose_assignments" as never)
+        .select("wallet_id, purpose, is_active")
+        .eq("is_active", true as never),
+    ]);
     setWallets((data ?? []) as unknown as WalletRow[]);
+    const nextAssignments: Record<string, string[]> = {};
+    for (const wallet of (data ?? []) as WalletRow[]) {
+      nextAssignments[wallet.id] = wallet.purpose ? [wallet.purpose] : ["USER_DEPOSIT"];
+    }
+    for (const assignment of (assignments.data ?? []) as unknown as PurposeAssignmentRow[]) {
+      if (!assignment.wallet_id || !assignment.purpose || assignment.is_active === false) continue;
+      nextAssignments[assignment.wallet_id] = Array.from(
+        new Set([...(nextAssignments[assignment.wallet_id] ?? []), assignment.purpose]),
+      );
+    }
+    setPurposeAssignments(nextAssignments);
   }
 
   async function loadDetail(wallet: WalletRow) {
@@ -214,6 +240,28 @@ function AdminWallets() {
 
   async function deactivate(wallet: WalletRow) {
     await toggleActive(wallet, false);
+  }
+
+  async function removePurpose(wallet: WalletRow, item: string) {
+    const activePurposes = purposeAssignments[wallet.id] ?? [wallet.purpose ?? "USER_DEPOSIT"];
+    if (activePurposes.length <= 1) {
+      toast.error("Assign another purpose before removing the last purpose");
+      return;
+    }
+    const confirmed = window.confirm(`Remove ${item.replaceAll("_", " ")} from ${wallet.name}?`);
+    if (!confirmed) return;
+    try {
+      await removeCompanyWalletPurposeFn({
+        data: {
+          walletId: wallet.id,
+          purpose: item as "USER_DEPOSIT" | "DIRECT_SELL" | "FEE_COLLECTION" | "HOT" | "OTHER",
+        },
+      });
+      toast.success("Purpose removed");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove purpose");
+    }
   }
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading...</p>;
@@ -358,7 +406,28 @@ function AdminWallets() {
                       </a>
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{chain.shortLabel}</td>
-                    <td className="px-4 py-2.5 text-xs">{wallet.purpose ?? "USER_DEPOSIT"}</td>
+                    <td className="px-4 py-2.5 text-xs">
+                      <div className="flex flex-wrap gap-1.5">
+                        {(purposeAssignments[wallet.id] ?? [wallet.purpose ?? "USER_DEPOSIT"]).map(
+                          (item) => (
+                            <span
+                              key={item}
+                              className="inline-flex items-center gap-1 rounded-md border px-2 py-1"
+                            >
+                              {item.replaceAll("_", " ")}
+                              <button
+                                type="button"
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={() => void removePurpose(wallet, item)}
+                                title={`Remove ${item.replaceAll("_", " ")}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    </td>
                     <td className="mono px-4 py-2.5 text-xs">
                       {Number(wallet.onchain_usdt_balance ?? 0).toLocaleString()} USDT
                       <br />

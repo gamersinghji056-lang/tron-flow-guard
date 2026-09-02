@@ -865,25 +865,127 @@ export async function revealWalletRecoveryPhrase(params: {
   };
 }
 
-export async function archiveOwnedWallet(userId: string, walletId: string) {
+const ACTIVE_NORMAL_SEND_STATUSES = [
+  "CREATED",
+  "VALIDATING",
+  "AUTHORIZED",
+  "SIGNING",
+  "SIGNED",
+  "BROADCASTING",
+  "BROADCAST",
+  "CONFIRMING",
+] as const;
+
+const ACTIVE_GASFREE_SEND_STATUSES = [
+  "CREATED",
+  "VALIDATING",
+  "AUTHORIZED",
+  "SUBMITTED_TO_PROVIDER",
+  "BROADCAST",
+  "CONFIRMING",
+] as const;
+
+async function archivePersonalWallet(input: {
+  actorId: string;
+  actorType: "user" | "admin";
+  walletId: string;
+  ownerUserId?: string | null;
+}) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: wallet, error } = await supabaseAdmin
-    .from("user_wallets")
-    .select("id, user_id, balance, is_default")
-    .eq("id", walletId)
+    .from("user_wallets" as never)
+    .select("id, user_id, is_archived")
+    .eq("id", input.walletId as never)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!wallet || wallet.user_id !== userId) throw new Error("Wallet not found");
-  if (Number(wallet.balance) > 0) {
-    throw new Error("Move the remaining balance out before archiving this wallet");
+  const owner = wallet as { id: string; user_id: string; is_archived?: boolean | null } | null;
+  if (!owner || owner.is_archived) throw new Error("Wallet not found");
+  if (input.ownerUserId && owner.user_id !== input.ownerUserId) throw new Error("Wallet not found");
+
+  await refreshPersonalWalletOnChainBalance(owner.user_id, input.walletId);
+
+  const [walletAfterRefresh, normalSends, gasfreeSends, gasfreeChildSends] = await Promise.all([
+    supabaseAdmin
+      .from("user_wallets" as never)
+      .select("id, balance, onchain_balance, onchain_trx_balance")
+      .eq("id", input.walletId as never)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("wallet_send_requests" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("wallet_id", input.walletId as never)
+      .in("status", ACTIVE_NORMAL_SEND_STATUSES as never),
+    supabaseAdmin
+      .from("gasfree_transfer_requests" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("wallet_id", input.walletId as never)
+      .in("status", ACTIVE_GASFREE_SEND_STATUSES as never),
+    supabaseAdmin
+      .from("gasfree_transfer_requests" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("general_wallet_id", input.walletId as never)
+      .in("status", ACTIVE_GASFREE_SEND_STATUSES as never),
+  ]);
+  if (walletAfterRefresh.error) throw new Error(walletAfterRefresh.error.message);
+  if (normalSends.error) throw new Error(normalSends.error.message);
+  if (gasfreeSends.error) throw new Error(gasfreeSends.error.message);
+  if (gasfreeChildSends.error) throw new Error(gasfreeChildSends.error.message);
+
+  if ((normalSends.count ?? 0) + (gasfreeSends.count ?? 0) + (gasfreeChildSends.count ?? 0) > 0) {
+    throw new Error("This wallet has a pending transfer. Wait for it to finish before removing.");
+  }
+
+  const refreshed = walletAfterRefresh.data as {
+    balance?: number | string | null;
+    onchain_balance?: number | string | null;
+    onchain_trx_balance?: number | string | null;
+  } | null;
+  const usdtBalance = Math.max(
+    Number(refreshed?.balance ?? 0) || 0,
+    Number(refreshed?.onchain_balance ?? 0) || 0,
+  );
+  const trxBalance = Number(refreshed?.onchain_trx_balance ?? 0) || 0;
+  if (usdtBalance > 0 || trxBalance > 0) {
+    throw new Error("Move the remaining USDT and TRX out before removing this wallet.");
   }
 
   const { error: updateError } = await supabaseAdmin
-    .from("user_wallets")
-    .update({ is_archived: true, is_default: false })
-    .eq("id", walletId);
+    .from("user_wallets" as never)
+    .update({ is_archived: true, is_default: false, monitored: false } as never)
+    .eq("id", input.walletId as never)
+    .eq("user_id", owner.user_id as never);
   if (updateError) throw new Error(updateError.message);
+
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: input.actorId,
+    actor_type: input.actorType,
+    action: input.actorType === "admin" ? "wallet.admin_archived" : "wallet.archived",
+    entity_type: "user_wallet",
+    entity_id: input.walletId,
+    metadata: {
+      owner_user_id: owner.user_id,
+      usdt_balance: usdtBalance,
+      trx_balance: trxBalance,
+    },
+  } as never);
   return { ok: true };
+}
+
+export async function archiveOwnedWallet(userId: string, walletId: string) {
+  return archivePersonalWallet({
+    actorId: userId,
+    actorType: "user",
+    ownerUserId: userId,
+    walletId,
+  });
+}
+
+export async function archiveUserWalletByAdmin(actorId: string, walletId: string) {
+  return archivePersonalWallet({
+    actorId,
+    actorType: "admin",
+    walletId,
+  });
 }
 
 export async function refreshPersonalWalletOnChainBalance(

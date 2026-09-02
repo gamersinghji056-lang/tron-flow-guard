@@ -167,7 +167,6 @@ type MiniScreen =
 type P2pTab = "buy" | "sell" | "myAds" | "myOrders";
 type TradeTab = "sell" | "buy";
 type ReceiveAsset = "USDT" | "TRX";
-type WalletType = "standard" | "gasfree";
 type WalletHistoryAssetFilter = "ALL" | ReceiveAsset;
 type WalletHistoryDirectionFilter = "ALL" | "in" | "out";
 
@@ -1037,17 +1036,10 @@ function TelegramMiniApp() {
   const [vendorAmount, setVendorAmount] = useState("");
   const [vendorRail, setVendorRail] = useState<"upi" | "imps" | "neft" | "rtgs">("upi");
   const [createWalletName, setCreateWalletName] = useState("Main Wallet");
-  const [createWalletType, setCreateWalletType] = useState<WalletType>("standard");
-  const [createWalletNetwork, setCreateWalletNetwork] = useState<ChainNetwork>("trc20-mainnet");
-  const [importNetworkRequired, setImportNetworkRequired] = useState<{
-    reason: "multiple_active" | "no_activity";
-    address: string;
-  } | null>(null);
   const [walletPassword, setWalletPassword] = useState("");
   const [walletCurrentPassword, setWalletCurrentPassword] = useState("");
   const [walletPasswordConfirm, setWalletPasswordConfirm] = useState("");
   const [transactionPasswordEnabled, setTransactionPasswordEnabled] = useState(false);
-  const [nileTestWalletEnabled, setNileTestWalletEnabled] = useState(false);
   const [transactionPasswordChangeOpen, setTransactionPasswordChangeOpen] = useState(false);
   const [importPhrase, setImportPhrase] = useState("");
   const [backupPassword, setBackupPassword] = useState("");
@@ -1097,7 +1089,7 @@ function TelegramMiniApp() {
   });
 
   const profile = overview?.profile ?? null;
-  const wallets = overview?.wallets ?? [];
+  const wallets = (overview?.wallets ?? []).filter((wallet) => wallet.network === "trc20-mainnet");
   const selectedWallet = selectActiveWallet(wallets, selectedWalletId);
   const selectedGasfreeWallet =
     selectedWallet?.wallet_role === "gasfree"
@@ -1300,7 +1292,6 @@ function TelegramMiniApp() {
     if (referralResult.status === "fulfilled") setReferral(referralResult.value as ReferralSummary);
     if (securityResult.status === "fulfilled") {
       setTransactionPasswordEnabled(Boolean(securityResult.value.transactionPasswordEnabled));
-      setNileTestWalletEnabled(Boolean(securityResult.value.nileTestWalletEnabled));
       setTransactionPasswordChangeOpen(false);
     }
     if (isVendorApp) {
@@ -1952,7 +1943,7 @@ function TelegramMiniApp() {
       const created = await createPersonalWallet({
         data: {
           name: createWalletName,
-          network: createWalletNetwork,
+          network: "trc20-mainnet",
           walletType: "standard",
           makeDefault: wallets.length === 0,
           transactionPassword: walletPassword,
@@ -1979,28 +1970,18 @@ function TelegramMiniApp() {
       const imported = await importPersonalWallet({
         data: {
           name: createWalletName,
-          network: createWalletNetwork,
-          walletType: createWalletType,
+          network: "trc20-mainnet",
+          walletType: "standard",
           makeDefault: wallets.length === 0,
           transactionPassword: walletPassword,
           mnemonic: importPhrase,
-          networkConfirmed: importNetworkRequired !== null,
+          networkConfirmed: true,
         },
       });
-      if ((imported as { requiresNetworkSelection?: boolean }).requiresNetworkSelection) {
-        const selection = imported as {
-          reason: "multiple_active" | "no_activity";
-          address: string;
-        };
-        setImportNetworkRequired({ reason: selection.reason, address: selection.address });
-        toast.info("Choose the wallet network to finish import");
-        return;
-      }
       const walletId = (imported as { wallet?: { id?: string } }).wallet?.id;
       if (walletId) setSelectedWalletId(walletId);
       setImportPhrase("");
       setWalletPassword("");
-      setImportNetworkRequired(null);
       const importResult = imported as { existing?: boolean; message?: string };
       toast.success(
         importResult.existing
@@ -2516,16 +2497,11 @@ function TelegramMiniApp() {
           <WalletCreateScreen
             name={createWalletName}
             setName={setCreateWalletName}
-            walletType={createWalletType}
-            setWalletType={setCreateWalletType}
-            network={createWalletNetwork}
-            setNetwork={setCreateWalletNetwork}
             password={walletPassword}
             setPassword={setWalletPassword}
             confirm={walletPasswordConfirm}
             setConfirm={setWalletPasswordConfirm}
             busy={busy}
-            nileTestWalletEnabled={nileTestWalletEnabled}
             t={t}
             onSubmit={submitCreateWallet}
           />
@@ -2536,9 +2512,6 @@ function TelegramMiniApp() {
             setName={setCreateWalletName}
             phrase={importPhrase}
             setPhrase={setImportPhrase}
-            network={createWalletNetwork}
-            setNetwork={setCreateWalletNetwork}
-            networkRequired={importNetworkRequired}
             password={walletPassword}
             setPassword={setWalletPassword}
             busy={busy}
@@ -3344,16 +3317,11 @@ function WalletScreen({
 function WalletCreateScreen(props: {
   name: string;
   setName: (value: string) => void;
-  walletType: WalletType;
-  setWalletType: (value: WalletType) => void;
-  network: ChainNetwork;
-  setNetwork: (value: ChainNetwork) => void;
   password: string;
   setPassword: (value: string) => void;
   confirm: string;
   setConfirm: (value: string) => void;
   busy: boolean;
-  nileTestWalletEnabled: boolean;
   t: MiniT;
   onSubmit: (event: FormEvent) => void;
 }) {
@@ -3367,71 +3335,14 @@ function WalletCreateScreen(props: {
             placeholder={props.t("mainWallet")}
           />
         </FormCard>
-        <FormCard title={`2. ${props.t("chooseWalletType")}`}>
-          <div className="grid gap-2">
-            <TypeOption
-              active={props.walletType === "standard"}
-              icon={<TronIcon />}
-              title={props.t("standardTronWallet")}
-              body={props.t("standardWalletDescription")}
-              onClick={() => props.setWalletType("standard")}
-            />
-            <TypeOption
-              active={false}
-              icon={<GasFreeIcon />}
-              title={props.t("gasfreeWallet")}
-              body={`${props.t("gasfreeDescription")} ${props.t("comingSoonUnavailable")}`}
-              disabled
-              onClick={() => props.setWalletType("standard")}
-            />
-          </div>
-        </FormCard>
-        <FormCard title={`3. TRON Mainnet`}>
+        <FormCard title={`2. TRON Mainnet`}>
           <div className="space-y-2">
             <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-50">
-              Customer wallets use TRON Mainnet in production.
+              WTRON creates a standard TRON Mainnet wallet for Send and Receive.
             </div>
-            {props.nileTestWalletEnabled ? (
-              <div className="grid gap-2">
-                <button
-                  type="button"
-                  className={`w-full rounded-xl border p-3 text-left text-sm transition ${
-                    props.network === "trc20-mainnet"
-                      ? "border-emerald-300 bg-emerald-300/15 text-emerald-50"
-                      : "border-slate-700 bg-slate-900/70 text-slate-300"
-                  }`}
-                  onClick={() => props.setNetwork("trc20-mainnet")}
-                >
-                  <span className="block font-semibold">Create Mainnet Wallet</span>
-                  <span className="mt-1 block text-xs text-slate-400">
-                    Production TRON Mainnet wallet.
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={`w-full rounded-xl border p-3 text-left text-sm transition ${
-                    props.network === "trc20-nile"
-                      ? "border-amber-300 bg-amber-300/15 text-amber-50"
-                      : "border-slate-700 bg-slate-900/70 text-slate-300"
-                  }`}
-                  onClick={() => props.setNetwork("trc20-nile")}
-                >
-                  <span className="block font-semibold">Create Nile Test Wallet</span>
-                  <span className="mt-1 block text-xs text-slate-400">
-                    NILE TESTNET only. Uses the same encrypted wallet and GasFree discovery
-                    pipeline.
-                  </span>
-                </button>
-              </div>
-            ) : null}
-            {props.network === "trc20-nile" ? (
-              <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-xs font-semibold text-amber-100">
-                NILE TESTNET
-              </div>
-            ) : null}
           </div>
         </FormCard>
-        <FormCard title={`4. ${props.t("transactionPassword")}`}>
+        <FormCard title={`3. ${props.t("transactionPassword")}`}>
           <div className="space-y-2">
             <Input
               type="password"
@@ -3464,9 +3375,6 @@ function WalletImportScreen(props: {
   setName: (value: string) => void;
   phrase: string;
   setPhrase: (value: string) => void;
-  network: ChainNetwork;
-  setNetwork: (value: ChainNetwork) => void;
-  networkRequired: { reason: "multiple_active" | "no_activity"; address: string } | null;
   password: string;
   setPassword: (value: string) => void;
   busy: boolean;
@@ -3483,35 +3391,9 @@ function WalletImportScreen(props: {
             placeholder={props.t("tradingWallet")}
           />
         </FormCard>
-        <FormCard title={props.t("walletType")}>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <div className="flex items-center gap-3">
-              <TronIcon className="h-8 w-8" />
-              <div>
-                <p className="text-sm font-semibold">{props.t("standardTronWallet")}</p>
-                <p className="text-xs text-slate-400">{props.t("externalImportStandard")}</p>
-              </div>
-            </div>
-          </div>
-        </FormCard>
         <FormCard title="TRON Mainnet">
-          {props.networkRequired ? (
-            <div className="mb-3 rounded-xl border border-yellow-400/30 bg-yellow-400/10 p-3 text-xs text-slate-200">
-              <p className="font-semibold text-white">
-                {props.networkRequired.reason === "multiple_active"
-                  ? props.t("multipleNetworksFound")
-                  : props.t("noNetworkActivityFound")}
-              </p>
-              <p className="mt-1">
-                {props.t("confirmNetworkForAddress", {
-                  address: shortenHash(props.networkRequired.address),
-                })}
-              </p>
-            </div>
-          ) : null}
           <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-50">
-            Mainnet is selected automatically for production imports. If only Nile testnet activity
-            is detected, WTRON preserves it as a Test Wallet / Nile wallet.
+            Imports are added as standard TRON Mainnet wallets.
           </div>
         </FormCard>
         <FormCard title={props.t("recoveryPhrase")}>
@@ -6434,68 +6316,6 @@ function FormCard({ title, children }: { title: string; children: React.ReactNod
       <h2 className="text-sm font-semibold">{title}</h2>
       {children}
     </Surface>
-  );
-}
-function NetworkPicker({
-  network,
-  setNetwork,
-  t,
-}: {
-  network: ChainNetwork;
-  setNetwork: (value: ChainNetwork) => void;
-  t: MiniT;
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {(["trc20-nile", "trc20-mainnet"] as ChainNetwork[]).map((value) => {
-        return (
-          <Button
-            key={value}
-            type="button"
-            variant={network === value ? "default" : "secondary"}
-            onClick={() => setNetwork(value)}
-          >
-            {networkLabelForMini(value, t)}
-          </Button>
-        );
-      })}
-    </div>
-  );
-}
-function TypeOption({
-  active,
-  icon,
-  title,
-  body,
-  disabled,
-  onClick,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={`flex items-center gap-3 rounded-2xl border p-3 text-left ${
-        disabled
-          ? "border-white/10 bg-black/10 opacity-60"
-          : active
-            ? "border-emerald-500 bg-emerald-500/12"
-            : "border-white/10 bg-white/5"
-      }`}
-      onClick={onClick}
-    >
-      <span>{icon}</span>
-      <span>
-        <span className="block text-sm font-semibold">{title}</span>
-        <span className="text-xs text-slate-400">{body}</span>
-      </span>
-    </button>
   );
 }
 function TokenMetric({

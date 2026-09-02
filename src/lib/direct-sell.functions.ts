@@ -49,6 +49,42 @@ function scalar(value: unknown) {
   return value;
 }
 
+async function walletHasPurposeAssignment(walletId: string, purpose: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .select("wallet_id")
+    .eq("wallet_id", walletId as never)
+    .eq("purpose", purpose as never)
+    .eq("is_active", true as never)
+    .maybeSingle();
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function findCompanyWalletForPurpose(network: ChainNetwork, purpose: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("wallets")
+    .select("id, address, network, purpose")
+    .eq("network", network as never)
+    .eq("is_active", true as never)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  for (const wallet of (data ?? []) as Array<{
+    id: string;
+    address: string;
+    network: string;
+    purpose?: string | null;
+  }>) {
+    if (wallet.purpose === purpose || (await walletHasPurposeAssignment(wallet.id, purpose))) {
+      return wallet;
+    }
+  }
+  return null;
+}
+
 async function getNumericSetting(key: string, fallback: number) {
   const raw = scalar(await readSetting(key));
   const number = Number(raw ?? fallback);
@@ -65,7 +101,7 @@ async function createDirectSellOrderRecord(input: {
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const activeNetwork = String(
-    scalar(await readSetting("active_network")) || "trc20-nile",
+    scalar(await readSetting("active_network")) || "trc20-mainnet",
   ) as ChainNetwork;
   const requiredConfirmations = await getNumericSetting("required_confirmations", 16);
   const expiryMinutes = await getNumericSetting("deposit_expiry_minutes", 120);
@@ -80,17 +116,7 @@ async function createDirectSellOrderRecord(input: {
   }
   const expectedInr = Math.round(input.amount * rate * 100) / 100;
 
-  const { data: wallet, error: walletError } = await supabaseAdmin
-    .from("wallets")
-    .select("id, address, network")
-    .eq("network", activeNetwork as never)
-    .eq("is_active", true)
-    .order("is_default", { ascending: false })
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (walletError) throw new Error(walletError.message);
-  const companyWallet = wallet as { id: string; address: string; network: string } | null;
+  const companyWallet = await findCompanyWalletForPurpose(activeNetwork, "DIRECT_SELL");
   if (!companyWallet) throw new Error("No active company wallet is configured");
 
   const paymentAssignment = directSellPayoutMetadata({

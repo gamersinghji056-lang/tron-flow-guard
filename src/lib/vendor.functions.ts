@@ -333,6 +333,7 @@ export const fetchVendorPortal = createServerFn({ method: "GET" })
         )
         .eq("user_id", context.userId)
         .eq("is_archived", false)
+        .eq("network", "trc20-mainnet")
         .order("is_default", { ascending: false }),
     ]);
     for (const result of [accounts, listings, orders, wallets]) {

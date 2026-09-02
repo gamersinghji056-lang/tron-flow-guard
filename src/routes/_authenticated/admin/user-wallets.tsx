@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { SectionHeader } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { networkConfig } from "@/lib/chain";
 import {
+  archiveUserWalletAsAdmin,
   getAdminGasFreeWalletDiagnostics,
   setNileTestWalletAccess,
   setUserTransferAccess,
@@ -75,6 +76,7 @@ interface WalletMonitorResult {
 
 function AdminUserWalletsPage() {
   const loadDiagnostics = useServerFn(getAdminGasFreeWalletDiagnostics);
+  const archiveWallet = useServerFn(archiveUserWalletAsAdmin);
   const setNileAccess = useServerFn(setNileTestWalletAccess);
   const setTransferAccess = useServerFn(setUserTransferAccess);
   const [result, setResult] = useState<WalletMonitorResult | null>(null);
@@ -162,6 +164,20 @@ function AdminUserWalletsPage() {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update transfer access");
+    }
+  }
+
+  async function archiveMonitoredWallet(row: WalletMonitorRow) {
+    const confirmed = window.confirm(
+      `Archive ${row.walletName}? The server will block archival if balances or pending sends exist.`,
+    );
+    if (!confirmed) return;
+    try {
+      await archiveWallet({ data: { walletId: row.walletId } });
+      toast.success("Wallet archived");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not archive wallet");
     }
   }
 
@@ -271,6 +287,7 @@ function AdminUserWalletsPage() {
                     row={row}
                     onToggleNile={toggleNile}
                     onToggleTransfers={toggleTransfers}
+                    onArchive={archiveMonitoredWallet}
                   />
                 ))
               )}
@@ -286,10 +303,12 @@ function WalletRow({
   row,
   onToggleNile,
   onToggleTransfers,
+  onArchive,
 }: {
   row: WalletMonitorRow;
   onToggleNile: (row: WalletMonitorRow) => void;
   onToggleTransfers: (row: WalletMonitorRow) => void;
+  onArchive: (row: WalletMonitorRow) => void;
 }) {
   const explorer =
     row.network && row.generalWalletAddress
@@ -363,6 +382,10 @@ function WalletRow({
             onClick={() => void onToggleTransfers(row)}
           >
             {row.transferEnabled ? "Disable Transfers" : "Enable Transfers"}
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void onArchive(row)}>
+            <Trash2 className="h-3.5 w-3.5" />
+            Archive
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">

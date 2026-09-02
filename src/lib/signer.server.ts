@@ -451,11 +451,11 @@ export async function createAndBroadcastPersonalSend(input: {
   try {
     await verifyTransactionPasswordOrThrow(input.userId, input.transactionPassword);
     assertSigningSwitches({
-      dbEnabled: await readSetting("on_chain_send_enabled", false),
+      dbEnabled: await readSetting("on_chain_send_enabled", true),
       envEnabled: process.env["TRON_SIGNING_ENABLED"],
       network,
       mainnetEnabled:
-        (await readSetting("tron_signing_mainnet_enabled", false)) &&
+        (await readSetting("tron_signing_mainnet_enabled", true)) &&
         process.env["TRON_SIGNING_MAINNET_ENABLED"] === "true"
           ? "true"
           : "false",
@@ -861,11 +861,11 @@ export async function previewPersonalSendCost(input: {
   const signerSecret = signerSecretResult.data;
   const transactionPassword = transactionPasswordResult.data;
   const signingEnabled =
-    (await readSetting("on_chain_send_enabled", false)) &&
+    (await readSetting("on_chain_send_enabled", true)) &&
     process.env["TRON_SIGNING_ENABLED"] === "true";
   const mainnetSigningEnabled =
     row.network !== "trc20-mainnet" ||
-    ((await readSetting("tron_signing_mainnet_enabled", false)) &&
+    ((await readSetting("tron_signing_mainnet_enabled", true)) &&
       process.env["TRON_SIGNING_MAINNET_ENABLED"] === "true");
   const transactionPasswordRow = transactionPassword as unknown as {
     locked_until?: string | null;
@@ -907,7 +907,7 @@ export async function reconcileOutgoingSendRequests(network?: ChainNetwork) {
   const { getTransactionInfo } = await import("@/lib/tron.server");
   let query = supabaseAdmin
     .from("wallet_send_requests" as never)
-    .select("id, network, txid, wallet_transaction_id")
+    .select("id, network, txid, wallet_transaction_id, metadata")
     .in("status", ["BROADCAST", "CONFIRMING"] as never)
     .not("txid", "is", null)
     .limit(50);
@@ -918,8 +918,39 @@ export async function reconcileOutgoingSendRequests(network?: ChainNetwork) {
     network: ChainNetwork;
     txid: string;
     wallet_transaction_id?: string | null;
+    metadata?: Record<string, unknown> | null;
   }>) {
     try {
+      const metadata = row.metadata ?? {};
+      const feeTxid = typeof metadata["fee_txid"] === "string" ? metadata["fee_txid"] : null;
+      const feeWalletTransactionId =
+        typeof metadata["fee_wallet_transaction_id"] === "string"
+          ? metadata["fee_wallet_transaction_id"]
+          : null;
+      if (feeTxid) {
+        const feeInfo = await getTransactionInfo(row.network, feeTxid);
+        if (feeInfo.blockNumber) {
+          if (feeWalletTransactionId) {
+            await supabaseAdmin
+              .from("wallet_transactions" as never)
+              .update({
+                status: feeInfo.success ? "completed" : "failed",
+                block_number: feeInfo.blockNumber,
+                failure_reason: feeInfo.success ? null : feeInfo.status,
+              } as never)
+              .eq("id", feeWalletTransactionId as never);
+          }
+          await supabaseAdmin
+            .from("fee_liabilities" as never)
+            .update({
+              status: feeInfo.success ? "SETTLED" : "ACCRUED",
+              txid: feeTxid,
+              settled_at: feeInfo.success ? new Date().toISOString() : null,
+            } as never)
+            .eq("source", "wallet_send_request" as never)
+            .eq("order_id", row.id as never);
+        }
+      }
       const info = await getTransactionInfo(row.network, row.txid);
       if (!info.blockNumber) {
         await supabaseAdmin

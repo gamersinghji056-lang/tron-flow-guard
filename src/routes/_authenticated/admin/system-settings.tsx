@@ -162,8 +162,8 @@ function SystemSettingsPage() {
           normalUsdtTransfersEnabled: settings["normal_usdt_transfers_enabled"] !== "false",
           normalTrxTransfersEnabled: settings["normal_trx_transfers_enabled"] !== "false",
           gasfreeUsdtTransfersEnabled: settings["gasfree_usdt_transfers_enabled"] !== "false",
-          onChainSendEnabled: settings["on_chain_send_enabled"] === "true",
-          tronSigningMainnetEnabled: settings["tron_signing_mainnet_enabled"] === "true",
+          onChainSendEnabled: settings["on_chain_send_enabled"] !== "false",
+          tronSigningMainnetEnabled: settings["tron_signing_mainnet_enabled"] !== "false",
           feeSweepEnabled: settings["fee_sweep_enabled"] === "true",
           feeSweepMode: settings["fee_sweep_mode"] === "automatic" ? "automatic" : "manual",
           feeSweepMinimumUsdt: Number(settings["fee_sweep_minimum_usdt"] ?? 25),
@@ -325,15 +325,15 @@ function SystemSettingsPage() {
           }
         />
         <ToggleInput
-          label="Infrastructure signer switch"
-          checked={settings["on_chain_send_enabled"] === "true"}
+          label="On-chain sends allowed"
+          checked={settings["on_chain_send_enabled"] !== "false"}
           onChange={(checked) =>
             setSettings({ ...settings, on_chain_send_enabled: String(checked) })
           }
         />
         <ToggleInput
-          label="Mainnet Signing"
-          checked={settings["tron_signing_mainnet_enabled"] === "true"}
+          label="Mainnet signing allowed"
+          checked={settings["tron_signing_mainnet_enabled"] !== "false"}
           onChange={(checked) =>
             setSettings({ ...settings, tron_signing_mainnet_enabled: String(checked) })
           }
@@ -499,7 +499,7 @@ function SystemSettingsPage() {
             />
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-4">
-            <Metric label="GasFree Revenue Rule" value="1.50 USDT - provider cost" />
+            <Metric label="GasFree Revenue Rule" value="Provider fee only / no WTRON margin" />
             <Metric label="Normal USDT Fee" value="One combined TRX fee to customer" />
             <Metric label="TRX Revenue Rule" value="customer fee - network cost" />
             <Metric label="TRX Loss Guard" value="TRX_NETWORK_COST_TOO_HIGH" />

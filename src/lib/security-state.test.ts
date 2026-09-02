@@ -697,10 +697,8 @@ describe("server-side signer safety", () => {
     assert.match(signerServer, /amount: feeLiabilityAmount/);
     assert.match(signerServer, /asset: feeCurrency/);
     assert.match(signerServer, /fee_liabilities[\s\S]*status: feeInfo\.success \? "SETTLED"/);
-    assert.match(
-      gasfreeServer,
-      /GasFree WTRON fee margin settlement is not available for this configuration\./,
-    );
+    assert.match(gasfreeServer, /const platformFee = providerFee/);
+    assert.match(gasfreeServer, /const collectiblePlatformFee = 0/);
   });
 
   it("preflights TRON permissions before Energy purchase or broadcast", () => {
@@ -2628,26 +2626,17 @@ describe("GasFree transfer service safety", () => {
     );
 
     assert.match(providerServer, /recordGasFreePlatformFeeLiability/);
-    assert.match(providerServer, /assertGasFreePlatformFeeCollectible/);
     assert.match(providerServer, /fee_collection_wallet_id_trc20_nile/);
     assert.match(providerServer, /fee_collection_wallet_id_trc20_mainnet/);
     assert.match(providerServer, /fee_collection_wallet_id/);
     assert.match(providerServer, /row\.network === network/);
     assert.match(providerServer, /row\.purpose === "FEE_COLLECTION"/);
-    assert.match(
-      providerServer,
-      /GasFree WTRON fee collection wallet is not configured for this network\./,
-    );
     assert.match(providerServer, /gasfree-transfer:\$\{input\.requestId\}:platform-fee/);
     assert.match(providerServer, /fee_type: "gasfree_transfer_platform_fee"/);
     assert.match(providerServer, /error\.code !== "23505"/);
     assert.match(providerServer, /destinationWalletId \? "PENDING_SWEEP" : "ACCRUED"/);
     assert.match(reconcileFunction, /status\.state === "SUCCEED"/);
     assert.match(createFunction, /submitted\.state === "SUCCEED"/);
-    assert.ok(
-      createFunction.indexOf("assertGasFreePlatformFeeCollectible") <
-        createFunction.indexOf("loadGeneralSecret"),
-    );
     assert.ok(
       createFunction.indexOf("submitPermitTransfer") <
         createFunction.indexOf("recordGasFreePlatformFeeLiability"),
@@ -2663,12 +2652,9 @@ describe("GasFree transfer service safety", () => {
       providerServer.indexOf("export async function createGasFreeTransferRequest"),
     );
 
-    assert.match(createFunction, /gasFreeCustomerFee\(configuredPlatformFee, providerFee\)/);
+    assert.match(createFunction, /const platformFee = providerFee/);
     assert.doesNotMatch(createFunction, /GASFREE_PROVIDER_COST_TOO_HIGH/);
-    assert.match(
-      createFunction,
-      /const collectiblePlatformFee = Math\.max\(platformFee - providerFee, 0\)/,
-    );
+    assert.match(createFunction, /const collectiblePlatformFee = 0/);
   });
 
   it("does not disable Send solely because the wallet balance is insufficient", () => {
@@ -2832,8 +2818,8 @@ describe("GasFree transfer service safety", () => {
     assert.match(walletServer, /encryptMnemonic/);
     assert.match(walletServer, /ensureGasFreeChildWalletForGeneral/);
     assert.match(walletFunctions, /nileTestWalletEnabled/);
-    assert.match(mini, /Create Nile Test Wallet/);
-    assert.match(mini, /NILE TESTNET/);
+    assert.doesNotMatch(mini, /Create Nile Test Wallet/);
+    assert.doesNotMatch(mini, /NILE TESTNET/);
   });
 
   it("requires per-user Nile authorization before enabling GasFree Send", () => {
@@ -2979,6 +2965,117 @@ describe("GasFree transfer service safety", () => {
     assert.doesNotMatch(adminWallets, /encrypted_mnemonic|privateKey|password_hash/);
   });
 
+  it("allows one company TRON address to hold multiple removable purposes", () => {
+    const adminServer = readFileSync(resolve(process.cwd(), "src/lib/admin.server.ts"), "utf8");
+    const adminFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/admin.functions.ts"),
+      "utf8",
+    );
+    const adminWallets = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/wallets.tsx"),
+      "utf8",
+    );
+
+    assert.match(adminServer, /\.from\("wallets" as never\)[\s\S]*\.eq\("address"/);
+    assert.match(adminServer, /wallet\.purpose_assigned/);
+    assert.match(adminServer, /ensureWalletPurposeAssignment/);
+    assert.match(adminServer, /listCompanyWalletPurposes/);
+    assert.match(adminServer, /syncLegacyWalletPurpose/);
+    assert.match(adminServer, /removeCompanyWalletPurpose/);
+    assert.match(adminServer, /wallet\.purpose_removed/);
+    assert.match(adminFunctions, /removeCompanyWalletPurpose/);
+    assert.match(adminWallets, /wallet_purpose_assignments/);
+    assert.match(adminWallets, /Purpose removed/);
+    assert.match(adminWallets, /Assign another purpose before removing the last purpose/);
+    const deposits = readFileSync(resolve(process.cwd(), "src/lib/deposits.functions.ts"), "utf8");
+    const directSell = readFileSync(
+      resolve(process.cwd(), "src/lib/direct-sell.functions.ts"),
+      "utf8",
+    );
+    const depositApi = readFileSync(
+      resolve(process.cwd(), "src/routes/api/v1/deposits.ts"),
+      "utf8",
+    );
+    const directSellApi = readFileSync(
+      resolve(process.cwd(), "src/routes/api/v1/direct-sell.ts"),
+      "utf8",
+    );
+    assert.match(deposits, /findCompanyWalletForPurpose\(network, "USER_DEPOSIT"\)/);
+    assert.match(directSell, /findCompanyWalletForPurpose\(activeNetwork, "DIRECT_SELL"\)/);
+    assert.match(depositApi, /findCompanyWalletForPurpose\(network, "USER_DEPOSIT"\)/);
+    assert.match(directSellApi, /findCompanyWalletForPurpose\(network, "DIRECT_SELL"\)/);
+  });
+
+  it("keeps production customer and vendor wallet creation Mainnet Standard only", () => {
+    const walletIndex = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/wallet.index.tsx"),
+      "utf8",
+    );
+    const vendorPage = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/vendor.index.tsx"),
+      "utf8",
+    );
+    const vendorFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/vendor.functions.ts"),
+      "utf8",
+    );
+    const miniApp = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const telegramServer = readFileSync(
+      resolve(process.cwd(), "src/lib/telegram.server.ts"),
+      "utf8",
+    );
+
+    assert.match(walletIndex, /\.eq\("network", DEFAULT_NETWORK as never\)/);
+    assert.match(walletIndex, /network: DEFAULT_NETWORK/);
+    assert.match(walletIndex, /walletType: "standard"/);
+    assert.match(walletIndex, /networkConfirmed: true/);
+    assert.doesNotMatch(walletIndex, /<option value="trc20-nile"|Standard TRON<\/option>/);
+    assert.match(vendorFunctions, /\.eq\("network", "trc20-mainnet"\)/);
+    assert.match(vendorPage, /network: "trc20-mainnet"/);
+    assert.match(vendorPage, /walletType: "standard"/);
+    assert.match(vendorPage, /networkConfirmed: true/);
+    assert.doesNotMatch(vendorPage, /SEND UNAVAILABLE - SIGNER REQUIRED/);
+    assert.match(miniApp, /network: "trc20-mainnet"/);
+    assert.match(miniApp, /walletType: "standard"/);
+    assert.match(miniApp, /networkConfirmed: true/);
+    assert.match(miniApp, /\.filter\(\(wallet\) => wallet\.network === "trc20-mainnet"\)/);
+    assert.doesNotMatch(miniApp, /Create Nile Test Wallet|NetworkPicker|TypeOption/);
+    assert.match(telegramServer, /\.eq\("network", "trc20-mainnet" as never\)/);
+  });
+
+  it("soft-archives user wallets only after balance and pending-send safety checks", () => {
+    const walletsServer = readFileSync(resolve(process.cwd(), "src/lib/wallets.server.ts"), "utf8");
+    const walletIndex = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/wallet.index.tsx"),
+      "utf8",
+    );
+    const walletDetail = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/wallet.$walletId.tsx"),
+      "utf8",
+    );
+    const adminWallets = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/admin/user-wallets.tsx"),
+      "utf8",
+    );
+    const adminFunctions = readFileSync(
+      resolve(process.cwd(), "src/lib/admin.functions.ts"),
+      "utf8",
+    );
+
+    assert.match(walletsServer, /refreshPersonalWalletOnChainBalance\(owner\.user_id/);
+    assert.match(walletsServer, /wallet_send_requests/);
+    assert.match(walletsServer, /gasfree_transfer_requests/);
+    assert.match(walletsServer, /onchain_trx_balance/);
+    assert.match(walletsServer, /Move the remaining USDT and TRX out before removing this wallet/);
+    assert.match(walletsServer, /is_archived: true, is_default: false, monitored: false/);
+    assert.match(walletsServer, /wallet\.admin_archived/);
+    assert.match(walletIndex, /archiveWallet/);
+    assert.match(walletDetail, /archiveWallet/);
+    assert.match(adminFunctions, /archiveUserWalletAsAdmin/);
+    assert.match(adminWallets, /archiveUserWalletAsAdmin/);
+    assert.doesNotMatch(adminWallets, /encrypted_mnemonic|privateKey|password_hash/);
+  });
+
   it("evaluates transfer controls consistently for Mini App status and backend sends", () => {
     const enabled = evaluateTransferPolicy({
       kind: "gasfree_usdt",
@@ -3055,6 +3152,8 @@ describe("GasFree transfer service safety", () => {
     assert.match(transferPolicyServer, /evaluateUserTransferPolicy/);
     assert.match(walletsFunctions, /userId: context\.userId/);
     assert.match(signerServer, /assertUserTransferPolicyAllowed/);
+    assert.match(signerServer, /readSetting\("on_chain_send_enabled", true\)/);
+    assert.match(signerServer, /readSetting\("tron_signing_mainnet_enabled", true\)/);
     assert.match(gasfreeServer, /assertUserTransferPolicyAllowed/);
   });
 

@@ -93,6 +93,15 @@ const companyWalletDefaultInput = z.object({
   network: z.enum(["trc20-mainnet", "trc20-nile"]),
 });
 
+const companyWalletPurposeInput = z.object({
+  walletId: z.string().uuid(),
+  purpose: z.enum(["USER_DEPOSIT", "DIRECT_SELL", "FEE_COLLECTION", "HOT", "OTHER"]),
+});
+
+const adminWalletArchiveInput = z.object({
+  walletId: z.string().uuid(),
+});
+
 const gasfreeWalletDiagnosticsInput = z
   .object({
     limit: z.number().int().min(1).max(100).optional(),
@@ -320,4 +329,26 @@ export const makeCompanyWalletDefault = createServerFn({ method: "POST" })
     const { PERMISSIONS } = await import("@/lib/rbac");
     await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
     return setDefaultCompanyWallet({ ...data, actorId: context.userId });
+  });
+
+export const removeCompanyWalletPurpose = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => companyWalletPurposeInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { removeCompanyWalletPurpose: removePurpose } = await import("@/lib/admin.server");
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
+    return removePurpose({ ...data, actorId: context.userId });
+  });
+
+export const archiveUserWalletAsAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => adminWalletArchiveInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/access.server");
+    const { PERMISSIONS } = await import("@/lib/rbac");
+    const { archiveUserWalletByAdmin } = await import("@/lib/wallets.server");
+    await requirePermission(context.supabase, context.userId, PERMISSIONS.WALLETS_MANAGE);
+    return archiveUserWalletByAdmin(context.userId, data.walletId);
   });

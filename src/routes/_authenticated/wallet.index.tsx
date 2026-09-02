@@ -11,14 +11,15 @@ import {
   Plus,
   ShieldCheck,
   Star,
+  Trash2,
   Wallet2,
-  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import {
   createWallet,
+  archiveWallet,
   importWallet,
   setDefaultWallet,
   setWalletTransactionPassword,
@@ -64,6 +65,7 @@ interface WalletRow {
 function WalletsPage() {
   const { user, profile } = useAuth();
   const create = useServerFn(createWallet);
+  const archive = useServerFn(archiveWallet);
   const importExisting = useServerFn(importWallet);
   const makeDefault = useServerFn(setDefaultWallet);
   const setPassword = useServerFn(setWalletTransactionPassword);
@@ -84,10 +86,6 @@ function WalletsPage() {
     makeDefault: false,
   });
   const [importPhrase, setImportPhrase] = useState("");
-  const [importNetworkRequired, setImportNetworkRequired] = useState<{
-    reason: "multiple_active" | "no_activity";
-    address: string;
-  } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
 
@@ -99,6 +97,7 @@ function WalletsPage() {
         "id, name, address, network, balance, onchain_balance, is_default, created_at, wallet_type, custody, backup_status, gas_sponsorship_status",
       )
       .eq("is_archived", false as never)
+      .eq("network", DEFAULT_NETWORK as never)
       .order("selected_at", { ascending: false, nullsFirst: false })
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true });
@@ -166,8 +165,8 @@ function WalletsPage() {
       const result = await create({
         data: {
           name: form.name.trim(),
-          network: form.network,
-          walletType: form.walletType,
+          network: DEFAULT_NETWORK,
+          walletType: "standard",
           makeDefault: form.makeDefault,
           transactionPassword: form.transactionPassword,
         },
@@ -192,23 +191,14 @@ function WalletsPage() {
       const result = await importExisting({
         data: {
           name: form.name.trim(),
-          network: form.network,
-          walletType: form.walletType,
+          network: DEFAULT_NETWORK,
+          walletType: "standard",
           makeDefault: form.makeDefault,
           transactionPassword: form.transactionPassword,
           mnemonic: importPhrase,
-          networkConfirmed: importNetworkRequired !== null,
+          networkConfirmed: true,
         },
       });
-      if ((result as { requiresNetworkSelection?: boolean }).requiresNetworkSelection) {
-        const selection = result as {
-          reason: "multiple_active" | "no_activity";
-          address: string;
-        };
-        setImportNetworkRequired({ reason: selection.reason, address: selection.address });
-        toast.info("Choose the wallet network to finish import");
-        return;
-      }
       const importResult = result as { existing?: boolean; message?: string };
       toast.success(
         importResult.existing
@@ -217,7 +207,6 @@ function WalletsPage() {
       );
       setImportOpen(false);
       setImportPhrase("");
-      setImportNetworkRequired(null);
       setForm((current) => ({ ...current, transactionPassword: "" }));
       await load();
     } catch (error) {
@@ -234,6 +223,20 @@ function WalletsPage() {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not switch wallet");
+    }
+  }
+
+  async function removeWallet(wallet: WalletRow) {
+    const confirmed = window.confirm(
+      `Remove ${wallet.name}? The server will block removal if this wallet has USDT, TRX, or pending sends.`,
+    );
+    if (!confirmed) return;
+    try {
+      await archive({ data: { walletId: wallet.id } });
+      toast.success("Wallet removed");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove wallet");
     }
   }
 
@@ -344,7 +347,6 @@ function WalletsPage() {
           pending={pending}
           importPhrase={importPhrase}
           setImportPhrase={setImportPhrase}
-          importNetworkRequired={importNetworkRequired}
           onSubmit={submitImport}
         />
         <QuickLink
@@ -438,6 +440,18 @@ function WalletsPage() {
                         Open
                       </Link>
                     </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void removeWallet(wallet);
+                      }}
+                      title="Remove wallet"
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
                   {wallet.wallet_type === "gasfree" ? (
                     <p className="md:col-span-5 text-xs text-warning">
@@ -466,7 +480,6 @@ function WalletDialog({
   createdAddress,
   importPhrase,
   setImportPhrase,
-  importNetworkRequired,
   onSubmit,
 }: {
   mode: "create" | "import";
@@ -493,7 +506,6 @@ function WalletDialog({
   createdAddress?: string;
   importPhrase?: string;
   setImportPhrase?: (value: string) => void;
-  importNetworkRequired?: { reason: "multiple_active" | "no_activity"; address: string } | null;
   onSubmit: (event: React.FormEvent) => void;
 }) {
   const isImport = mode === "import";
@@ -554,42 +566,6 @@ function WalletDialog({
                 }
                 required
               />
-            </Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant={form.walletType === "standard" ? "default" : "secondary"}
-                onClick={() => setForm((current) => ({ ...current, walletType: "standard" }))}
-              >
-                Standard
-              </Button>
-              <Button
-                type="button"
-                variant={form.walletType === "gasfree" ? "default" : "secondary"}
-                onClick={() => setForm((current) => ({ ...current, walletType: "gasfree" }))}
-              >
-                <Zap className="mr-1.5 h-4 w-4" />
-                GasFree
-              </Button>
-            </div>
-            <Field label="Network">
-              {isImport && importNetworkRequired ? (
-                <div className="mb-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-muted-foreground">
-                  <p className="font-medium text-foreground">
-                    {importNetworkRequired.reason === "multiple_active"
-                      ? "Activity was found on more than one TRON network."
-                      : "No activity was found on the supported TRON networks."}
-                  </p>
-                  <p className="mt-1">
-                    Confirm the correct network for {shortenHash(importNetworkRequired.address)} to
-                    finish import.
-                  </p>
-                </div>
-              ) : null}
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-                TRON Mainnet is used automatically for production customer wallets. Existing Nile
-                wallets remain labelled as test wallets and are not converted.
-              </div>
             </Field>
             {isImport ? (
               <Field label="Recovery phrase">

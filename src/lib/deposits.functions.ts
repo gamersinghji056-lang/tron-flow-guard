@@ -7,6 +7,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { ChainNetwork } from "@/lib/chain";
 
 const createDepositSchema = z.object({
   amount: z
@@ -26,6 +27,43 @@ export interface CreateDepositResult {
   expiresAt: string;
 }
 
+async function walletHasPurposeAssignment(walletId: string, purpose: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .select("wallet_id")
+    .eq("wallet_id", walletId as never)
+    .eq("purpose", purpose as never)
+    .eq("is_active", true as never)
+    .maybeSingle();
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function findCompanyWalletForPurpose(network: ChainNetwork, purpose: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("wallets")
+    .select("id, name, address, network, is_default, purpose")
+    .eq("network", network as never)
+    .eq("is_active", true)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  for (const wallet of (data ?? []) as Array<{
+    id: string;
+    name: string;
+    address: string;
+    network: ChainNetwork;
+    purpose?: string | null;
+  }>) {
+    if (wallet.purpose === purpose || (await walletHasPurposeAssignment(wallet.id, purpose))) {
+      return wallet;
+    }
+  }
+  return null;
+}
+
 /**
  * Creates a deposit request, assigns the active company wallet and records the
  * assignment in the audit log. Amount + wallet selection are server-side only.
@@ -42,22 +80,13 @@ export const createDepositRequest = createServerFn({ method: "POST" })
       .in("key", ["active_network", "required_confirmations", "deposit_expiry_minutes"]);
 
     const settingsMap = Object.fromEntries((settings ?? []).map((row) => [row.key, row.value]));
-    const network = (settingsMap["active_network"] as string) ?? "trc20-nile";
+    const network = ((settingsMap["active_network"] as string) ?? "trc20-mainnet") as ChainNetwork;
     const requiredConfirmations = Number(settingsMap["required_confirmations"] ?? 16) || 16;
     const expiryMinutes = Number(settingsMap["deposit_expiry_minutes"] ?? 120) || 120;
 
     // Wallet assignment strategy — today: default/active wallet for the active
     // network. The schema already supports per-trader and per-order wallets.
-    const { data: wallets } = await supabaseAdmin
-      .from("wallets")
-      .select("id, name, address, network, is_default")
-      .eq("network", network as never)
-      .eq("is_active", true)
-      .order("is_default", { ascending: false })
-      .order("created_at", { ascending: true })
-      .limit(1);
-
-    const wallet = wallets?.[0];
+    const wallet = await findCompanyWalletForPurpose(network, "USER_DEPOSIT");
     if (!wallet) {
       throw new Error(
         "No active company wallet is configured for the current network. Please contact support.",

@@ -12,7 +12,6 @@ import {
   GASFREE_SUPPORTED_ASSET,
   classifyTransactionPasswordAuthorizationError,
   gasFreeAccountState,
-  gasFreeCustomerFee,
   gasFreeOperationalState,
   gasFreeServiceReadiness,
   isGasFreeTransferExecutable,
@@ -1337,15 +1336,6 @@ async function recordGasFreePlatformFeeLiability(input: {
   if (error && error.code !== "23505") throw new Error(error.message);
 }
 
-async function assertGasFreePlatformFeeCollectible(network: ChainNetwork, platformFee: number) {
-  if (!Number.isFinite(platformFee) || platformFee <= 0) return;
-  const destinationWalletId = await gasFreeFeeDestinationForNetwork(network);
-  if (!destinationWalletId) {
-    throw new Error("GasFree WTRON fee collection wallet is not configured for this network.");
-  }
-  throw new Error("GasFree WTRON fee margin settlement is not available for this configuration.");
-}
-
 export async function reconcileGasFreeTransferRequest(requestId: string) {
   const { data: request, error } = await supabaseAdmin
     .from("gasfree_transfer_requests" as never)
@@ -1400,7 +1390,7 @@ export async function createGasFreeTransferRequest(input: {
   idempotencyKey: string;
 }) {
   const { verifyTransactionPasswordOrThrow } = await import("@/lib/wallet-security.server");
-  const { hasNileTestWalletAccess, readTransferFee } = await import("@/lib/wallets.server");
+  const { hasNileTestWalletAccess } = await import("@/lib/wallets.server");
 
   if (!isTronAddress(input.recipient)) throw new Error("Enter a valid TRON address");
   if (!Number.isFinite(input.amount) || input.amount <= 0) {
@@ -1482,11 +1472,9 @@ export async function createGasFreeTransferRequest(input: {
     amount: input.amount,
   });
   if (quote.allowSubmit !== true) throw new Error("GasFree account has a pending transfer.");
-  const configuredPlatformFee = await readTransferFee();
   const providerFee = quote.maxFee / 10 ** quote.decimals;
-  const platformFee = gasFreeCustomerFee(configuredPlatformFee, providerFee);
-  const collectiblePlatformFee = Math.max(platformFee - providerFee, 0);
-  await assertGasFreePlatformFeeCollectible(network, collectiblePlatformFee);
+  const platformFee = providerFee;
+  const collectiblePlatformFee = 0;
   const totalDebit = input.amount + platformFee;
   if (Number(row.onchain_balance ?? 0) < totalDebit) {
     throw new Error("Insufficient GasFree USDT balance");

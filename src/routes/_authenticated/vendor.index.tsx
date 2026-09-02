@@ -115,6 +115,7 @@ interface WalletRow {
   id: string;
   name?: string | null;
   address?: string | null;
+  network?: "trc20-mainnet" | "trc20-nile" | null;
   balance?: number | string | null;
   onchain_balance?: number | string | null;
   onchain_trx_balance?: number | string | null;
@@ -327,10 +328,11 @@ function VendorPortalPage() {
           data: {
             name: walletForm.name,
             network: "trc20-mainnet",
-            walletType: walletForm.walletType,
+            walletType: "standard",
             makeDefault: !(portal?.wallets.length ?? 0),
             transactionPassword: walletForm.transactionPassword,
             mnemonic: walletForm.mnemonic,
+            networkConfirmed: true,
           },
         });
         toast.success("Wallet imported");
@@ -339,7 +341,7 @@ function VendorPortalPage() {
           data: {
             name: walletForm.name,
             network: "trc20-mainnet",
-            walletType: walletForm.walletType,
+            walletType: "standard",
             makeDefault: !(portal?.wallets.length ?? 0),
             transactionPassword: walletForm.transactionPassword,
           },
@@ -526,19 +528,6 @@ function VendorPortalPage() {
                     value={walletForm.name}
                     onChange={(event) => setWalletForm({ ...walletForm, name: event.target.value })}
                   />
-                  <select
-                    className="h-10 rounded-md bg-black/50 px-3"
-                    value={walletForm.walletType}
-                    onChange={(event) =>
-                      setWalletForm({
-                        ...walletForm,
-                        walletType: event.target.value as typeof walletForm.walletType,
-                      })
-                    }
-                  >
-                    <option value="standard">Standard TRON</option>
-                    <option value="gasfree">GasFree</option>
-                  </select>
                 </>
               ) : null}
               <Input
@@ -610,9 +599,11 @@ function VendorPortalPage() {
                       </p>
                     </div>
                   ) : null}
-                  <p className="mt-3 text-xs text-amber-200">
-                    SEND UNAVAILABLE - SIGNER REQUIRED. Receive, refresh and history are available.
-                  </p>
+                  {wallet.wallet_type !== "gasfree" && wallet.network === "trc20-mainnet" ? (
+                    <p className="mt-3 text-xs text-emerald-200">
+                      Send and receive are available from the wallet detail screen.
+                    </p>
+                  ) : null}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <IconAction
                       label="Refresh"
@@ -644,6 +635,17 @@ function VendorPortalPage() {
                         History
                       </Link>
                     </Button>
+                    {wallet.wallet_type !== "gasfree" && wallet.network === "trc20-mainnet" ? (
+                      <Button asChild size="sm" variant="secondary">
+                        <Link
+                          to="/wallet/$walletId"
+                          params={{ walletId: wallet.id }}
+                          search={{ tab: "send" }}
+                        >
+                          Send
+                        </Link>
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               ))}

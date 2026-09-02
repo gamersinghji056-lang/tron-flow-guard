@@ -9,6 +9,40 @@ import {
 } from "@/lib/api-auth.server";
 import { enqueueWebhookEvent } from "@/lib/webhooks.server";
 
+async function walletHasPurposeAssignment(walletId: string, purpose: string) {
+  const { data, error } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .select("wallet_id")
+    .eq("wallet_id", walletId as never)
+    .eq("purpose", purpose as never)
+    .eq("is_active", true as never)
+    .maybeSingle();
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function findCompanyWalletForPurpose(network: string, purpose: string) {
+  const { data, error } = await supabaseAdmin
+    .from("wallets")
+    .select("id, address, network, purpose")
+    .eq("network", network as never)
+    .eq("is_active", true as never)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  for (const wallet of (data ?? []) as Array<{
+    id: string;
+    address: string;
+    network: string;
+    purpose?: string | null;
+  }>) {
+    if (wallet.purpose === purpose || (await walletHasPurposeAssignment(wallet.id, purpose))) {
+      return wallet;
+    }
+  }
+  return null;
+}
+
 export const Route = createFileRoute("/api/v1/direct-sell")({
   server: {
     handlers: {
@@ -117,19 +151,11 @@ export const Route = createFileRoute("/api/v1/direct-sell")({
               `Amount must be between ${min} and ${max} USDT`,
             );
           }
-          const network = (map["active_network"] as string) ?? "trc20-nile";
+          const network = (map["active_network"] as string) ?? "trc20-mainnet";
           const requiredConfirmations = Number(map["required_confirmations"] ?? 16) || 16;
           const expiryMinutes = Number(map["deposit_expiry_minutes"] ?? 120) || 120;
 
-          const { data: wallet } = await supabaseAdmin
-            .from("wallets")
-            .select("id, address, network")
-            .eq("network", network as never)
-            .eq("is_active", true as never)
-            .order("is_default", { ascending: false })
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle();
+          const wallet = await findCompanyWalletForPurpose(network, "DIRECT_SELL");
           if (!wallet) throw new ApiError(503, "wallet_unavailable", "No active company wallet");
 
           const expiresAt = new Date(Date.now() + expiryMinutes * 60_000).toISOString();

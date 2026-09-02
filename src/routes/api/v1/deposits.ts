@@ -8,6 +8,41 @@ import {
   withApiRequest,
 } from "@/lib/api-auth.server";
 
+async function walletHasPurposeAssignment(walletId: string, purpose: string) {
+  const { data, error } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .select("wallet_id")
+    .eq("wallet_id", walletId as never)
+    .eq("purpose", purpose as never)
+    .eq("is_active", true as never)
+    .maybeSingle();
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function findCompanyWalletForPurpose(network: string, purpose: string) {
+  const { data, error } = await supabaseAdmin
+    .from("wallets")
+    .select("id, name, address, network, purpose")
+    .eq("network", network as never)
+    .eq("is_active", true as never)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  for (const wallet of (data ?? []) as Array<{
+    id: string;
+    name: string;
+    address: string;
+    network: string;
+    purpose?: string | null;
+  }>) {
+    if (wallet.purpose === purpose || (await walletHasPurposeAssignment(wallet.id, purpose))) {
+      return wallet;
+    }
+  }
+  return null;
+}
+
 export const Route = createFileRoute("/api/v1/deposits")({
   server: {
     handlers: {
@@ -32,19 +67,11 @@ export const Route = createFileRoute("/api/v1/deposits")({
               row.value,
             ]),
           );
-          const network = (settingsMap["active_network"] as string) ?? "trc20-nile";
+          const network = (settingsMap["active_network"] as string) ?? "trc20-mainnet";
           const requiredConfirmations = Number(settingsMap["required_confirmations"] ?? 16) || 16;
           const expiryMinutes = Number(settingsMap["deposit_expiry_minutes"] ?? 120) || 120;
 
-          const { data: wallet } = await supabaseAdmin
-            .from("wallets")
-            .select("id, name, address, network")
-            .eq("network", network as never)
-            .eq("is_active", true as never)
-            .order("is_default", { ascending: false })
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle();
+          const wallet = await findCompanyWalletForPurpose(network, "USER_DEPOSIT");
           if (!wallet) throw new ApiError(503, "wallet_unavailable", "No active deposit wallet");
 
           const expiresAt = new Date(Date.now() + expiryMinutes * 60_000).toISOString();

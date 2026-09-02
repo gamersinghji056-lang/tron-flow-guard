@@ -7,7 +7,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { gasFreeCustomerFee } from "@/lib/gasfree-transfer-policy";
 
 const createWalletInput = z.object({
   name: z.string().trim().min(1, "Wallet name is required").max(48),
@@ -212,7 +211,7 @@ export const getGasFreeSendReadiness = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { getGasFreeTransferReadiness } = await import("@/lib/gasfree-provider.server");
-    const { hasNileTestWalletAccess, readTransferFee } = await import("@/lib/wallets.server");
+    const { hasNileTestWalletAccess } = await import("@/lib/wallets.server");
     const { data: wallet, error } = await supabaseAdmin
       .from("user_wallets" as never)
       .select("id, user_id, network, wallet_type, wallet_role, parent_wallet_id, is_archived")
@@ -257,10 +256,9 @@ export const getGasFreeSendReadiness = createServerFn({ method: "POST" })
       allowTestnet: nileTestAuthorized,
       userId: context.userId,
     });
-    const configuredFee = await readTransferFee();
     return {
       ...readiness,
-      platformFee: gasFreeCustomerFee(configuredFee, Number(readiness.providerFee ?? 0)),
+      platformFee: Number(readiness.providerFee ?? 0),
     };
   });
 

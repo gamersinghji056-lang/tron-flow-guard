@@ -11,12 +11,14 @@ import {
   KeyRound,
   Loader2,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
   previewTransfer,
+  archiveWallet,
   refreshWalletBalance,
   revealRecoveryPhrase,
   sendTransfer,
@@ -54,6 +56,7 @@ interface WalletDetail {
   custody?: string;
   backup_status?: string;
   gas_sponsorship_status?: string;
+  is_archived?: boolean | null;
 }
 
 interface LedgerRow {
@@ -89,6 +92,7 @@ function WalletDetailPage() {
   const navigate = useNavigate();
   const send = useServerFn(sendTransfer);
   const previewSend = useServerFn(previewTransfer);
+  const archive = useServerFn(archiveWallet);
   const reveal = useServerFn(revealRecoveryPhrase);
   const refreshBalance = useServerFn(refreshWalletBalance);
 
@@ -117,9 +121,11 @@ function WalletDetailPage() {
       supabase
         .from("user_wallets" as never)
         .select(
-          "id, name, address, network, balance, onchain_balance, onchain_trx_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status",
+          "id, name, address, network, balance, onchain_balance, onchain_trx_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, is_archived",
         )
         .eq("id", walletId as never)
+        .eq("network", "trc20-mainnet" as never)
+        .eq("is_archived", false as never)
         .maybeSingle(),
       supabase
         .from("wallet_transactions")
@@ -288,6 +294,21 @@ function WalletDetailPage() {
     }
   }
 
+  async function removeWallet() {
+    if (!wallet) return;
+    const confirmed = window.confirm(
+      `Remove ${wallet.name}? The server will block removal if this wallet has USDT, TRX, or pending sends.`,
+    );
+    if (!confirmed) return;
+    try {
+      await archive({ data: { walletId: wallet.id } });
+      toast.success("Wallet removed");
+      void navigate({ to: "/wallet" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove wallet");
+    }
+  }
+
   async function revealPhrase(event: React.FormEvent) {
     event.preventDefault();
     setRecoveryPhrase("");
@@ -360,14 +381,23 @@ function WalletDetailPage() {
             {formatUsdt(wallet.onchain_trx_balance ?? 0)} TRX
           </p>
           {wallet.custody === "non_custodial" ? (
-            <button
-              className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => void refreshOnChainBalance()}
-              disabled={refreshingBalance}
-            >
-              <RefreshCw className={`h-3 w-3 ${refreshingBalance ? "animate-spin" : ""}`} />
-              Sync balance & history
-            </button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => void refreshOnChainBalance()}
+                disabled={refreshingBalance}
+              >
+                <RefreshCw className={`h-3 w-3 ${refreshingBalance ? "animate-spin" : ""}`} />
+                Sync balance & history
+              </button>
+              <button
+                className="inline-flex items-center gap-1 text-xs text-destructive hover:underline"
+                onClick={() => void removeWallet()}
+              >
+                <Trash2 className="h-3 w-3" />
+                Remove wallet
+              </button>
+            </div>
           ) : null}
         </div>
       </header>

@@ -355,6 +355,42 @@ async function ensureWalletPurposeAssignment(input: {
   if (error && error.code !== "42P01") throw new Error(error.message);
 }
 
+async function syncLegacyWalletPurpose(input: {
+  walletId: string;
+  preferredPurpose?: string | null;
+}) {
+  const purposes = await listActiveWalletPurposeAssignments(input.walletId);
+  const nextPurpose =
+    (input.preferredPurpose && purposes.includes(input.preferredPurpose)
+      ? input.preferredPurpose
+      : purposes[0]) ?? "USER_DEPOSIT";
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await supabaseAdmin
+    .from("wallets")
+    .update({ purpose: nextPurpose } as never)
+    .eq("id", input.walletId);
+  if (error) throw new Error(error.message);
+  return nextPurpose;
+}
+
+async function listActiveWalletPurposeAssignments(walletId: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .select("purpose")
+    .eq("wallet_id", walletId as never)
+    .eq("is_active", true as never);
+  if (error && error.code !== "42P01") throw new Error(error.message);
+  return ((data ?? []) as Array<{ purpose?: string | null }>)
+    .map((row) => row.purpose)
+    .filter((purpose): purpose is string => Boolean(purpose));
+}
+
+export async function listCompanyWalletPurposes(walletId: string, legacyPurpose?: string | null) {
+  const assignments = await listActiveWalletPurposeAssignments(walletId);
+  return Array.from(new Set([...(legacyPurpose ? [legacyPurpose] : []), ...assignments]));
+}
+
 export async function fetchAdminDashboard() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const since24h = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
@@ -496,6 +532,52 @@ export async function createCompanyWallet(input: {
 }) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   if (!isTronAddress(input.address)) throw new Error("Enter a valid TRON address");
+  const requestedPurpose = input.purpose ?? "USER_DEPOSIT";
+
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("wallets" as never)
+    .select("id, purpose")
+    .eq("address", input.address as never)
+    .eq("network", input.network as never)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  if (existing) {
+    const existingRow = existing as { id: string; purpose?: string | null };
+    if (existingRow.purpose) {
+      await ensureWalletPurposeAssignment({
+        walletId: existingRow.id,
+        purpose: existingRow.purpose,
+        actorId: input.actorId,
+      });
+    }
+    await ensureWalletPurposeAssignment({
+      walletId: existingRow.id,
+      purpose: requestedPurpose,
+      actorId: input.actorId,
+    });
+    await supabaseAdmin
+      .from("wallets")
+      .update({
+        is_active: true,
+        priority: input.priority ?? 100,
+        min_deposit: input.minDeposit ?? null,
+        max_deposit: input.maxDeposit ?? null,
+      } as never)
+      .eq("id", existingRow.id);
+    await syncLegacyWalletPurpose({
+      walletId: existingRow.id,
+      preferredPurpose: existingRow.purpose ?? requestedPurpose,
+    });
+    await supabaseAdmin.from("audit_logs").insert({
+      actor_id: input.actorId,
+      actor_type: "admin",
+      action: "wallet.purpose_assigned",
+      entity_type: "wallet",
+      entity_id: existingRow.id,
+      metadata: { address: input.address, network: input.network, purpose: requestedPurpose },
+    });
+    return { ok: true, id: existingRow.id, reused: true };
+  }
 
   const { data, error } = await supabaseAdmin
     .from("wallets")
@@ -503,7 +585,7 @@ export async function createCompanyWallet(input: {
       name: input.name,
       address: input.address,
       network: input.network,
-      purpose: input.purpose ?? "USER_DEPOSIT",
+      purpose: requestedPurpose,
       priority: input.priority ?? 100,
       min_deposit: input.minDeposit ?? undefined,
       max_deposit: input.maxDeposit ?? undefined,
@@ -514,7 +596,7 @@ export async function createCompanyWallet(input: {
   if (error) throw new Error(error.message);
   await ensureWalletPurposeAssignment({
     walletId: data.id,
-    purpose: input.purpose ?? "USER_DEPOSIT",
+    purpose: requestedPurpose,
     actorId: input.actorId,
   });
 
@@ -526,7 +608,7 @@ export async function createCompanyWallet(input: {
     entity_id: data.id,
     metadata: { address: input.address, network: input.network },
   });
-  return { ok: true, id: data.id };
+  return { ok: true, id: data.id, reused: false };
 }
 
 export async function saveCompanyWallet(input: {
@@ -548,7 +630,6 @@ export async function saveCompanyWallet(input: {
       name: input.name,
       address: input.address,
       network: input.network,
-      purpose: input.purpose ?? "USER_DEPOSIT",
       priority: input.priority ?? 100,
       min_deposit: input.minDeposit ?? null,
       max_deposit: input.maxDeposit ?? null,
@@ -562,6 +643,10 @@ export async function saveCompanyWallet(input: {
     purpose: input.purpose ?? "USER_DEPOSIT",
     actorId: input.actorId,
   });
+  await syncLegacyWalletPurpose({
+    walletId: data.id,
+    preferredPurpose: input.purpose ?? "USER_DEPOSIT",
+  });
   await supabaseAdmin.from("audit_logs").insert({
     actor_id: input.actorId,
     actor_type: "admin",
@@ -571,6 +656,48 @@ export async function saveCompanyWallet(input: {
     metadata: { purpose: input.purpose, priority: input.priority },
   });
   return { ok: true, id: data.id };
+}
+
+export async function removeCompanyWalletPurpose(input: {
+  walletId: string;
+  purpose: string;
+  actorId: string;
+}) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: wallet, error } = await supabaseAdmin
+    .from("wallets" as never)
+    .select("id, purpose")
+    .eq("id", input.walletId as never)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const row = wallet as { id: string; purpose?: string | null } | null;
+  if (!row) throw new Error("Wallet not found");
+
+  const activePurposes = await listCompanyWalletPurposes(input.walletId, row.purpose);
+  if (!activePurposes.includes(input.purpose)) return { ok: true };
+  const remaining = activePurposes.filter((purpose) => purpose !== input.purpose);
+  if (!remaining.length) {
+    throw new Error("Assign another purpose before removing the last wallet purpose.");
+  }
+
+  const { error: deleteError } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .delete()
+    .eq("wallet_id", input.walletId as never)
+    .eq("purpose", input.purpose as never);
+  if (deleteError && deleteError.code !== "42P01") throw new Error(deleteError.message);
+
+  await syncLegacyWalletPurpose({ walletId: input.walletId, preferredPurpose: remaining[0]! });
+
+  await supabaseAdmin.from("audit_logs").insert({
+    actor_id: input.actorId,
+    actor_type: "admin",
+    action: "wallet.purpose_removed",
+    entity_type: "wallet",
+    entity_id: input.walletId,
+    metadata: { purpose: input.purpose },
+  });
+  return { ok: true };
 }
 
 export async function updateCompanyWalletStatus(input: {
