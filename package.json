@@ -13,6 +13,8 @@
     "telegram:worker": "tsx src/telegram-worker.ts",
     "order:worker": "tsx src/order-worker.ts",
     "preview": "vite preview",
+    "android:doctor": "node scripts/android-release-check.mjs",
+    "android:assemble:release": "gradle -p android :app:assembleRelease",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
