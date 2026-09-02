@@ -1,43 +1,204 @@
 package org.wtron.app;
 
 import android.app.Activity;
+import android.Manifest;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import androidx.browser.customtabs.CustomTabsIntent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.CookieManager;
+import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 public final class MainActivity extends Activity {
     private static final String APP_URL = "https://wtron.org/app";
     private static final String WTRON_HOST = "wtron.org";
+    private static final int FILE_CHOOSER_REQUEST_CODE = 1001;
+    private static final int CAMERA_PERMISSION_REQUEST_CODE = 1002;
+
+    private WebView webView;
+    private ValueCallback<Uri[]> filePathCallback;
+    private PermissionRequest pendingCameraPermissionRequest;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        openWtron(resolveLaunchUri());
+        configureSystemBars();
+        webView = createWebView();
+        setContentView(webView);
+        webView.loadUrl(resolveLaunchUri().toString());
     }
 
     @Override
-    protected void onNewIntent(android.content.Intent intent) {
+    protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        openWtron(resolveLaunchUri());
+        if (webView != null) {
+            webView.loadUrl(resolveLaunchUri().toString());
+        }
     }
 
     private Uri resolveLaunchUri() {
         Uri data = getIntent() == null ? null : getIntent().getData();
         if (data == null || data.getHost() == null) return Uri.parse(APP_URL);
-        if (!WTRON_HOST.equalsIgnoreCase(data.getHost())) return Uri.parse(APP_URL);
+        if (!isWtronAppUri(data)) return Uri.parse(APP_URL);
         return data;
     }
 
-    private void openWtron(Uri uri) {
-        CustomTabsIntent intent = new CustomTabsIntent.Builder()
-                .setShowTitle(true)
-                .setUrlBarHidingEnabled(true)
-                .setShareState(CustomTabsIntent.SHARE_STATE_ON)
-                .setColorScheme(CustomTabsIntent.COLOR_SCHEME_DARK)
-                .build();
-        intent.launchUrl(this, uri);
-        finish();
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+    private boolean isWtronAppUri(Uri uri) {
+        return "https".equalsIgnoreCase(uri.getScheme()) && WTRON_HOST.equalsIgnoreCase(uri.getHost());
+    }
+
+    private WebView createWebView() {
+        WebView view = new WebView(this);
+        view.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        view.setBackgroundColor(Color.rgb(5, 5, 5));
+
+        WebSettings settings = view.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        cookieManager.setAcceptThirdPartyCookies(view, true);
+
+        view.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                if (isWtronAppUri(uri)) {
+                    return false;
+                }
+                openExternal(uri);
+                return true;
+            }
+        });
+        view.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                runOnUiThread(() -> {
+                    if (request == null) return;
+                    if (!hasCameraResource(request.getResources())) {
+                        request.deny();
+                        return;
+                    }
+                    if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                        return;
+                    }
+                    pendingCameraPermissionRequest = request;
+                    requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST_CODE);
+                });
+            }
+
+            @Override
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (MainActivity.this.filePathCallback != null) {
+                    MainActivity.this.filePathCallback.onReceiveValue(null);
+                }
+                MainActivity.this.filePathCallback = filePathCallback;
+                try {
+                    startActivityForResult(fileChooserParams.createIntent(), FILE_CHOOSER_REQUEST_CODE);
+                    return true;
+                } catch (ActivityNotFoundException error) {
+                    MainActivity.this.filePathCallback.onReceiveValue(null);
+                    MainActivity.this.filePathCallback = null;
+                    return false;
+                }
+            }
+        });
+        return view;
+    }
+
+    private boolean hasCameraResource(String[] resources) {
+        if (resources == null) return false;
+        for (String resource : resources) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void openExternal(Uri uri) {
+        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+        intent.addCategory(Intent.CATEGORY_BROWSABLE);
+        try {
+            startActivity(intent);
+        } catch (ActivityNotFoundException ignored) {
+            // Leave the current WTRON session in place if Android has no handler for the URI.
+        }
+    }
+
+    private void configureSystemBars() {
+        getWindow().setStatusBarColor(Color.rgb(5, 5, 5));
+        getWindow().setNavigationBarColor(Color.rgb(5, 5, 5));
+        getWindow().getDecorView().setSystemUiVisibility(0);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != FILE_CHOOSER_REQUEST_CODE || filePathCallback == null) return;
+        Uri[] results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+        filePathCallback.onReceiveValue(results);
+        filePathCallback = null;
+    }
+
+    @Override
+    protected void onPause() {
+        CookieManager.getInstance().flush();
+        super.onPause();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != CAMERA_PERMISSION_REQUEST_CODE || pendingCameraPermissionRequest == null) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            pendingCameraPermissionRequest.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+        } else {
+            pendingCameraPermissionRequest.deny();
+        }
+        pendingCameraPermissionRequest = null;
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (pendingCameraPermissionRequest != null) {
+            pendingCameraPermissionRequest.deny();
+            pendingCameraPermissionRequest = null;
+        }
+        if (webView != null) {
+            webView.destroy();
+            webView = null;
+        }
+        super.onDestroy();
     }
 }

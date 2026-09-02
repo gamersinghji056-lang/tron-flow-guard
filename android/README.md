@@ -2,10 +2,10 @@
 
 This Android project is a first-party WTRON launcher for the production web app at `https://wtron.org/app`.
 
-It uses Android Custom Tabs instead of an embedded WebView, so authentication, QR/camera prompts,
-copy/share and external TronScan navigation remain governed by the production web application and
-the user's browser security model. No Supabase keys, wallet secrets, private keys, recovery phrases
-or signing keys are stored in this Android project.
+It uses an in-app WebView shell, so WTRON opens without browser chrome while authentication,
+QR/camera prompts, copy/share and external TronScan navigation remain governed by the production
+web application and Android's platform permissions. No Supabase keys, wallet secrets, private keys,
+recovery phrases or signing keys are stored in this Android project.
 
 ## Build
 
