@@ -3505,6 +3505,10 @@ describe("GasFree transfer service safety", () => {
       /CONSTRAINT personal_wallet_identities_network_address_key UNIQUE \(network, address\)/,
     );
     assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.personal_wallet_identity_links/);
+    assert.match(
+      sql,
+      /ALTER TABLE public\.personal_wallet_identity_links\s+ADD COLUMN IF NOT EXISTS archived_at timestamptz/,
+    );
     assert.match(sql, /DROP INDEX IF EXISTS public\.user_wallets_active_address_key/);
     assert.match(
       sql,
@@ -3519,6 +3523,13 @@ describe("GasFree transfer service safety", () => {
     assert.match(sql, /identity\.network = wallet\.network::text/);
     assert.match(sql, /NEW\.network::text/);
     assert.doesNotMatch(sql, /identity\.network = wallet\.network(?!::text)/);
+    assert.match(sql, /CASE WHEN NEW\.is_archived THEN now\(\) ELSE NULL END/);
+    assert.match(
+      sql,
+      /AFTER INSERT OR UPDATE OF wallet_identity_id, user_id, is_archived\s+ON public\.user_wallets/,
+    );
+    assert.doesNotMatch(sql, /NEW\.archived_at/);
+    assert.doesNotMatch(sql, /UPDATE OF wallet_identity_id, user_id, is_archived, archived_at/);
     assert.match(sql, /p2p_create_ad\(/);
     assert.match(sql, /CREATE OR REPLACE FUNCTION public\.p2p_update_ad/);
     assert.match(sql, /CREATE OR REPLACE FUNCTION public\.p2p_set_ad_active/);

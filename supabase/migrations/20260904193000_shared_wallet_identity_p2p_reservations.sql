@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS public.personal_wallet_identity_links (
   CONSTRAINT personal_wallet_identity_links_user_identity_key UNIQUE (user_id, identity_id, status)
 );
 
+ALTER TABLE public.personal_wallet_identity_links
+  ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+
 ALTER TABLE public.personal_wallet_identities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.personal_wallet_identity_links ENABLE ROW LEVEL SECURITY;
 GRANT SELECT ON public.personal_wallet_identities TO authenticated;
@@ -207,7 +210,7 @@ BEGIN
     NEW.id,
     NEW.user_id,
     CASE WHEN NEW.is_archived THEN 'archived' ELSE 'active' END,
-    CASE WHEN NEW.is_archived THEN COALESCE(NEW.archived_at, now()) ELSE NULL END
+    CASE WHEN NEW.is_archived THEN now() ELSE NULL END
   )
   ON CONFLICT (wallet_id) DO UPDATE
   SET identity_id = EXCLUDED.identity_id,
@@ -220,7 +223,7 @@ $$;
 
 DROP TRIGGER IF EXISTS user_wallets_link_identity_after_write ON public.user_wallets;
 CREATE TRIGGER user_wallets_link_identity_after_write
-  AFTER INSERT OR UPDATE OF wallet_identity_id, user_id, is_archived, archived_at
+  AFTER INSERT OR UPDATE OF wallet_identity_id, user_id, is_archived
   ON public.user_wallets
   FOR EACH ROW
   EXECUTE FUNCTION public.link_personal_wallet_identity_after_write();
