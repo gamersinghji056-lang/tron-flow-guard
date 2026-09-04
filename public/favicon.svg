@@ -1,34 +1,61 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">WTRON</title>
   <defs>
+    <radialGradient id="wtron-favicon-shine" cx="30%" cy="20%" r="38%">
+      <stop stop-color="#ffffff" stop-opacity=".16" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
     <linearGradient
-      id="wtron-favicon-v17"
+      id="wtron-favicon-tile"
       x1="8"
       y1="6"
       x2="56"
       y2="58"
       gradientUnits="userSpaceOnUse"
     >
-      <stop stop-color="#38bdf8" />
-      <stop offset=".5" stop-color="#2563eb" />
-      <stop offset="1" stop-color="#172554" />
+      <stop stop-color="#6488ff" />
+      <stop offset=".48" stop-color="#3e62dc" />
+      <stop offset="1" stop-color="#273d91" />
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="18" fill="#06111f" />
-  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#wtron-favicon-v17)" />
-  <path
-    d="M32 12 49 48H15L32 12Z"
+  <rect x="1" y="1" width="62" height="62" rx="20" fill="#080a0f" />
+  <rect x="3" y="3" width="58" height="58" rx="18" fill="url(#wtron-favicon-tile)" />
+  <rect x="3" y="3" width="58" height="58" rx="18" fill="url(#wtron-favicon-shine)" />
+  <rect
+    x="8"
+    y="8"
+    width="48"
+    height="48"
+    rx="13"
     fill="none"
-    stroke="#eaf6ff"
-    stroke-width="4.6"
-    stroke-linejoin="round"
+    stroke="#ffffff"
+    stroke-opacity=".06"
+    stroke-width="1.6"
   />
-  <path
-    d="M22 27.5 27.4 43 32 31.5 36.6 43 42 27.5"
-    fill="none"
-    stroke="#fff"
-    stroke-width="4.2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
+  <g transform="translate(5.6 5.6) scale(2.2)">
+    <path
+      d="M4.1 4.6 20.1 7.2 12.3 20.2 4.1 4.6Z"
+      fill="none"
+      stroke="#fff"
+      stroke-width="1.55"
+      stroke-linejoin="round"
+    />
+    <path
+      d="m4.8 5.2 7.5 5.2 7-2.7M12.3 10.4v9.1"
+      fill="none"
+      stroke="#fff"
+      stroke-width="1.15"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      opacity=".72"
+    />
+    <path
+      d="m7.5 9 2.2 6.1 2.6-4.7 2.5 4.7 2-5.1"
+      fill="none"
+      stroke="#fff"
+      stroke-width="1.55"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
 </svg>

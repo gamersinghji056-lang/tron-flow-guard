@@ -37,7 +37,7 @@ export function WtronLogo({
   return (
     <div className={`flex items-center gap-2 ${className ?? ""}`}>
       <span
-        className={`relative grid place-items-center overflow-hidden rounded-[1.125rem] text-white shadow-[0_14px_34px_-20px_rgba(37,99,235,0.85)] ${markClassName ?? "h-9 w-9"}`}
+        className={`relative grid place-items-center overflow-hidden rounded-[31%] text-white shadow-[0_10px_26px_rgba(55,86,194,0.28)] ${markClassName ?? "h-9 w-9"}`}
       >
         <img
           src={WTRON_OFFICIAL_MARK_PATH}
@@ -53,7 +53,7 @@ export function WtronLogo({
             event.currentTarget.nextElementSibling?.classList.add("grid");
           }}
         />
-        <span className="hidden h-full w-full place-items-center rounded-[1.125rem] bg-gradient-to-br from-sky-400 via-blue-600 to-blue-950 text-sm font-semibold tracking-normal text-white">
+        <span className="hidden h-full w-full place-items-center rounded-[31%] bg-gradient-to-br from-[#6488ff] via-[#3e62dc] to-[#273d91] text-sm font-semibold tracking-normal text-white">
           W
         </span>
       </span>

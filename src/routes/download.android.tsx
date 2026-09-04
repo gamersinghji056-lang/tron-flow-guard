@@ -44,7 +44,7 @@ function AndroidDownloadPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#050505] px-4 py-8 text-white">
+    <main className="min-h-screen bg-[#080a0f] px-4 py-8 text-white">
       <div className="mx-auto flex max-w-4xl flex-col gap-8">
         <header className="flex items-center justify-between">
           <Link to="/" aria-label="WTRON home">
@@ -55,7 +55,7 @@ function AndroidDownloadPage() {
           </Button>
         </header>
 
-        <section className="grid gap-6 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(37,99,235,0.75)] md:grid-cols-[1fr_18rem]">
+        <section className="grid gap-6 rounded-[17px] border border-[#222837] bg-[#10131a] p-6 shadow-[0_30px_100px_rgba(0,0,0,.55)] md:grid-cols-[1fr_18rem]">
           <div>
             <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
               Android release
@@ -99,8 +99,8 @@ function AndroidDownloadPage() {
             ) : null}
           </div>
 
-          <aside className="rounded-lg border border-white/10 bg-black/35 p-4">
-            <div className="grid h-12 w-12 place-items-center rounded-lg bg-primary/15 text-primary">
+          <aside className="rounded-[17px] border border-[#222837] bg-[#151925] p-4">
+            <div className="grid h-12 w-12 place-items-center rounded-[14px] bg-primary/15 text-primary">
               <Smartphone className="h-6 w-6" />
             </div>
             <dl className="mt-5 space-y-3 text-sm">
@@ -124,7 +124,7 @@ function AndroidDownloadPage() {
             ["Protected wallet flow", "Transfers keep transaction password and signer checks."],
             ["Android first", "QR, copy, share and external TronScan actions are mobile-ready."],
           ].map(([title, body]) => (
-            <div key={title} className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
+            <div key={title} className="rounded-[17px] border border-[#222837] bg-[#10131a] p-4">
               <ShieldCheck className="h-5 w-5 text-primary" />
               <h2 className="mt-3 font-semibold">{title}</h2>
               <p className="mt-1 text-sm leading-6 text-slate-400">{body}</p>

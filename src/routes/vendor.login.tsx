@@ -72,9 +72,9 @@ function VendorLoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#050505] px-4 py-10 text-white">
+    <main className="min-h-screen bg-[#080a0f] px-4 py-10 text-white">
       <form
-        className="mx-auto mt-12 max-w-md space-y-4 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(37,99,235,0.65)]"
+        className="mx-auto mt-12 max-w-md space-y-4 rounded-[17px] border border-[#222837] bg-[#10131a] p-6 shadow-[0_30px_100px_rgba(0,0,0,.55)]"
         onSubmit={submit}
       >
         <Link to="/" className="inline-flex" aria-label="WTRON home">

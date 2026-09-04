@@ -50,8 +50,8 @@ const nav = [
 function Landing() {
   const [open, setOpen] = useState(false);
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#050505] text-white">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#050505]/92 backdrop-blur-xl">
+    <main className="min-h-screen overflow-x-hidden bg-[#080a0f] text-white">
+      <header className="sticky top-0 z-40 border-b border-[#222837] bg-[#080a0f]/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6">
           <Link to="/" className="flex items-center gap-2" aria-label="WTRON home">
             <WtronLogo markClassName="h-10 w-10" textClassName="text-lg font-semibold" />
@@ -78,7 +78,7 @@ function Landing() {
             </Button>
           </div>
           <button
-            className="ml-auto grid h-10 w-10 place-items-center rounded-md border border-white/10 md:hidden"
+            className="ml-auto grid h-10 w-10 place-items-center rounded-[11px] border border-[#222837] bg-[#10131a] md:hidden"
             onClick={() => setOpen((value) => !value)}
             aria-label="Toggle navigation"
           >
@@ -86,7 +86,7 @@ function Landing() {
           </button>
         </div>
         {open ? (
-          <div className="border-t border-white/10 bg-[#090909] px-4 py-4 md:hidden">
+          <div className="border-t border-[#222837] bg-[#10131a] px-4 py-4 md:hidden">
             <div className="grid gap-1 text-sm">
               {nav.map(([label, id]) => (
                 <a
@@ -238,7 +238,7 @@ function Landing() {
       />
 
       <section id="about" className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
-        <div className="rounded-lg border border-white/10 bg-white/[0.035] p-6">
+        <div className="rounded-[17px] border border-[#222837] bg-[#10131a] p-6">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
             About WTRON
           </p>
@@ -277,7 +277,7 @@ function Landing() {
       <section id="faq" className="mx-auto max-w-4xl px-4 py-14 sm:px-6">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">FAQ</p>
         <h2 className="mt-3 text-3xl font-semibold">Common WTRON questions</h2>
-        <div className="mt-6 divide-y divide-white/10 rounded-lg border border-white/10 bg-white/[0.035]">
+        <div className="mt-6 divide-y divide-[#222837] rounded-[17px] border border-[#222837] bg-[#10131a]">
           {[
             [
               "What is WTRON?",
@@ -370,7 +370,7 @@ function Landing() {
       </section>
 
       <section id="support" className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
-        <div className="grid gap-5 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 md:grid-cols-[1fr_auto] md:items-center">
+        <div className="grid gap-5 rounded-[17px] border border-[#222837] bg-[#10131a] p-6 md:grid-cols-[1fr_auto] md:items-center">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
               Contact / Support
@@ -428,7 +428,7 @@ function Landing() {
 
 function FlowCard({ title, steps }: { title: string; steps: string[] }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-[#050505] p-5">
+    <div className="rounded-[17px] border border-[#222837] bg-[#10131a] p-5">
       <h2 className="text-xl font-semibold">{title}</h2>
       <ol className="mt-4 space-y-3 text-sm leading-6 text-slate-400">
         {steps.map((step, index) => (
@@ -450,15 +450,15 @@ function ProductPreview() {
     { icon: History, label: "Orders" },
   ];
   return (
-    <div className="mx-auto w-full max-w-[430px] rounded-[28px] border border-white/10 bg-[#0b0b0b] p-3 shadow-[0_40px_120px_-70px_rgba(37,99,235,0.75)]">
-      <div className="rounded-[22px] border border-white/10 bg-[#050505] p-4">
+    <div className="mx-auto w-full max-w-[430px] rounded-[30px] border border-[#151a24] bg-[#080a0f] p-3 shadow-[0_30px_100px_rgba(0,0,0,.55)]">
+      <div className="rounded-[24px] border border-[#222837] bg-[#080a0f] p-4">
         <div className="flex items-center justify-between">
           <WtronLogo markClassName="h-8 w-8" textClassName="font-semibold" />
           <span className="rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-xs text-primary">
             TRON Mainnet
           </span>
         </div>
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+        <div className="mt-6 rounded-[17px] border border-[#222837] bg-[#10131a] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Total assets</p>
@@ -474,7 +474,7 @@ function ProductPreview() {
         <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs text-slate-300">
           {actions.map(({ icon: PreviewIcon, label }) => (
             <div key={label}>
-              <span className="mx-auto grid h-10 w-10 place-items-center rounded-2xl bg-white/8 text-primary">
+              <span className="mx-auto grid h-[45px] w-[45px] place-items-center rounded-[14px] border border-[#222837] bg-[#10131a] text-[#7ba0ff]">
                 <PreviewIcon className="h-4 w-4" />
               </span>
               <span className="mt-2 block">{label}</span>
@@ -489,7 +489,7 @@ function ProductPreview() {
           ].map(({ label, icon: Icon }) => (
             <div
               key={label}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-sm"
+              className="flex items-center gap-3 rounded-[17px] border border-[#222837] bg-[#10131a] p-3 text-sm"
             >
               <Icon className="h-4 w-4 text-primary" />
               <span className="flex-1 text-slate-300">{label}</span>

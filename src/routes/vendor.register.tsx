@@ -58,13 +58,13 @@ function VendorRegisterPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#050505] px-4 py-10 text-white">
+    <main className="min-h-screen bg-[#080a0f] px-4 py-10 text-white">
       <div className="mx-auto max-w-md">
         <Link to="/" className="inline-flex" aria-label="WTRON home">
           <WtronLogo markClassName="h-9 w-9" textClassName="font-semibold" />
         </Link>
         {done ? (
-          <section className="mt-8 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(37,99,235,0.65)]">
+          <section className="mt-8 rounded-[17px] border border-[#222837] bg-[#10131a] p-6 shadow-[0_30px_100px_rgba(0,0,0,.55)]">
             <h1 className="text-2xl font-semibold">Vendor Application Under Review</h1>
             <p className="mt-3 text-sm text-slate-300">
               Registration submitted. Waiting for admin approval.
@@ -75,7 +75,7 @@ function VendorRegisterPage() {
           </section>
         ) : (
           <form
-            className="mt-8 space-y-4 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(37,99,235,0.65)]"
+            className="mt-8 space-y-4 rounded-[17px] border border-[#222837] bg-[#10131a] p-6 shadow-[0_30px_100px_rgba(0,0,0,.55)]"
             onSubmit={submit}
           >
             <div>
