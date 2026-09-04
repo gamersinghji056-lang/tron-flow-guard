@@ -3512,6 +3512,7 @@ describe("GasFree transfer service safety", () => {
     );
     assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.personal_wallet_reservations/);
     assert.match(sql, /public\.personal_wallet_available_usdt/);
+    assert.match(sql, /personal_wallet_available_usdt_for_wallet/);
     assert.match(sql, /assert_and_reserve_personal_wallet_usdt/);
     assert.match(sql, /source_wallet_identity_id/);
     assert.match(sql, /p2p_create_ad\(/);
@@ -3529,5 +3530,58 @@ describe("GasFree transfer service safety", () => {
       walletsServer,
       /Shared wallet linking requires the latest WTRON wallet identity migration/,
     );
+  });
+
+  it("keeps both P2P seller entry points personal-wallet backed", () => {
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260904193000_shared_wallet_identity_p2p_reservations.sql",
+      ),
+      "utf8",
+    );
+    const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+
+    assert.match(p2p, /sourceWalletId: z\.string\(\)\.uuid\(\)\.optional\(\)/);
+    assert.match(p2p, /_source_wallet_id: data\.sourceWalletId \?\? null/);
+    assert.match(
+      sql,
+      /DROP FUNCTION IF EXISTS public\.p2p_create_order_from_ad\(uuid,numeric,uuid\)/,
+    );
+    assert.match(
+      sql,
+      /CREATE OR REPLACE FUNCTION public\.p2p_create_order_from_ad\(\s*_advertisement_id uuid,\s*_usdt numeric,\s*_payment_method_id uuid DEFAULT NULL,\s*_source_wallet_id uuid DEFAULT NULL/s,
+    );
+    assert.match(sql, /IF ad\.side = 'buy' THEN[\s\S]*IF _source_wallet_id IS NULL/);
+    assert.match(
+      sql,
+      /IF ad\.side = 'buy' THEN[\s\S]*source_wallet\.id, source_wallet\.wallet_identity_id/s,
+    );
+    assert.match(
+      sql,
+      /IF ad\.side = 'buy' THEN[\s\S]*assert_and_reserve_personal_wallet_usdt\(\s*source_wallet\.id,\s*auth\.uid\(\),\s*'p2p_order',\s*new_order\.id,\s*_usdt,\s*seller_fee/s,
+    );
+    const acceptingSellerBranch = sql.match(/IF ad\.side = 'buy' THEN[\s\S]*?\n\s+ELSE/)?.[0] ?? "";
+    assert.equal(acceptingSellerBranch.includes("seller_profile.balance"), false);
+    assert.equal(
+      acceptingSellerBranch.includes("UPDATE public.profiles SET balance = balance - escrow_total"),
+      false,
+    );
+    assert.match(sql, /personal_wallet_available_usdt_for_wallet/);
+    assert.match(sql, /CREATE OR REPLACE FUNCTION public\.expire_p2p_orders/);
+    assert.match(sql, /release_personal_wallet_reservation\('p2p_order', ord\.id, 'expired'\)/);
+    assert.match(sql, /release_personal_wallet_reservation\('p2p_order', ord\.id, 'settled'\)/);
+    assert.match(sql, /release_personal_wallet_reservation\('p2p_order', ord\.id, 'cancelled'\)/);
+    assert.doesNotMatch(
+      sql.match(
+        /CREATE OR REPLACE FUNCTION public\.release_personal_wallet_reservation_for_p2p_order[\s\S]*?END;\s*\$\$/,
+      )?.[0] ?? "",
+      /disputed/,
+    );
+    assert.match(mini, /const sellingToBuyAd = ad\.side === "buy"/);
+    assert.match(mini, /sourceWalletId: sellingToBuyAd \? selectedSellAdWallet\?\.id : undefined/);
+    assert.match(mini, /Sell into buyer ads/);
+    assert.match(mini, /personal_wallet_available_usdt_for_wallet/);
   });
 });

@@ -1224,6 +1224,7 @@ function TelegramMiniApp() {
     upi: false,
     highCompletion: false,
   });
+  const [p2pWalletAvailability, setP2pWalletAvailability] = useState<Record<string, number>>({});
   const [tradeTab, setTradeTab] = useState<TradeTab>("sell");
   const [directSellAmount, setDirectSellAmount] = useState("");
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
@@ -1532,6 +1533,28 @@ function TelegramMiniApp() {
     activeSellWallets[0] ??
     null;
 
+  async function loadP2pWalletAvailability(walletRows = activeSellWallets) {
+    if (!walletRows.length) {
+      setP2pWalletAvailability({});
+      return;
+    }
+    const entries = await Promise.all(
+      walletRows.map(async (wallet) => {
+        try {
+          const { data, error } = await supabase.rpc(
+            "personal_wallet_available_usdt_for_wallet" as never,
+            { _wallet_id: wallet.id } as never,
+          );
+          if (error) throw error;
+          return [wallet.id, Number(data ?? 0)] as const;
+        } catch {
+          return [wallet.id, walletDisplayBalance(wallet)] as const;
+        }
+      }),
+    );
+    setP2pWalletAvailability(Object.fromEntries(entries));
+  }
+
   function applyWalletResult(
     result: Overview & {
       deposits?: DepositRow[];
@@ -1694,6 +1717,7 @@ function TelegramMiniApp() {
       requests.push(loadSecurityData(force));
     }
     if (primary === "p2p") requests.push(loadP2pData(launch, force));
+    if (primary === "p2p") requests.push(loadP2pWalletAvailability(activeSellWallets));
     if (primary === "trade") requests.push(loadVendorListingsData(force));
     if (nextScreen === "bank-accounts" || linkedAccountType === "vendor") {
       requests.push(loadVendorPortalData(force));
@@ -1944,6 +1968,11 @@ function TelegramMiniApp() {
   useEffect(() => {
     if (!selectedWalletId && selectedWallet?.id) setSelectedWalletId(selectedWallet.id);
   }, [selectedWallet?.id, selectedWalletId]);
+
+  useEffect(() => {
+    if (tabForScreen(screen) !== "p2p") return;
+    void loadP2pWalletAvailability(activeSellWallets);
+  }, [screen, activeSellWallets.map((wallet) => wallet.id).join("|")]);
 
   useEffect(() => {
     if (screen !== "wallet-gasfree" || !selectedGasfreeWallet?.id) {
@@ -2264,10 +2293,24 @@ function TelegramMiniApp() {
       toast.error("Enter a valid USDT amount");
       return;
     }
+    const sellingToBuyAd = ad.side === "buy";
+    if (sellingToBuyAd && !selectedActiveUpi?.id) {
+      toast.error("Add UPI ID first");
+      return;
+    }
+    if (sellingToBuyAd && !selectedSellAdWallet?.id) {
+      toast.error("Select a funded personal wallet to sell USDT");
+      return;
+    }
     setBusy(true);
     try {
       await takeP2pAd({
-        data: { adId: ad.id, amountUsdt: amount, paymentMethodId: defaultPaymentMethod?.id },
+        data: {
+          adId: ad.id,
+          amountUsdt: amount,
+          paymentMethodId: sellingToBuyAd ? selectedActiveUpi?.id : defaultPaymentMethod?.id,
+          sourceWalletId: sellingToBuyAd ? selectedSellAdWallet?.id : undefined,
+        },
       });
       toast.success("P2P order created");
       setP2pAmount("");
@@ -3264,6 +3307,7 @@ function TelegramMiniApp() {
             sourceWallets={activeSellWallets}
             selectedSourceWalletId={selectedSellAdWallet?.id ?? ""}
             setSelectedSourceWalletId={setSellAdSourceWalletId}
+            walletAvailability={p2pWalletAvailability}
             filters={p2pFilters}
             setFilters={setP2pFilters}
             busy={busy}
@@ -5635,6 +5679,7 @@ function P2pScreen(props: {
   sourceWallets: WalletRow[];
   selectedSourceWalletId: string;
   setSelectedSourceWalletId: (id: string) => void;
+  walletAvailability: Record<string, number>;
   filters: P2pFilters;
   setFilters: (filters: P2pFilters) => void;
   busy: boolean;
@@ -5642,6 +5687,7 @@ function P2pScreen(props: {
   onCreateAd: (event: FormEvent) => void;
 }) {
   const filteredAds = applyP2pFilters(props.ads, props.filters);
+  const buyAds = props.ads.filter((ad) => ad.side === "buy");
   const toggleFilter = (key: keyof P2pFilters) =>
     props.setFilters({ ...props.filters, [key]: !props.filters[key] });
   const filterItems: Array<[keyof P2pFilters, string]> = [
@@ -5711,85 +5757,117 @@ function P2pScreen(props: {
         </div>
       ) : null}
       {props.tab === "sell" ? (
-        <form
-          className="space-y-3 rounded-2xl border border-white/10 bg-white/6 p-3"
-          onSubmit={props.onCreateAd}
-        >
-          {(["amount", "rate", "min", "max"] as const).map((field) => {
-            const label =
-              field === "amount"
-                ? "USDT Amount"
-                : field === "rate"
-                  ? "Selling Rate"
-                  : field === "min"
-                    ? "Min INR"
-                    : "Max INR";
-            return (
-              <FormField key={field} label={label}>
+        <div className="space-y-3">
+          {!props.vendorMode ? (
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/6 p-3">
+              <div>
+                <p className="text-[11px] font-semibold text-white">Sell into buyer ads</p>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Select a funded Mainnet wallet before accepting a buyer request.
+                </p>
+              </div>
+              <FormField label="USDT amount">
                 <Input
-                  value={props.sellAd[field]}
-                  onChange={(event) =>
-                    props.setSellAd({ ...props.sellAd, [field]: event.target.value })
-                  }
-                  placeholder={label}
+                  value={props.p2pAmount}
+                  onChange={(event) => props.setP2pAmount(event.target.value)}
+                  placeholder="USDT amount"
                 />
               </FormField>
-            );
-          })}
-          {props.paymentMethods.length ? (
-            <FormField label="Saved UPI">
-              <PaymentMethodPicker
-                methods={props.paymentMethods}
-                selectedId={props.selectedPaymentMethodId}
-                setSelectedId={props.setSelectedPaymentMethodId}
+              {props.paymentMethods.length ? (
+                <FormField label="Payout UPI">
+                  <PaymentMethodPicker
+                    methods={props.paymentMethods}
+                    selectedId={props.selectedPaymentMethodId}
+                    setSelectedId={props.setSelectedPaymentMethodId}
+                  />
+                </FormField>
+              ) : (
+                <CompactEmpty
+                  title="Add UPI ID first"
+                  body="A saved active UPI account is required when you sell into buyer ads."
+                />
+              )}
+              <SourceWalletPicker
+                wallets={props.sourceWallets}
+                selectedId={props.selectedSourceWalletId}
+                setSelectedId={props.setSelectedSourceWalletId}
+                availability={props.walletAvailability}
               />
-            </FormField>
-          ) : (
-            <CompactEmpty
-              title="Add UPI ID first"
-              body="A saved active UPI account is required for sell ads."
-            />
-          )}
-          {props.sourceWallets.length ? (
-            <FormField label="Source wallet">
-              <select
-                aria-label="P2P sell source wallet"
-                className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none"
-                value={props.selectedSourceWalletId}
-                onChange={(event) => props.setSelectedSourceWalletId(event.target.value)}
-              >
-                {props.sourceWallets.map((wallet) => (
-                  <option key={wallet.id} className="bg-slate-950" value={wallet.id}>
-                    {wallet.name ?? "Wallet"} - {money(walletDisplayBalance(wallet))} USDT
-                  </option>
-                ))}
-              </select>
-            </FormField>
-          ) : (
-            <CompactEmpty
-              title="Fund a personal wallet first"
-              body="P2P sell ads reserve USDT from an eligible Mainnet wallet."
-            />
-          )}
-          <textarea
-            className="min-h-20 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-primary"
-            value={props.sellAd.terms}
-            onChange={(event) => props.setSellAd({ ...props.sellAd, terms: event.target.value })}
-            placeholder="Terms"
-          />
-          <Button
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-            disabled={
-              props.busy ||
-              !props.paymentMethods.length ||
-              !props.selectedPaymentMethodId ||
-              !props.sourceWallets.length ||
-              !props.selectedSourceWalletId
-            }
+              {buyAds.length ? (
+                buyAds.map((ad) => <AdCard key={ad.id} ad={ad} onTake={() => props.onTakeAd(ad)} />)
+              ) : (
+                <CompactEmpty
+                  title="No buyer ads"
+                  body="Create your own sell ad below or check buyer requests later."
+                />
+              )}
+            </div>
+          ) : null}
+          <form
+            className="space-y-3 rounded-2xl border border-white/10 bg-white/6 p-3"
+            onSubmit={props.onCreateAd}
           >
-            Create Sell Ad
-          </Button>
-        </form>
+            {(["amount", "rate", "min", "max"] as const).map((field) => {
+              const label =
+                field === "amount"
+                  ? "USDT Amount"
+                  : field === "rate"
+                    ? "Selling Rate"
+                    : field === "min"
+                      ? "Min INR"
+                      : "Max INR";
+              return (
+                <FormField key={field} label={label}>
+                  <Input
+                    value={props.sellAd[field]}
+                    onChange={(event) =>
+                      props.setSellAd({ ...props.sellAd, [field]: event.target.value })
+                    }
+                    placeholder={label}
+                  />
+                </FormField>
+              );
+            })}
+            {props.paymentMethods.length ? (
+              <FormField label="Saved UPI">
+                <PaymentMethodPicker
+                  methods={props.paymentMethods}
+                  selectedId={props.selectedPaymentMethodId}
+                  setSelectedId={props.setSelectedPaymentMethodId}
+                />
+              </FormField>
+            ) : (
+              <CompactEmpty
+                title="Add UPI ID first"
+                body="A saved active UPI account is required for sell ads."
+              />
+            )}
+            <SourceWalletPicker
+              wallets={props.sourceWallets}
+              selectedId={props.selectedSourceWalletId}
+              setSelectedId={props.setSelectedSourceWalletId}
+              availability={props.walletAvailability}
+            />
+            <textarea
+              className="min-h-20 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-primary"
+              value={props.sellAd.terms}
+              onChange={(event) => props.setSellAd({ ...props.sellAd, terms: event.target.value })}
+              placeholder="Terms"
+            />
+            <Button
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+              disabled={
+                props.busy ||
+                !props.paymentMethods.length ||
+                !props.selectedPaymentMethodId ||
+                !props.sourceWallets.length ||
+                !props.selectedSourceWalletId
+              }
+            >
+              Create Sell Ad
+            </Button>
+          </form>
+        </div>
       ) : null}
       {props.tab === "myAds" ? (
         <CompactEmpty title="No ads yet" body="Your sell ads will appear here after creation." />
@@ -7084,6 +7162,43 @@ function PaymentMethodPicker({
         );
       })}
     </div>
+  );
+}
+function SourceWalletPicker({
+  wallets,
+  selectedId,
+  setSelectedId,
+  availability,
+}: {
+  wallets: WalletRow[];
+  selectedId: string;
+  setSelectedId: (id: string) => void;
+  availability: Record<string, number>;
+}) {
+  if (!wallets.length) {
+    return (
+      <CompactEmpty
+        title="Fund a personal wallet first"
+        body="P2P seller flows reserve USDT from an eligible Mainnet wallet."
+      />
+    );
+  }
+  return (
+    <FormField label="Source wallet">
+      <select
+        aria-label="P2P sell source wallet"
+        className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none"
+        value={selectedId}
+        onChange={(event) => setSelectedId(event.target.value)}
+      >
+        {wallets.map((wallet) => (
+          <option key={wallet.id} className="bg-slate-950" value={wallet.id}>
+            {wallet.name ?? "Wallet"} -{" "}
+            {money(availability[wallet.id] ?? walletDisplayBalance(wallet))} USDT available
+          </option>
+        ))}
+      </select>
+    </FormField>
   );
 }
 function FormCard({ title, children }: { title: string; children: React.ReactNode }) {

@@ -32,6 +32,7 @@ const createOrderInput = z.object({
   adId: z.string().uuid(),
   amountUsdt: z.number().positive(),
   paymentMethodId: z.string().uuid().optional(),
+  sourceWalletId: z.string().uuid().optional(),
 });
 
 const orderIdInput = z.object({
@@ -283,6 +284,7 @@ export const createP2pOrderFromAd = createServerFn({ method: "POST" })
         _advertisement_id: data.adId,
         _usdt: data.amountUsdt,
         _payment_method_id: data.paymentMethodId ?? null,
+        _source_wallet_id: data.sourceWalletId ?? null,
       } as never,
     );
     if (error) throw new Error(error.message);

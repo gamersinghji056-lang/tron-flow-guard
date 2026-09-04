@@ -241,6 +241,30 @@ SET search_path = public AS $$
   WHERE identity.id = _identity_id;
 $$;
 
+CREATE OR REPLACE FUNCTION public.personal_wallet_available_usdt_for_wallet(_wallet_id uuid)
+RETURNS numeric
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  wallet public.user_wallets;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Not signed in'; END IF;
+  SELECT * INTO wallet
+  FROM public.user_wallets
+  WHERE id = _wallet_id
+    AND user_id = auth.uid()
+    AND is_archived = false
+    AND network = 'trc20-mainnet'
+    AND COALESCE(wallet_role, 'general') <> 'gasfree'
+    AND COALESCE(wallet_type, 'standard') <> 'gasfree';
+  IF wallet.id IS NULL OR wallet.wallet_identity_id IS NULL THEN
+    RETURN 0;
+  END IF;
+  RETURN public.personal_wallet_available_usdt(wallet.wallet_identity_id);
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.assert_and_reserve_personal_wallet_usdt(
   _wallet_id uuid,
   _owner_id uuid,
@@ -586,19 +610,23 @@ CREATE TRIGGER p2p_orders_release_personal_wallet_reservation
   EXECUTE FUNCTION public.release_personal_wallet_reservation_for_p2p_order();
 
 REVOKE ALL ON FUNCTION public.personal_wallet_available_usdt(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.personal_wallet_available_usdt_for_wallet(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.assert_and_reserve_personal_wallet_usdt(uuid,uuid,text,uuid,numeric,numeric) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.release_personal_wallet_reservation(text,uuid,text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.release_p2p_ad_wallet_reservation_if_finished(uuid,text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.personal_wallet_available_usdt(uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.personal_wallet_available_usdt_for_wallet(uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.assert_and_reserve_personal_wallet_usdt(uuid,uuid,text,uuid,numeric,numeric) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.release_personal_wallet_reservation(text,uuid,text) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.release_p2p_ad_wallet_reservation_if_finished(uuid,text) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.p2p_create_ad(public.p2p_side,numeric,numeric,numeric,numeric,text[],text,boolean,uuid,uuid) TO authenticated, service_role;
 
+DROP FUNCTION IF EXISTS public.p2p_create_order_from_ad(uuid,numeric,uuid);
 CREATE OR REPLACE FUNCTION public.p2p_create_order_from_ad(
   _advertisement_id uuid,
   _usdt numeric,
-  _payment_method_id uuid DEFAULT NULL
+  _payment_method_id uuid DEFAULT NULL,
+  _source_wallet_id uuid DEFAULT NULL
 )
 RETURNS TABLE(order_id uuid, order_ref text, total_inr numeric)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -613,6 +641,7 @@ DECLARE
   buyer_fee numeric;
   escrow_total numeric;
   new_order public.p2p_orders;
+  source_wallet public.user_wallets;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Not signed in'; END IF;
   SELECT * INTO ad FROM public.p2p_advertisements WHERE id = _advertisement_id FOR UPDATE;
@@ -631,26 +660,27 @@ BEGIN
 
   IF ad.side = 'buy' THEN
     IF _payment_method_id IS NULL THEN RAISE EXCEPTION 'Payment method is required'; END IF;
+    IF _source_wallet_id IS NULL THEN RAISE EXCEPTION 'Select a source wallet'; END IF;
     SELECT * INTO seller_pm FROM public.payment_methods WHERE id = _payment_method_id AND user_id = auth.uid();
     IF seller_pm.id IS NULL THEN RAISE EXCEPTION 'Select one of your own payment methods'; END IF;
-    SELECT * INTO seller_profile FROM public.profiles WHERE id = auth.uid() FOR UPDATE;
+    SELECT * INTO source_wallet FROM public.user_wallets WHERE id = _source_wallet_id AND user_id = auth.uid() FOR UPDATE;
+    IF source_wallet.id IS NULL THEN RAISE EXCEPTION 'Select an eligible personal Mainnet wallet'; END IF;
     seller_fee := public.calculate_p2p_seller_fee(_usdt);
     escrow_total := _usdt + seller_fee;
-    IF seller_profile.balance < escrow_total THEN RAISE EXCEPTION 'Insufficient available balance including seller fee'; END IF;
     INSERT INTO public.p2p_orders
       (advertisement_id, merchant_id, buyer_user_id, seller_id, side, usdt_amount, price_inr,
        total_inr, status, payment_method, payout_upi_id, payout_holder_name,
        escrow_locked, payment_deadline, seller_fee_usdt, fee_usdt, escrow_amount_usdt,
-       payment_method_snapshot)
+       source_wallet_id, source_wallet_identity_id, payment_method_snapshot)
     VALUES (ad.id, mer.id, mer.user_id, auth.uid(), 'sell', _usdt, ad.price_inr, total,
             'payment_pending', seller_pm.kind, seller_pm.upi_id, seller_pm.holder_name, true,
             now() + make_interval(mins => pay_minutes), seller_fee, seller_fee, escrow_total,
+            source_wallet.id, source_wallet.wallet_identity_id,
             jsonb_build_object('payment_method_id', seller_pm.id, 'kind', seller_pm.kind, 'upi_id', seller_pm.upi_id, 'holder_name', seller_pm.holder_name))
     RETURNING * INTO new_order;
-    UPDATE public.profiles SET balance = balance - escrow_total, locked_balance = locked_balance + escrow_total
-     WHERE id = auth.uid() RETURNING * INTO seller_profile;
-    PERFORM public.write_ledger(auth.uid(), new_order.id, 'escrow_lock', 'available', -escrow_total,
-      seller_profile.balance + escrow_total, seller_profile.balance, 'Locked P2P sell escrow plus fee for ' || new_order.order_ref);
+    PERFORM public.assert_and_reserve_personal_wallet_usdt(
+      source_wallet.id, auth.uid(), 'p2p_order', new_order.id, _usdt, seller_fee
+    );
   ELSE
     IF mer.user_id IS NULL THEN RAISE EXCEPTION 'Advertiser account is unavailable'; END IF;
     SELECT * INTO seller_pm FROM public.payment_methods
@@ -809,4 +839,40 @@ BEGIN
   PERFORM public.record_p2p_system_event(ord.id, auth.uid(), ord.status, 'cancelled', COALESCE(_reason, 'Order cancelled'));
   RETURN true;
 END; $$;
+GRANT EXECUTE ON FUNCTION public.p2p_create_order_from_ad(uuid,numeric,uuid,uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.p2p_cancel_order(uuid,text) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.expire_p2p_orders()
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE ord record; affected integer := 0; seller public.profiles; escrow_total numeric;
+BEGIN
+  FOR ord IN
+    SELECT * FROM public.p2p_orders
+    WHERE status = 'payment_pending' AND payment_deadline IS NOT NULL AND payment_deadline < now()
+    FOR UPDATE SKIP LOCKED
+  LOOP
+    escrow_total := COALESCE(ord.escrow_amount_usdt, ord.usdt_amount + COALESCE(ord.seller_fee_usdt, ord.fee_usdt, 0));
+    IF ord.source_wallet_identity_id IS NULL THEN
+      SELECT * INTO seller FROM public.profiles WHERE id = ord.seller_id FOR UPDATE;
+      UPDATE public.profiles SET locked_balance = GREATEST(locked_balance - escrow_total, 0),
+        balance = balance + escrow_total WHERE id = ord.seller_id RETURNING * INTO seller;
+      PERFORM public.write_ledger(ord.seller_id, ord.id, 'escrow_refund', 'available', escrow_total,
+        seller.balance - escrow_total, seller.balance, 'Escrow expired for ' || ord.order_ref);
+    ELSE
+      PERFORM public.release_personal_wallet_reservation('p2p_order', ord.id, 'expired');
+    END IF;
+
+    UPDATE public.p2p_orders SET status = 'expired', escrow_settled = true, escrow_locked = false,
+      expired_at = now(), cancelled_at = now(), cancel_reason = 'Payment window expired' WHERE id = ord.id;
+    IF ord.advertisement_id IS NOT NULL THEN
+      UPDATE public.p2p_advertisements SET available_usdt = available_usdt + ord.usdt_amount,
+        reserved_usdt = GREATEST(reserved_usdt - ord.usdt_amount, 0), is_active = true, closed_at = NULL
+      WHERE id = ord.advertisement_id;
+      PERFORM public.release_p2p_ad_wallet_reservation_if_finished(ord.advertisement_id, 'released');
+    END IF;
+    PERFORM public.record_p2p_system_event(ord.id, NULL, ord.status, 'expired', 'Payment window expired. Escrow returned to seller.');
+    affected := affected + 1;
+  END LOOP;
+  RETURN affected;
+END; $$;
