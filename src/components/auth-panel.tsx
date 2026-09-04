@@ -259,7 +259,7 @@ export function AuthPanel({ audience, mode }: { audience: Audience; mode: AuthMo
           <WtronLogo markClassName="h-9 w-9" textClassName="font-semibold tracking-tight" />
         </Link>
 
-        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)]">
+        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(37,99,235,0.65)]">
           <p className="mono text-[10px] tracking-[0.22em] text-primary uppercase">
             {audience === "admin" ? "Administrator area" : "Trader area"}
           </p>

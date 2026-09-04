@@ -55,7 +55,7 @@ function AndroidDownloadPage() {
           </Button>
         </header>
 
-        <section className="grid gap-6 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)] md:grid-cols-[1fr_18rem]">
+        <section className="grid gap-6 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(37,99,235,0.75)] md:grid-cols-[1fr_18rem]">
           <div>
             <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
               Android release

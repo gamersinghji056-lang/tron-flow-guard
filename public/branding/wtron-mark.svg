@@ -1,22 +1,72 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
   <title id="title">WTRON mark</title>
-  <desc id="desc">Original faceted red WTRON diamond network mark.</desc>
+  <desc id="desc">Blue WTRON logo tile with TRON triangle and W monogram.</desc>
   <defs>
-    <linearGradient id="wtron-red-a" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ff6b57"/>
-      <stop offset=".48" stop-color="#ef233c"/>
-      <stop offset="1" stop-color="#9f1239"/>
+    <linearGradient
+      id="wtron-v17-tile"
+      x1="8"
+      y1="6"
+      x2="56"
+      y2="58"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#38bdf8" />
+      <stop offset=".48" stop-color="#2563eb" />
+      <stop offset="1" stop-color="#172554" />
     </linearGradient>
-    <linearGradient id="wtron-red-b" x1="18" y1="10" x2="47" y2="51" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fff1f2" stop-opacity=".95"/>
-      <stop offset="1" stop-color="#fecdd3" stop-opacity=".18"/>
+    <linearGradient
+      id="wtron-v17-line"
+      x1="16"
+      y1="13"
+      x2="48"
+      y2="51"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#f8fbff" />
+      <stop offset="1" stop-color="#bfe3ff" />
     </linearGradient>
   </defs>
-  <path fill="url(#wtron-red-a)" d="M32 4 58 22 48 56H16L6 22 32 4Z"/>
-  <path fill="#17070a" fill-opacity=".3" d="M6 22h52L48 56H16L6 22Z"/>
-  <path fill="#fff" fill-opacity=".5" d="M32 4 18 22h28L32 4Z"/>
-  <path fill="url(#wtron-red-b)" d="M18 22 32 4l14 18-14 8-14-8Z"/>
-  <path fill="#fff" fill-opacity=".38" d="m6 22 12-10v10H6Zm40-10 12 10H46V12Z"/>
-  <path fill="#fff" fill-opacity=".78" d="M18 22h28L34.5 50h-5L18 22Zm8.5 4 5.5 15 5.5-15h-4.2L32 31.8 30.7 26h-4.2Z"/>
-  <path fill="#7f0d1d" fill-opacity=".5" d="m16 56 13.5-6h5L48 56H16Z"/>
+  <rect width="64" height="64" rx="18" fill="#06111f" />
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#wtron-v17-tile)" />
+  <path
+    d="M32 12 49 48H15L32 12Z"
+    fill="none"
+    stroke="url(#wtron-v17-line)"
+    stroke-width="4.6"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M22 27.5 27.4 43 32 31.5 36.6 43 42 27.5"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="4.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M32 12 26.5 29.5 49 48"
+    fill="none"
+    stroke="#d8efff"
+    stroke-width="2.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity=".78"
+  />
+  <path
+    d="M32 12 37.5 29.5 15 48"
+    fill="none"
+    stroke="#d8efff"
+    stroke-width="2.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity=".55"
+  />
+  <path
+    d="M9 16c5-7 13-9 23-9 8 0 15 2 21 7"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    opacity=".25"
+  />
 </svg>

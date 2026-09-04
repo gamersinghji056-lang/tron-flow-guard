@@ -63,7 +63,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   --shadow-panel: 0 1px 0 0 oklch(1 0 0 / 4%) inset, 0 18px 50px -30px oklch(0 0 0 / 80%);
-  --shadow-glow: 0 0 0 1px oklch(0.64 0.22 24 / 34%), 0 0 34px -10px oklch(0.64 0.22 24 / 48%);
+  --shadow-glow: 0 0 0 1px oklch(0.62 0.19 252 / 34%), 0 0 34px -10px oklch(0.62 0.19 252 / 48%);
 
   --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-ticker: ticker 1.6s linear infinite;
@@ -101,7 +101,7 @@
   --popover: oklch(0.11 0.006 255);
   --popover-foreground: oklch(0.96 0.005 250);
 
-  --primary: oklch(0.64 0.22 24);
+  --primary: oklch(0.62 0.19 252);
   --primary-foreground: oklch(0.99 0.004 255);
 
   --secondary: oklch(0.16 0.008 255);
@@ -125,9 +125,9 @@
 
   --border: oklch(0.24 0.008 255);
   --input: oklch(0.25 0.009 255);
-  --ring: oklch(0.64 0.22 24);
+  --ring: oklch(0.62 0.19 252);
 
-  --chart-1: oklch(0.64 0.22 24);
+  --chart-1: oklch(0.62 0.19 252);
   --chart-2: oklch(0.97 0.006 255);
   --chart-3: oklch(0.79 0.16 78);
   --chart-4: oklch(0.66 0.19 300);
@@ -135,12 +135,12 @@
 
   --sidebar: oklch(0.085 0.004 255);
   --sidebar-foreground: oklch(0.94 0.005 250);
-  --sidebar-primary: oklch(0.64 0.22 24);
+  --sidebar-primary: oklch(0.62 0.19 252);
   --sidebar-primary-foreground: oklch(0.99 0.004 255);
   --sidebar-accent: oklch(0.16 0.008 255);
   --sidebar-accent-foreground: oklch(0.95 0.005 250);
   --sidebar-border: oklch(0.29 0.018 252);
-  --sidebar-ring: oklch(0.64 0.22 24);
+  --sidebar-ring: oklch(0.62 0.19 252);
 }
 
 .dark {
@@ -162,7 +162,7 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     background-image:
-      radial-gradient(circle at 20% -10%, oklch(0.42 0.18 24 / 18%), transparent 32rem),
+      radial-gradient(circle at 20% -10%, oklch(0.5 0.18 252 / 22%), transparent 32rem),
       linear-gradient(180deg, oklch(0.055 0.004 255), oklch(0.032 0 0));
     background-attachment: fixed;
   }
@@ -197,6 +197,9 @@
 
 .wtron-product-shell {
   --product-bottom-nav: 5.75rem;
+  --wtron-v17-blue: #2563eb;
+  --wtron-v17-sky: #38bdf8;
+  --wtron-v17-deep: #06111f;
 }
 
 .wtron-product-shell .panel,
@@ -221,7 +224,8 @@
 @media (max-width: 767px) {
   .wtron-product-shell {
     background:
-      radial-gradient(circle at 50% -10%, rgb(240 68 68 / 0.16), transparent 19rem), #050505;
+      radial-gradient(circle at 50% -10%, rgb(37 99 235 / 0.24), transparent 19rem),
+      radial-gradient(circle at 8% 16%, rgb(56 189 248 / 0.1), transparent 15rem), #050505;
   }
 
   .wtron-product-shell h1 {
@@ -279,7 +283,7 @@
   --mini-surface-soft: rgb(255 255 255 / 0.06);
   --mini-border: rgb(255 255 255 / 0.1);
   --mini-muted: rgb(148 163 184 / 1);
-  --mini-accent: rgb(240 68 68 / 1);
+  --mini-accent: rgb(37 99 235 / 1);
 }
 
 [data-mini-theme="light"] {
@@ -287,7 +291,32 @@
   --mini-surface-soft: rgb(255 255 255 / 0.98);
   --mini-border: rgb(226 232 240 / 1);
   --mini-muted: rgb(100 116 139 / 1);
-  --mini-accent: rgb(220 38 38 / 1);
+  --mini-accent: rgb(37 99 235 / 1);
+}
+
+.wtron-v17-mobile,
+[data-mini-theme="dark"] {
+  background:
+    radial-gradient(circle at 50% -8%, rgb(37 99 235 / 0.3), transparent 18rem),
+    radial-gradient(circle at 8% 18%, rgb(56 189 248 / 0.11), transparent 16rem), #050505;
+}
+
+.wtron-v17-mobile [data-v17-surface],
+.wtron-product-shell .panel,
+.wtron-product-shell .wtron-surface {
+  border-color: rgb(255 255 255 / 0.1);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.032)), rgb(7 11 18 / 0.96);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.05) inset,
+    0 22px 48px -36px rgb(0 0 0 / 0.95);
+}
+
+.wtron-v17-mobile [data-v17-active],
+.wtron-product-shell [data-v17-active] {
+  background: linear-gradient(135deg, #38bdf8, #2563eb 54%, #1e3a8a);
+  color: white;
+  box-shadow: 0 16px 34px -24px rgb(37 99 235 / 0.95);
 }
 
 [data-mini-theme="light"] .bg-\[\#050505\],

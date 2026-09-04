@@ -64,7 +64,7 @@ function VendorRegisterPage() {
           <WtronLogo markClassName="h-9 w-9" textClassName="font-semibold" />
         </Link>
         {done ? (
-          <section className="mt-8 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)]">
+          <section className="mt-8 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(37,99,235,0.65)]">
             <h1 className="text-2xl font-semibold">Vendor Application Under Review</h1>
             <p className="mt-3 text-sm text-slate-300">
               Registration submitted. Waiting for admin approval.
@@ -75,7 +75,7 @@ function VendorRegisterPage() {
           </section>
         ) : (
           <form
-            className="mt-8 space-y-4 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)]"
+            className="mt-8 space-y-4 rounded-lg border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-60px_rgba(37,99,235,0.65)]"
             onSubmit={submit}
           >
             <div>

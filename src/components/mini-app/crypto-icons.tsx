@@ -37,7 +37,7 @@ export function WtronLogo({
   return (
     <div className={`flex items-center gap-2 ${className ?? ""}`}>
       <span
-        className={`relative grid place-items-center overflow-hidden text-[#03130e] ${markClassName ?? "h-9 w-9"}`}
+        className={`relative grid place-items-center overflow-hidden rounded-[1.125rem] text-white shadow-[0_14px_34px_-20px_rgba(37,99,235,0.85)] ${markClassName ?? "h-9 w-9"}`}
       >
         <img
           src={WTRON_OFFICIAL_MARK_PATH}
@@ -53,8 +53,8 @@ export function WtronLogo({
             event.currentTarget.nextElementSibling?.classList.add("grid");
           }}
         />
-        <span className="hidden h-full w-full place-items-center rounded-xl bg-primary text-sm font-medium tracking-normal text-primary-foreground">
-          WT
+        <span className="hidden h-full w-full place-items-center rounded-[1.125rem] bg-gradient-to-br from-sky-400 via-blue-600 to-blue-950 text-sm font-semibold tracking-normal text-white">
+          W
         </span>
       </span>
       {showText ? (
@@ -99,7 +99,7 @@ export function TronIcon({ className }: { className?: string }) {
 export function GasFreeIcon({ className }: { className?: string }) {
   return (
     <div
-      className={`grid place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_0_0_3px_rgba(240,68,68,0.18)] ${className ?? "h-8 w-8"}`}
+      className={`grid place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_0_0_3px_rgba(37,99,235,0.2)] ${className ?? "h-8 w-8"}`}
     >
       <Zap className="h-4 w-4" />
     </div>

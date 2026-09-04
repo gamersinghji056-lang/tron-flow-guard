@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -23,7 +23,6 @@ import {
   Wallet,
   Zap,
 } from "lucide-react";
-import QRCode from "qrcode";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -122,6 +121,11 @@ import {
 import { onChainSendEnabled, selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
 
 const MINI_THEME_STORAGE_KEY = "wtron-mini-theme";
+
+async function qrToDataUrl(payload: string) {
+  const qrcode = await import("qrcode");
+  return qrcode.default.toDataURL(payload, { width: 260, margin: 1 });
+}
 
 export const Route = createFileRoute("/mini-app")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -1087,6 +1091,7 @@ function TelegramMiniApp() {
     maxInr: "50000",
     dailyLimitInr: "100000",
   });
+  const screenRef = useRef<MiniScreen>(screen);
 
   const profile = overview?.profile ?? null;
   const wallets = (overview?.wallets ?? []).filter((wallet) => wallet.network === "trc20-mainnet");
@@ -1113,6 +1118,10 @@ function TelegramMiniApp() {
         : window.matchMedia("(prefers-color-scheme: dark)").matches;
     return resolveMiniTheme(theme, systemDark);
   }, [theme]);
+
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
 
   useEffect(() => {
     if (screen !== "send" || sendMode !== "standard" || !selectedWallet?.id) {
@@ -1246,23 +1255,10 @@ function TelegramMiniApp() {
     launch = initData,
     isVendorApp = linkedAccountType === "vendor" && vendorStatus === "approved",
   ) {
-    const [
-      homeResult,
-      walletResult,
-      methodsResult,
-      vendorsResult,
-      analyticsResult,
-      historyResult,
-      referralResult,
-      securityResult,
-    ] = await Promise.allSettled([
+    const [homeResult, walletResult, methodsResult, securityResult] = await Promise.allSettled([
       loadHome({ data: { initData: launch } }),
       loadWallet({ data: { initData: launch } }),
       loadPaymentMethods(),
-      loadVendors(),
-      loadAnalytics({ data: { range: "30d" } }),
-      loadTradeHistory(),
-      loadReferral(),
       loadWalletSecurityStatus(),
     ]);
     if (homeResult.status === "fulfilled") setOverview(homeResult.value as unknown as Overview);
@@ -1282,17 +1278,27 @@ function TelegramMiniApp() {
         (current) => current || rows.find((row) => row.is_default)?.id || rows[0]?.id || "",
       );
     }
-    if (vendorsResult.status === "fulfilled") {
-      setVendorListings((vendorsResult.value ?? []) as VendorListingRow[]);
-    }
-    if (analyticsResult.status === "fulfilled")
-      setAnalytics(analyticsResult.value as AnalyticsSummary);
-    if (historyResult.status === "fulfilled")
-      setTradeHistory((historyResult.value ?? []) as unknown[]);
-    if (referralResult.status === "fulfilled") setReferral(referralResult.value as ReferralSummary);
     if (securityResult.status === "fulfilled") {
       setTransactionPasswordEnabled(Boolean(securityResult.value.transactionPasswordEnabled));
       setTransactionPasswordChangeOpen(false);
+    }
+    if (tabForScreen(nextScreen) === "trade") {
+      const vendorsResult = await Promise.resolve(loadVendors()).catch(() => null);
+      if (vendorsResult) setVendorListings((vendorsResult ?? []) as VendorListingRow[]);
+    }
+    if (nextScreen === "analytics") {
+      const analyticsResult = await Promise.resolve(
+        loadAnalytics({ data: { range: "30d" } }),
+      ).catch(() => null);
+      if (analyticsResult) setAnalytics(analyticsResult as AnalyticsSummary);
+    }
+    if (nextScreen === "history") {
+      const historyResult = await Promise.resolve(loadTradeHistory()).catch(() => null);
+      if (historyResult) setTradeHistory(historyResult as unknown[]);
+    }
+    if (nextScreen === "referral") {
+      const referralResult = await Promise.resolve(loadReferral()).catch(() => null);
+      if (referralResult) setReferral(referralResult as ReferralSummary);
     }
     if (isVendorApp) {
       const portal = (await loadVendorPortal()) as unknown as {
@@ -1478,23 +1484,23 @@ function TelegramMiniApp() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "deposit_requests" },
-        () => void refresh(screen),
+        () => void refresh(screenRef.current),
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "ledger_entries" },
-        () => void refresh(screen),
+        () => void refresh(screenRef.current),
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "p2p_orders" },
-        () => void refresh(screen),
+        () => void refresh(screenRef.current),
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [linked, initData, linkedAccountType, screen, vendorStatus]);
+  }, [linked, initData, linkedAccountType, vendorStatus]);
 
   useEffect(() => {
     if (!selectedWalletId && selectedWallet?.id) setSelectedWalletId(selectedWallet.id);
@@ -1528,7 +1534,7 @@ function TelegramMiniApp() {
       return;
     }
     const payload = `tron:${selectedAddress}?asset=${receiveAsset}&network=TRON`;
-    void QRCode.toDataURL(payload, { width: 260, margin: 1 }).then(setWalletQr);
+    void qrToDataUrl(payload).then(setWalletQr);
   }, [selectedAddress, receiveAsset]);
 
   useEffect(() => {
@@ -1539,7 +1545,7 @@ function TelegramMiniApp() {
     }
     const amount = (latestDeposit?.expected_amount ?? depositAmount) || "";
     const payload = `tron:${address}?amount=${encodeURIComponent(String(amount))}&token=USDT_TRC20&network=TRON`;
-    void QRCode.toDataURL(payload, { width: 260, margin: 1 }).then(setDepositQr);
+    void qrToDataUrl(payload).then(setDepositQr);
   }, [depositAddress?.address, latestDeposit?.expected_amount, depositAmount]);
 
   useEffect(() => {
@@ -1553,7 +1559,7 @@ function TelegramMiniApp() {
       amount > 0
         ? `tron:${address}?amount=${encodeURIComponent(String(amount))}&token=USDT_TRC20&network=TRON`
         : `tron:${address}?token=USDT_TRC20&network=TRON`;
-    void QRCode.toDataURL(payload, { width: 260, margin: 1 }).then(setDirectSellQr);
+    void qrToDataUrl(payload).then(setDirectSellQr);
   }, [selectedDirectSell?.assigned_company_address, selectedDirectSell?.expected_usdt]);
 
   async function loadSelectedWalletTransactions(walletId: string, reset = false) {
@@ -2914,7 +2920,7 @@ function MiniFrame({
       data-mini-theme={theme}
       className={`min-h-screen overflow-x-hidden antialiased ${
         theme === "light" ? "bg-[#F7F9FC] text-slate-950" : "bg-[#050505] text-white"
-      }`}
+      } ${theme === "dark" ? "wtron-v17-mobile" : ""}`}
     >
       <div className="mx-auto min-h-screen max-w-md px-3 pt-[max(env(safe-area-inset-top),0.75rem)] sm:px-4">
         {children}
@@ -3035,7 +3041,7 @@ function AuthScreen(props: {
       <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/6 p-1">
         <button
           type="button"
-          className={`rounded-xl px-3 py-2 text-sm ${props.accountType === "trader" ? "bg-red-500 text-white hover:bg-red-400" : "text-slate-400"}`}
+          className={`rounded-xl px-3 py-2 text-sm ${props.accountType === "trader" ? "bg-primary text-white hover:bg-primary/90" : "text-slate-400"}`}
           onClick={() => props.setAccountType("trader")}
         >
           Trader
@@ -6048,7 +6054,7 @@ function IconButton({
 }
 function AssetCard({ total, profile }: { total: number; profile: ProfileSummary | null }) {
   return (
-    <div className="rounded-xl bg-primary p-4 text-primary-foreground shadow-[0_14px_34px_-28px_rgba(240,68,68,0.75)] hover:bg-primary/90">
+    <div className="rounded-xl bg-primary p-4 text-primary-foreground shadow-[0_14px_34px_-28px_rgba(37,99,235,0.75)] hover:bg-primary/90">
       <p className="text-xs font-medium uppercase text-primary-foreground">Total Assets</p>
       <p className="mono mt-2 text-2xl font-semibold">{money(total)}</p>
       <div className="mt-5 grid grid-cols-3 gap-2">
@@ -6069,7 +6075,10 @@ function MiniMetric({ label, value }: { label: string; value: React.ReactNode })
 }
 function Surface({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={`rounded-xl border border-white/10 bg-white/[0.045] ${className}`}>
+    <div
+      data-v17-surface
+      className={`rounded-xl border border-white/10 bg-white/[0.045] ${className}`}
+    >
       {children}
     </div>
   );

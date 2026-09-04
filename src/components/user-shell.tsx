@@ -96,10 +96,10 @@ export function UserShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="wtron-product-shell min-h-screen bg-[#050505] pb-24 text-white md:pb-0">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#050505]/94 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#050505]/94 shadow-[0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-3 sm:px-4">
           <Link to="/dashboard" className="flex items-center gap-2">
-            <WtronLogo markClassName="h-8 w-8" textClassName="text-sm font-semibold" />
+            <WtronLogo markClassName="h-9 w-9" textClassName="text-sm font-semibold" />
           </Link>
 
           <nav className="ml-2 hidden items-center gap-1 lg:flex">
@@ -110,7 +110,7 @@ export function UserShell({ children }: { children: React.ReactNode }) {
                 className={cn(
                   "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-slate-400 transition-colors hover:bg-white/8 hover:text-white",
                   isActivePath(pathname, link.to) &&
-                    "bg-white/8 text-white shadow-[inset_0_-1px_0_rgba(240,68,68,0.45)]",
+                    "bg-white/8 text-white shadow-[inset_0_-1px_0_rgba(37,99,235,0.55)]",
                 )}
               >
                 <link.icon className="h-4 w-4" />
@@ -152,9 +152,10 @@ export function UserShell({ children }: { children: React.ReactNode }) {
             <Link
               key={link.to}
               to={link.to}
+              data-v17-active={isTraderBottomActive(pathname, link.to) ? "" : undefined}
               className={cn(
                 "relative flex h-14 flex-col items-center justify-center gap-1 rounded-2xl text-[11px] font-medium text-slate-500 transition",
-                isTraderBottomActive(pathname, link.to) && "text-primary",
+                isTraderBottomActive(pathname, link.to) && "text-white",
               )}
             >
               {isTraderBottomActive(pathname, link.to) ? (
@@ -179,7 +180,7 @@ export function VendorShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#050505]/94 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-3 sm:px-4">
           <Link to="/vendor" className="flex items-center gap-2">
-            <WtronLogo markClassName="h-8 w-8" textClassName="text-sm font-semibold" />
+            <WtronLogo markClassName="h-9 w-9" textClassName="text-sm font-semibold" />
             <span className="hidden rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary sm:inline-flex">
               Vendor
             </span>
@@ -198,9 +199,10 @@ export function VendorShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={link.label}
                 to={link.to}
+                data-v17-active={active ? "" : undefined}
                 className={cn(
                   "relative flex h-14 flex-col items-center justify-center gap-1 rounded-2xl text-[11px] font-medium text-slate-500 transition",
-                  active && "text-primary",
+                  active && "text-white",
                 )}
               >
                 {active ? (

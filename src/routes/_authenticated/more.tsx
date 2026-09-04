@@ -73,6 +73,13 @@ function MorePage() {
           <div className="mt-4 grid gap-2 text-sm text-slate-300">
             <p>Use Orders for P2P proof, vendor payments, direct-sell status and disputes.</p>
             <p>Use Notifications and History to review account activity and settlement updates.</p>
+            <p>
+              Contact support on Telegram{" "}
+              <a className="text-primary hover:text-primary/80" href="https://t.me/laura_luxee">
+                @laura_luxee
+              </a>
+              . Never share your recovery phrase, private key or transaction password.
+            </p>
           </div>
         </div>
 
@@ -90,9 +97,21 @@ function MorePage() {
           </div>
           <div className="mt-4 divide-y divide-white/10 text-sm">
             {[
-              ["Which network is used?", "Normal WTRON wallets use TRON Mainnet."],
+              [
+                "Which network is used?",
+                "Normal WTRON wallet creation and import use TRON Mainnet.",
+              ],
+              [
+                "What is GasFree?",
+                "GasFree appears only when the wallet and configured provider support the USDT flow.",
+              ],
               ["Where do I add payout details?", "Use Bank Accounts or Payment Methods."],
+              ["Can Vendors buy?", "No. Vendor accounts remain SELL-only."],
               ["Where are disputes handled?", "Open the related order and submit proof there."],
+              [
+                "Can Admin see my keys?",
+                "No. Admin operations must not expose seed phrases, private keys or transaction passwords.",
+              ],
             ].map(([question, answer]) => (
               <details key={question} className="py-3">
                 <summary className="cursor-pointer font-medium">{question}</summary>

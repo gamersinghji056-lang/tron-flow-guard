@@ -47,7 +47,7 @@ function AppEntryPage() {
 
   return (
     <main className="grid min-h-screen place-items-center bg-[#050505] px-4 text-white">
-      <section className="w-full max-w-sm rounded-lg border border-white/10 bg-white/[0.04] p-5 text-center shadow-[0_30px_90px_-60px_rgba(240,68,68,0.55)]">
+      <section className="w-full max-w-sm rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 text-center shadow-[0_30px_90px_-60px_rgba(37,99,235,0.75)]">
         <WtronLogo
           className="justify-center"
           markClassName="h-12 w-12"
