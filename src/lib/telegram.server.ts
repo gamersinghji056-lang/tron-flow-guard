@@ -1234,7 +1234,7 @@ export async function fetchTelegramOverview(initData: string) {
   ] = await Promise.all([
     supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, balance, locked_balance")
+      .select("id, email, full_name, avatar_path, avatar_updated_at, balance, locked_balance")
       .eq("id", userId as never)
       .single(),
     supabaseAdmin

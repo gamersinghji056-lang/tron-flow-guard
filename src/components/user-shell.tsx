@@ -1,4 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import {
   BadgeIndianRupee,
   Bell,
@@ -24,7 +26,9 @@ import { formatUsdt } from "@/lib/chain";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
-import { WtronLogo } from "@/components/mini-app/crypto-icons";
+import { V17NavIcon, WtronLogo } from "@/components/mini-app/crypto-icons";
+import { V17Avatar } from "@/components/v17-avatar";
+import { getP2pAvatarViewUrl } from "@/lib/p2p.functions";
 
 const userLinks = [
   { to: "/dashboard", label: "Home", icon: Home },
@@ -42,19 +46,19 @@ const userLinks = [
 ];
 
 const traderBottomLinks = [
-  { to: "/dashboard", label: "Home", icon: CircleDollarSign },
-  { to: "/p2p", label: "P2P", icon: BadgeIndianRupee },
-  { to: "/trade", label: "Trade", icon: HandCoins },
-  { to: "/wallet", label: "Wallet", icon: Wallet2 },
-  { to: "/more", label: "More", icon: CircleEllipsis },
+  { to: "/dashboard", label: "Home", icon: "home" },
+  { to: "/p2p", label: "P2P", icon: "p2p" },
+  { to: "/trade", label: "Trade", icon: "trade" },
+  { to: "/wallet", label: "Wallet", icon: "wallet" },
+  { to: "/more", label: "More", icon: "more" },
 ];
 
 const vendorBottomLinks = [
-  { to: "/vendor", label: "Home", icon: CircleDollarSign },
-  { to: "/vendor?tab=trade", label: "Trade", icon: HandCoins },
-  { to: "/vendor?tab=wallet", label: "Wallet", icon: Wallet2 },
-  { to: "/vendor?tab=orders", label: "Orders", icon: ReceiptText },
-  { to: "/vendor?tab=more", label: "More", icon: CircleEllipsis },
+  { to: "/vendor", label: "Home", icon: "home" },
+  { to: "/vendor?tab=trade", label: "Trade", icon: "trade" },
+  { to: "/vendor?tab=wallet", label: "Wallet", icon: "wallet" },
+  { to: "/vendor?tab=orders", label: "Orders", icon: "orders" },
+  { to: "/vendor?tab=more", label: "More", icon: "more" },
 ];
 
 function isActivePath(pathname: string, target: string) {
@@ -81,11 +85,39 @@ function isTraderBottomActive(pathname: string, target: string) {
   return isActivePath(pathname, target);
 }
 
+function useProfileAvatarUrl(
+  profile: { avatar_path?: string | null; avatar_updated_at?: string | null } | null,
+) {
+  const getAvatarUrl = useServerFn(getP2pAvatarViewUrl);
+  const [avatarUrl, setAvatarUrl] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    if (!profile?.avatar_path) {
+      setAvatarUrl("");
+      return;
+    }
+    void getAvatarUrl({ data: { avatarPath: profile.avatar_path } })
+      .then((result) => {
+        if (active) setAvatarUrl(result.url);
+      })
+      .catch(() => {
+        if (active) setAvatarUrl("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [getAvatarUrl, profile?.avatar_path, profile?.avatar_updated_at]);
+
+  return avatarUrl;
+}
+
 export function UserShell({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const avatarUrl = useProfileAvatarUrl(profile);
 
   async function signOut() {
     await queryClient.cancelQueries();
@@ -129,7 +161,11 @@ export function UserShell({ children }: { children: React.ReactNode }) {
             <NotificationBell />
             <Button variant="ghost" size="icon" aria-label="Profile" asChild>
               <Link to="/profile-security">
-                <UserRound className="h-5 w-5" />
+                <V17Avatar
+                  src={avatarUrl}
+                  initials={profile?.full_name || profile?.email || "WT"}
+                  size="sm"
+                />
               </Link>
             </Button>
             <Button
@@ -159,7 +195,8 @@ export function UserShell({ children }: { children: React.ReactNode }) {
                   "border-primary/15 bg-primary/10 text-[#7ba0ff]",
               )}
             >
-              <link.icon
+              <V17NavIcon
+                name={link.icon as "home" | "p2p" | "trade" | "wallet" | "more"}
                 className={cn(
                   "h-5 w-5",
                   isTraderBottomActive(pathname, link.to) &&
@@ -176,8 +213,10 @@ export function UserShell({ children }: { children: React.ReactNode }) {
 }
 
 export function VendorShell({ children }: { children: React.ReactNode }) {
+  const { profile } = useAuth();
   const location = useRouterState({ select: (state) => state.location });
   const activeTab = typeof location.search["tab"] === "string" ? location.search["tab"] : "home";
+  const avatarUrl = useProfileAvatarUrl(profile);
 
   return (
     <div className="wtron-product-shell min-h-screen bg-[#080a0f] pb-24 text-white md:pb-0">
@@ -188,6 +227,18 @@ export function VendorShell({ children }: { children: React.ReactNode }) {
             <span className="hidden rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary sm:inline-flex">
               Vendor
             </span>
+          </Link>
+          <Link
+            to="/vendor"
+            search={{ tab: "more" }}
+            className="ml-auto"
+            aria-label="Vendor profile"
+          >
+            <V17Avatar
+              src={avatarUrl}
+              initials={profile?.full_name || profile?.email || "WV"}
+              size="sm"
+            />
           </Link>
         </div>
       </header>
@@ -209,7 +260,8 @@ export function VendorShell({ children }: { children: React.ReactNode }) {
                   active && "border-primary/15 bg-primary/10 text-[#7ba0ff]",
                 )}
               >
-                <link.icon
+                <V17NavIcon
+                  name={link.icon as "home" | "trade" | "wallet" | "orders" | "more"}
                   className={cn(
                     "h-5 w-5",
                     active && "drop-shadow-[0_4px_8px_rgba(79,124,255,.26)]",

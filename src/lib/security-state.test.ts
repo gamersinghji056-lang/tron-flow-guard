@@ -1859,7 +1859,7 @@ describe("public website auth surface", () => {
     assert.doesNotMatch(landing, /to="\/admin\/login"|to='\/admin\/login'/);
     assert.doesNotMatch(landing, /to="\/admin\/register"|to='\/admin\/register'/);
     const faqQuestions = (landing.match(/"[^"]+\?"/g) ?? []).length;
-    assert.ok(faqQuestions >= 18 && faqQuestions <= 24, `FAQ count was ${faqQuestions}`);
+    assert.ok(faqQuestions >= 27 && faqQuestions <= 32, `FAQ count was ${faqQuestions}`);
   });
 
   it("keeps direct admin login available while blocking admin registration", () => {

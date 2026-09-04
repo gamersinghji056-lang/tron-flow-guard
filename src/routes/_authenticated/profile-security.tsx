@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -14,10 +14,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
+import { createP2pAvatarUpload, getP2pAvatarViewUrl, registerP2pAvatar } from "@/lib/p2p.functions";
 import { updateUsername } from "@/lib/user-product.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
+import { V17Avatar } from "@/components/v17-avatar";
 
 export const Route = createFileRoute("/_authenticated/profile-security")({
   head: () => ({ meta: [{ title: "Profile - WTRON" }] }),
@@ -27,7 +30,27 @@ export const Route = createFileRoute("/_authenticated/profile-security")({
 function ProfileSecurityPage() {
   const { user, profile, isAdmin } = useAuth();
   const saveUsername = useServerFn(updateUsername);
+  const createAvatarUpload = useServerFn(createP2pAvatarUpload);
+  const registerAvatar = useServerFn(registerP2pAvatar);
+  const getAvatarUrl = useServerFn(getP2pAvatarViewUrl);
   const [username, setUsername] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!profile?.avatar_path) return;
+    void getAvatarUrl({ data: { avatarPath: profile.avatar_path } })
+      .then((result) => {
+        if (active) setAvatarUrl(result.url);
+      })
+      .catch(() => {
+        if (active) setAvatarUrl("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [getAvatarUrl, profile?.avatar_path, profile?.avatar_updated_at]);
 
   async function submitUsername(event: React.FormEvent) {
     event.preventDefault();
@@ -37,6 +60,33 @@ function ProfileSecurityPage() {
       setUsername("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update username");
+    }
+  }
+
+  async function uploadPhoto(file: File) {
+    setAvatarUploading(true);
+    try {
+      const upload = await createAvatarUpload({
+        data: { fileName: file.name || "profile.jpg", contentType: file.type as never },
+      });
+      const { error } = await supabase.storage
+        .from("user-avatars")
+        .uploadToSignedUrl(upload.path, upload.token, file);
+      if (error) throw error;
+      await registerAvatar({
+        data: {
+          fileName: file.name || "profile.jpg",
+          contentType: file.type as never,
+          storagePath: upload.path,
+        },
+      });
+      const view = await getAvatarUrl({ data: { avatarPath: upload.path } });
+      setAvatarUrl(view.url);
+      toast.success("Profile photo updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not upload profile photo");
+    } finally {
+      setAvatarUploading(false);
     }
   }
 
@@ -50,6 +100,33 @@ function ProfileSecurityPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="panel p-5">
           <Header icon={UserRound} title="Account" />
+          <div className="mt-4 flex items-center gap-3">
+            <V17Avatar
+              src={avatarUrl}
+              initials={profile?.full_name || user?.email || "WT"}
+              size="lg"
+              editable={!isAdmin}
+              uploading={avatarUploading}
+              onEdit={() => document.getElementById("profile-photo-input")?.click()}
+            />
+            <input
+              id="profile-photo-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (file) void uploadPhoto(file);
+              }}
+            />
+            <div>
+              <p className="text-sm font-semibold">{profile?.full_name || "WTRON account"}</p>
+              <p className="text-xs text-muted-foreground">
+                Profile photo is stored in the existing user avatar bucket.
+              </p>
+            </div>
+          </div>
           <dl className="mt-4 space-y-3 text-sm">
             <Row label="Name" value={profile?.full_name || "Not set"} />
             <Row label="Email" value={user?.email ?? "-"} />

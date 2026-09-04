@@ -32,8 +32,10 @@ import {
   MiniIcons,
   TronIcon,
   UsdtIcon,
+  V17NavIcon,
   WtronMark,
   type MiniIcon,
+  type V17NavIconName,
 } from "@/components/mini-app/crypto-icons";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -52,7 +54,13 @@ import {
   confirmDirectSellPaymentItem,
   disputeDirectSellPaymentItem,
 } from "@/lib/direct-sell-admin.functions";
-import { createP2pAd, createP2pOrderFromAd } from "@/lib/p2p.functions";
+import {
+  createP2pAd,
+  createP2pAvatarUpload,
+  createP2pOrderFromAd,
+  getP2pAvatarViewUrl,
+  registerP2pAvatar,
+} from "@/lib/p2p.functions";
 import {
   createWallet,
   checkWalletGasFreeCapability,
@@ -119,6 +127,7 @@ import {
   type MiniThemePreference,
 } from "@/lib/mini-wallet-ui";
 import { onChainSendEnabled, selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
+import { V17Avatar } from "@/components/v17-avatar";
 
 const MINI_THEME_STORAGE_KEY = "wtron-mini-theme";
 
@@ -212,6 +221,8 @@ interface ProfileSummary {
   email?: string | null;
   full_name?: string | null;
   username?: string | null;
+  avatar_path?: string | null;
+  avatar_updated_at?: string | null;
 }
 
 interface Overview {
@@ -967,6 +978,9 @@ function TelegramMiniApp() {
   const loadAnalytics = useServerFn(fetchUserAnalytics);
   const loadTradeHistory = useServerFn(fetchTradeHistory);
   const loadReferral = useServerFn(fetchReferralSummary);
+  const createAvatarUpload = useServerFn(createP2pAvatarUpload);
+  const registerAvatar = useServerFn(registerP2pAvatar);
+  const loadAvatarUrl = useServerFn(getP2pAvatarViewUrl);
 
   const [screen, setScreen] = useState<MiniScreen>((search.tab as PrimaryTab) ?? "home");
   const [locale, setLocale] = useState<MiniLocale>(() => {
@@ -982,6 +996,8 @@ function TelegramMiniApp() {
     search.auth as "login" | "register",
   );
   const [authNotice, setAuthNotice] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [accountType, setAccountType] = useState<"trader" | "vendor">("trader");
   const [initData, setInitData] = useState("");
   const [handoffToken, setHandoffToken] = useState(search.handoff ?? "");
@@ -1122,6 +1138,59 @@ function TelegramMiniApp() {
   useEffect(() => {
     screenRef.current = screen;
   }, [screen]);
+
+  useEffect(() => {
+    let active = true;
+    if (!profile?.avatar_path) {
+      setAvatarUrl("");
+      return;
+    }
+    void loadAvatarUrl({ data: { avatarPath: profile.avatar_path } })
+      .then((result) => {
+        if (active) setAvatarUrl(result.url);
+      })
+      .catch(() => {
+        if (active) setAvatarUrl("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadAvatarUrl, profile?.avatar_path, profile?.avatar_updated_at]);
+
+  async function uploadProfilePhoto(file: File) {
+    setAvatarUploading(true);
+    try {
+      const upload = await createAvatarUpload({
+        data: { fileName: file.name || "profile.jpg", contentType: file.type as never },
+      });
+      const { error } = await supabase.storage
+        .from("user-avatars")
+        .uploadToSignedUrl(upload.path, upload.token, file);
+      if (error) throw error;
+      await registerAvatar({
+        data: {
+          fileName: file.name || "profile.jpg",
+          contentType: file.type as never,
+          storagePath: upload.path,
+        },
+      });
+      const view = await loadAvatarUrl({ data: { avatarPath: upload.path } });
+      setAvatarUrl(view.url);
+      setOverview((current) => ({
+        ...(current ?? {}),
+        profile: {
+          ...(current?.profile ?? profile ?? {}),
+          avatar_path: upload.path,
+          avatar_updated_at: new Date().toISOString(),
+        },
+      }));
+      toast.success("Profile photo updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not upload profile photo");
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
 
   useEffect(() => {
     if (screen !== "send" || sendMode !== "standard" || !selectedWallet?.id) {
@@ -1529,15 +1598,23 @@ function TelegramMiniApp() {
   }, [loadGasfreeReadiness, screen, selectedGasfreeWallet?.id, selectedGasfreeWallet?.network, t]);
 
   useEffect(() => {
+    if (screen !== "wallet-receive") {
+      setWalletQr("");
+      return;
+    }
     if (!selectedAddress) {
       setWalletQr("");
       return;
     }
     const payload = `tron:${selectedAddress}?asset=${receiveAsset}&network=TRON`;
     void qrToDataUrl(payload).then(setWalletQr);
-  }, [selectedAddress, receiveAsset]);
+  }, [screen, selectedAddress, receiveAsset]);
 
   useEffect(() => {
+    if (screen !== "platform-deposit") {
+      setDepositQr("");
+      return;
+    }
     const address = safeAddress(depositAddress?.address);
     if (!address) {
       setDepositQr("");
@@ -1546,9 +1623,13 @@ function TelegramMiniApp() {
     const amount = (latestDeposit?.expected_amount ?? depositAmount) || "";
     const payload = `tron:${address}?amount=${encodeURIComponent(String(amount))}&token=USDT_TRC20&network=TRON`;
     void qrToDataUrl(payload).then(setDepositQr);
-  }, [depositAddress?.address, latestDeposit?.expected_amount, depositAmount]);
+  }, [screen, depositAddress?.address, latestDeposit?.expected_amount, depositAmount]);
 
   useEffect(() => {
+    if (screen !== "direct-sell-detail") {
+      setDirectSellQr("");
+      return;
+    }
     const address = safeAddress(selectedDirectSell?.assigned_company_address);
     if (!address) {
       setDirectSellQr("");
@@ -1560,7 +1641,7 @@ function TelegramMiniApp() {
         ? `tron:${address}?amount=${encodeURIComponent(String(amount))}&token=USDT_TRC20&network=TRON`
         : `tron:${address}?token=USDT_TRC20&network=TRON`;
     void qrToDataUrl(payload).then(setDirectSellQr);
-  }, [selectedDirectSell?.assigned_company_address, selectedDirectSell?.expected_usdt]);
+  }, [screen, selectedDirectSell?.assigned_company_address, selectedDirectSell?.expected_usdt]);
 
   async function loadSelectedWalletTransactions(walletId: string, reset = false) {
     const pageSize = 50;
@@ -1595,7 +1676,14 @@ function TelegramMiniApp() {
   }
 
   useEffect(() => {
-    if (!selectedWallet?.id || !hasSession) {
+    const needsWalletHistory = [
+      "wallet",
+      "wallet-detail",
+      "wallet-history",
+      "wallet-asset-detail",
+      "wallet-transaction-detail",
+    ].includes(screen);
+    if (!selectedWallet?.id || !hasSession || !needsWalletHistory) {
       setWalletTransactions([]);
       setWalletTransactionHasMore(false);
       return;
@@ -2464,6 +2552,7 @@ function TelegramMiniApp() {
       <div className="space-y-5 pb-28">
         <MiniHeader
           profile={profile}
+          avatarUrl={avatarUrl}
           locale={locale}
           setLocale={setLocale}
           t={t}
@@ -2807,6 +2896,11 @@ function TelegramMiniApp() {
         ) : null}
         {screen === "more" ? (
           <MoreScreen
+            profile={profile}
+            avatarUrl={avatarUrl}
+            avatarUploading={avatarUploading}
+            onUploadPhoto={(file) => void uploadProfilePhoto(file)}
+            vendorMode={entryState === "vendor_app"}
             onNavigate={navigate}
             locale={locale}
             setLocale={setLocale}
@@ -2865,7 +2959,14 @@ function TelegramMiniApp() {
         ) : null}
         {screen === "history" ? <HistoryScreen rows={tradeHistory} /> : null}
         {screen === "profile" ? (
-          <ProfileScreen profile={profile} hasSession={hasSession} onNavigate={navigate} />
+          <ProfileScreen
+            profile={profile}
+            avatarUrl={avatarUrl}
+            avatarUploading={avatarUploading}
+            hasSession={hasSession}
+            onNavigate={navigate}
+            onUploadPhoto={(file) => void uploadProfilePhoto(file)}
+          />
         ) : null}
         {screen === "notifications" ? (
           <NotificationsScreen
@@ -2931,6 +3032,7 @@ function MiniFrame({
 
 function MiniHeader({
   profile,
+  avatarUrl,
   locale,
   setLocale,
   t,
@@ -2941,6 +3043,7 @@ function MiniHeader({
   onProfile,
 }: {
   profile: ProfileSummary | null;
+  avatarUrl: string;
   locale: MiniLocale;
   setLocale: (locale: MiniLocale) => void;
   t: MiniT;
@@ -2996,7 +3099,17 @@ function MiniHeader({
           </select>
         ) : null}
         <IconButton icon={Bell} label="Notifications" onClick={onNotifications} />
-        <IconButton icon={UserRound} label="Profile" onClick={onProfile} />
+        <button
+          aria-label="Profile"
+          className="grid h-[35px] w-[35px] place-items-center overflow-hidden rounded-[11px] border border-[#222837] bg-[#10131a]"
+          onClick={onProfile}
+        >
+          <V17Avatar
+            src={avatarUrl}
+            initials={profile?.full_name || profile?.email || "WT"}
+            size="sm"
+          />
+        </button>
       </div>
     </header>
   );
@@ -3138,68 +3251,89 @@ function HomeScreen({
 }) {
   const walletUsdt = walletDisplayBalance(wallet);
   const walletTrx = Number(wallet?.onchain_trx_balance ?? 0);
+  if (vendorMode) {
+    return (
+      <Screen
+        title="Vendor Workspace"
+        subtitle="Liquidity, listings and vendor order operations"
+        compact
+      >
+        <section className="space-y-4 pt-1">
+          <div>
+            <p className="kicker-v17">APPROVED VENDOR</p>
+            <h1 className="title-v17">Vendor Workspace</h1>
+            <p className="body-v17">
+              Liquidity, listings, payout capacity and vendor order operations.
+            </p>
+          </div>
+          <Surface className="border-primary/20 bg-[linear-gradient(130deg,rgba(79,124,255,.12),#10131a)] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[9px] text-slate-500">Available liquidity</p>
+                <p className="balance-v17 mt-1 text-[31px]">{money(walletUsdt)} U</p>
+              </div>
+              <StatusPill label="APPROVED" tone="success" />
+            </div>
+          </Surface>
+          <div className="grid grid-cols-2 gap-[10px]">
+            <StatTile label="Today sold" value={money(profile?.locked_balance)} />
+            <StatTile label="Completion" value="Live after orders" />
+            <StatTile label="Active listings" value={String(ads.length)} />
+            <StatTile label="Vendor orders" value={String(orders.length)} />
+          </div>
+        </section>
+        <Section
+          title="Payout capacity"
+          action="Manage"
+          onAction={() => onNavigate("bank-accounts")}
+        >
+          <ListRow
+            icon={MiniIcons.bank}
+            title="Vendor payout accounts"
+            body="Limits, capacity and default rails"
+            onClick={() => onNavigate("bank-accounts")}
+          />
+        </Section>
+        <Section title="Vendor orders" action="View all" onAction={() => onNavigate("orders")}>
+          {orders.length ? (
+            orders.slice(0, 3).map((order) => <OrderCard key={order.id} order={order} />)
+          ) : (
+            <EmptyLine>No active vendor orders.</EmptyLine>
+          )}
+        </Section>
+      </Screen>
+    );
+  }
   return (
     <Screen title="Home" subtitle="Wallet, P2P and WTRON trading overview" compact>
       <section className="space-y-5 pt-1">
         <div>
-          <p className="text-sm text-slate-500">Good day</p>
-          <h1 className="mt-1 truncate text-2xl font-semibold tracking-normal">
-            {profile?.full_name || "WTRON Trader"}
-          </h1>
+          <p className="kicker-v17">TRADER ACCOUNT</p>
+          <h1 className="title-v17 truncate">{profile?.full_name || "WTRON Trader"}</h1>
+          <p className="body-v17">Your personal WTRON wallet, P2P and direct trading overview.</p>
         </div>
-        <Surface className="p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs text-slate-500">Platform balance</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums">{money(total)} USDT</p>
-            </div>
-            <StatusPill label="Live" tone="success" />
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <MiniMetric label="Available" value={money(profile?.balance)} />
-            <MiniMetric label="Locked" value={money(profile?.locked_balance)} />
-            <MiniMetric label="Pending" value={money(profile?.pending_balance)} />
-          </div>
-        </Surface>
-        <Surface className="p-4">
-          <div className="flex items-center justify-between">
-            <SectionHeader
-              title="Personal wallet"
-              action="Open"
-              onAction={() => onNavigate("wallet-detail")}
-            />
-          </div>
-          {wallet ? (
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold">{wallet.name ?? "Main Wallet"}</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {networkLabelForMini(wallet.network, t)} /{" "}
-                  {(wallet.wallet_type ?? "standard").toUpperCase()}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold tabular-nums">{money(walletUsdt)} USDT</p>
-                <p className="text-xs text-slate-500 tabular-nums">{money(walletTrx, "TRX")} TRX</p>
-              </div>
-            </div>
-          ) : (
-            <CompactEmpty title="No wallet selected" body="Create or import a TRON wallet." />
-          )}
-        </Surface>
+        <div>
+          <p className="text-[9px] text-slate-500">Total portfolio</p>
+          <p className="balance-v17">{money(total)} USDT</p>
+          <p className="text-[10px] text-slate-500">{money(total)} USDT equivalent</p>
+        </div>
         <div className="grid grid-cols-4 gap-3">
+          <QuickAction
+            icon={MiniIcons.deposit}
+            label="Deposit"
+            onClick={() => onNavigate("platform-deposit")}
+          />
           <QuickAction icon={MiniIcons.send} label="Send" onClick={() => onNavigate("send")} />
           <QuickAction
             icon={MiniIcons.receive}
             label="Receive"
             onClick={() => onNavigate("wallet-receive")}
           />
-          {vendorMode ? (
-            <QuickAction icon={MiniIcons.trade} label="Trade" onClick={() => onNavigate("trade")} />
-          ) : (
-            <QuickAction icon={MiniIcons.p2p} label="Buy" onClick={() => onNavigate("p2p")} />
-          )}
-          <QuickAction icon={MiniIcons.trade} label="Sell" onClick={() => onNavigate("trade")} />
+          <QuickAction icon={MiniIcons.trade} label="Trade" onClick={() => onNavigate("trade")} />
+        </div>
+        <div className="grid grid-cols-2 gap-[10px]">
+          <StatTile label="WTRON balance" value={`${money(profile?.balance)} U`} />
+          <StatTile label="Wallet balance" value={`${money(walletUsdt)} U`} />
         </div>
       </section>
       <Section title="Active Orders" action="View all" onAction={() => onNavigate("orders")}>
@@ -5051,7 +5185,7 @@ function P2pScreen(props: {
       title={props.vendorMode ? "P2P Sell" : "P2P Market"}
       subtitle={props.vendorMode ? "Vendor seller tools only" : "User-to-user USDT trading only"}
     >
-      <SegmentedControl
+      <Tabs
         value={props.vendorMode && props.tab === "buy" ? "sell" : props.tab}
         setValue={(value) => props.setTab(value as P2pTab)}
         items={
@@ -5071,6 +5205,20 @@ function P2pScreen(props: {
       />
       {!props.vendorMode && props.tab === "buy" ? (
         <div className="space-y-3">
+          <div className="flex gap-[7px] overflow-x-auto pb-1">
+            {["Best rate", "Verified", "UPI", "High completion"].map((filter, index) => (
+              <span
+                key={filter}
+                className={`shrink-0 rounded-full border px-[9px] py-[7px] text-[9px] ${
+                  index === 0
+                    ? "border-white bg-white text-[#080a0f]"
+                    : "border-[#222837] bg-[#10131a] text-slate-500"
+                }`}
+              >
+                {filter}
+              </span>
+            ))}
+          </div>
           <FormField label="USDT amount">
             <Input
               value={props.p2pAmount}
@@ -5186,14 +5334,16 @@ function TradeScreen(props: {
           setValue={(value) => props.setTab(value as TradeTab)}
           items={[
             ["sell", "Sell to WTRON"],
-            ["buy", "Buy from WTRON"],
+            ["buy", "Buy from Vendors"],
           ]}
         />
       )}
       {props.tab === "sell" ? (
         <form className="space-y-4" onSubmit={props.onSell}>
           <Surface className="p-4">
-            <SectionHeader title="Sell USDT to WTRON" />
+            <SectionHeader
+              title={props.vendorMode ? "Create Vendor Sell Order" : "Sell USDT to WTRON"}
+            />
             <MetricGrid
               items={[
                 ["WTRON Buy Rate", "Configured by admin"],
@@ -5242,7 +5392,7 @@ function TradeScreen(props: {
             className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
           >
-            Create Sell Order
+            {props.vendorMode ? "Create Vendor Sell Order" : "Create Sell Order"}
           </Button>
         </form>
       ) : null}
@@ -5282,6 +5432,11 @@ function TradeScreen(props: {
 }
 
 function MoreScreen({
+  profile,
+  avatarUrl,
+  avatarUploading,
+  onUploadPhoto,
+  vendorMode,
   onNavigate,
   locale,
   setLocale,
@@ -5289,6 +5444,11 @@ function MoreScreen({
   setTheme,
   t,
 }: {
+  profile: ProfileSummary | null;
+  avatarUrl: string;
+  avatarUploading: boolean;
+  onUploadPhoto: (file: File) => void;
+  vendorMode: boolean;
   onNavigate: (screen: MiniScreen) => Promise<void>;
   locale: MiniLocale;
   setLocale: (locale: MiniLocale) => void;
@@ -5296,9 +5456,10 @@ function MoreScreen({
   setTheme: (theme: MiniThemePreference) => void;
   t: MiniT;
 }) {
+  const fileInputId = vendorMode ? "vendor-mini-profile-photo" : "trader-mini-profile-photo";
   const sections: Array<[string, Array<[MiniScreen, string, string, MiniIcon]>]> = [
     [
-      t("profile"),
+      "Account",
       [
         ["profile", t("profile"), "Name, Telegram and account ID", MiniIcons.profile],
         ["notifications", t("notifications"), "Wallet and order alerts", MiniIcons.notifications],
@@ -5306,11 +5467,23 @@ function MoreScreen({
       ],
     ],
     [
-      t("payments"),
+      vendorMode ? "Business & Orders" : "Payments & Orders",
       [
-        ["bank-accounts", t("bankAccounts"), "Manage receiving accounts", MiniIcons.bank],
+        [
+          "bank-accounts",
+          vendorMode ? "Vendor Payout Accounts" : "Bank & UPI",
+          vendorMode
+            ? "Limits, capacity, default and freeze state"
+            : "Saved personal payout methods",
+          MiniIcons.bank,
+        ],
         ["orders", t("orders"), "P2P and WTRON order status", MiniIcons.orders],
         ["history", t("history"), "Company and vendor trade history", MiniIcons.history],
+        ...(vendorMode
+          ? ([
+              ["trade", "Vendor Listings", "Liquidity, rates, limits and rails", MiniIcons.trade],
+            ] as Array<[MiniScreen, string, string, MiniIcon]>)
+          : []),
       ],
     ],
     [
@@ -5322,16 +5495,66 @@ function MoreScreen({
       ],
     ],
     [
-      "App",
+      "Insights & Growth",
       [
-        ["referral", "Referral", "Invite and rewards", MiniIcons.referral],
         ["analytics", "Analytics", "Real trading metrics", MiniIcons.analytics],
+        ["referral", "Referral", "Invite and rewards", MiniIcons.referral],
       ],
     ],
   ];
   return (
     <Screen title="More" subtitle="Account, trading and security tools" compact>
-      <Section title={t("preferences")}>
+      <div className="flex items-center gap-3 pt-1">
+        <V17Avatar
+          src={avatarUrl}
+          initials={profile?.full_name || profile?.email || (vendorMode ? "WV" : "WT")}
+          size="lg"
+          editable
+          uploading={avatarUploading}
+          onEdit={() => document.getElementById(fileInputId)?.click()}
+        />
+        <input
+          id={fileInputId}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (file) onUploadPhoto(file);
+          }}
+        />
+        <div className="min-w-0">
+          <h1 className="truncate text-[17px] font-semibold leading-tight">
+            {profile?.full_name || profile?.email || (vendorMode ? "WTRON Vendor" : "WTRON Trader")}
+          </h1>
+          <p className="mt-1 text-[9.5px] text-slate-500">
+            {vendorMode ? "Approved Vendor" : "Trader account"}
+          </p>
+          <div className="mt-2 flex gap-1.5">
+            <StatusPill label={vendorMode ? "VENDOR" : "TRADER"} tone="info" />
+            <StatusPill label="VERIFIED" tone="success" />
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-[9px]">
+        <MiniMetric label="Security" value="Protected" />
+        <MiniMetric label="Wallets" value="Mainnet" />
+      </div>
+      {sections.map(([title, items]) => (
+        <Section key={title} title={title}>
+          {items.map(([screen, label, body, Icon]) => (
+            <ListRow
+              key={screen}
+              icon={Icon}
+              title={label}
+              body={body}
+              onClick={() => onNavigate(screen)}
+            />
+          ))}
+        </Section>
+      ))}
+      <Section title="Preferences">
         <Surface className="space-y-4 p-4">
           <div>
             <p className="text-sm font-semibold">{t("appearance")}</p>
@@ -5362,20 +5585,7 @@ function MoreScreen({
           </div>
         </Surface>
       </Section>
-      {sections.map(([title, items]) => (
-        <Section key={title} title={title}>
-          {items.map(([screen, label, body, Icon]) => (
-            <ListRow
-              key={screen}
-              icon={Icon}
-              title={label}
-              body={body}
-              onClick={() => onNavigate(screen)}
-            />
-          ))}
-        </Section>
-      ))}
-      <Section title="Legal">
+      <Section title="Legal & Help">
         <ListRow
           icon={FileText}
           title="Privacy Policy"
@@ -5400,15 +5610,25 @@ function MoreScreen({
             window.open("/risk-disclosure", "_blank", "noopener,noreferrer");
           }}
         />
+        <ListRow
+          icon={MiniIcons.notifications}
+          title="Support"
+          body="Order, account and wallet help"
+          onClick={() => {
+            window.open("https://t.me/laura_luxee", "_blank", "noopener,noreferrer");
+          }}
+        />
       </Section>
-      <ListRow
-        icon={LogOut}
-        title="Logout"
-        body="Close your Mini App session"
-        onClick={() => {
-          toast.info("Use Telegram or web account controls to sign out.");
-        }}
-      />
+      <Section title="Session">
+        <ListRow
+          icon={LogOut}
+          title="Logout"
+          body="Close your Mini App session"
+          onClick={() => {
+            toast.info("Use Telegram or web account controls to sign out.");
+          }}
+        />
+      </Section>
     </Screen>
   );
 }
@@ -5512,24 +5732,56 @@ function HistoryScreen({ rows }: { rows: unknown[] }) {
 
 function ProfileScreen({
   profile,
+  avatarUrl,
+  avatarUploading,
   hasSession,
   onNavigate,
+  onUploadPhoto,
 }: {
   profile: ProfileSummary | null;
+  avatarUrl: string;
+  avatarUploading: boolean;
   hasSession: boolean;
   onNavigate: (screen: MiniScreen) => Promise<void>;
+  onUploadPhoto: (file: File) => void;
 }) {
+  const fileInputId = "mini-profile-photo";
   return (
     <Screen title="Profile" subtitle="WTRON trader profile">
-      <Surface className="p-4 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-primary/12">
-          <UserRound className="h-8 w-8 text-primary" />
+      <Surface className="p-4">
+        <div className="flex items-center gap-3">
+          <V17Avatar
+            src={avatarUrl}
+            initials={profile?.full_name || profile?.email || "WT"}
+            size="lg"
+            editable
+            uploading={avatarUploading}
+            onEdit={() => document.getElementById(fileInputId)?.click()}
+          />
+          <input
+            id={fileInputId}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (file) onUploadPhoto(file);
+            }}
+          />
+          <div className="min-w-0">
+            <h2 className="truncate text-xl font-semibold tracking-normal">
+              {profile?.full_name || "WTRON Trader"}
+            </h2>
+            <p className="truncate text-sm text-slate-400">
+              {profile?.email || "Telegram linked account"}
+            </p>
+            <div className="mt-2 flex gap-1.5">
+              <StatusPill label="TRADER" tone="info" />
+              <StatusPill label={hasSession ? "LINKED" : "TELEGRAM"} tone="success" />
+            </div>
+          </div>
         </div>
-        <h2 className="mt-3 text-xl font-semibold tracking-normal">
-          {profile?.full_name || "WTRON Trader"}
-        </h2>
-        <p className="text-sm text-slate-400">{profile?.email || "Telegram linked account"}</p>
-        <p className="mt-2 text-xs text-primary">Telegram linked</p>
         <p className="mono mt-2 text-[11px] text-slate-500" dir={technicalTextDirection()}>
           {profile?.id ? shortenHash(profile.id, 8) : "Account pending"}
         </p>
@@ -6073,6 +6325,14 @@ function MiniMetric({ label, value }: { label: string; value: React.ReactNode })
     </div>
   );
 }
+function StatTile({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-[14px] border border-[#222837] bg-[#10131a] p-3">
+      <p className="text-[9px] text-slate-500">{label}</p>
+      <p className="mt-1 text-[17px] font-semibold tracking-[-0.03em] tabular-nums">{value}</p>
+    </div>
+  );
+}
 function Surface({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return (
     <div
@@ -6210,11 +6470,15 @@ function Tabs({
   items: Array<[string, string]>;
 }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-[13px] border border-[#222837] bg-[#151925] p-1">
+    <div className="flex gap-5 overflow-x-auto border-b border-[#222837]">
       {items.map(([key, label]) => (
         <button
           key={key}
-          className={`shrink-0 rounded-[9px] px-3 py-2 text-sm ${value === key ? "bg-[#10131a] text-white shadow-[0_4px_12px_rgba(0,0,0,.12)]" : "text-slate-400"}`}
+          className={`relative shrink-0 py-[9px] pb-[11px] text-[11px] ${
+            value === key
+              ? "font-semibold text-white after:absolute after:inset-x-0 after:bottom-[-1px] after:h-0.5 after:bg-primary"
+              : "text-slate-500"
+          }`}
           onClick={() => setValue(key)}
         >
           {label}
@@ -6392,18 +6656,22 @@ function StatusPill({
   tone = "muted",
 }: {
   label: string;
-  tone?: "muted" | "success" | "warning" | "danger";
+  tone?: "muted" | "success" | "warning" | "danger" | "info";
 }) {
   const toneClass =
     tone === "success"
-      ? "bg-primary/12 text-primary"
-      : tone === "warning"
-        ? "bg-amber-500/12 text-amber-300"
-        : tone === "danger"
-          ? "bg-red-500/12 text-red-300"
-          : "bg-white/8 text-slate-400";
+      ? "border border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
+      : tone === "info"
+        ? "border border-primary/20 bg-primary/10 text-[#7ba0ff]"
+        : tone === "warning"
+          ? "border border-amber-400/20 bg-amber-500/12 text-amber-300"
+          : tone === "danger"
+            ? "border border-red-400/20 bg-red-500/12 text-red-300"
+            : "border border-[#222837] bg-white/8 text-slate-400";
   return (
-    <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${toneClass}`}>
+    <span
+      className={`inline-flex rounded-full px-[7px] py-[5px] text-[8.5px] font-semibold ${toneClass}`}
+    >
       {label}
     </span>
   );
@@ -6712,68 +6980,124 @@ function MetricGrid({ items }: { items: Array<[string, string]> }) {
   );
 }
 function AdCard({ ad, onTake }: { ad: AdRow; onTake: () => void }) {
+  const name = ad.merchants?.display_name ?? "Advertiser";
+  const initials = name
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const verified = Number(ad.merchants?.completed_orders ?? 0) > 0;
   return (
-    <Surface className="p-4">
-      <div className="flex justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-semibold">{ad.merchants?.display_name ?? "Advertiser"}</p>
-          <p className="text-xs text-slate-400">
-            {completionRate(ad)} completion /{" "}
-            {(ad.payment_methods ?? ["upi"]).join(", ").toUpperCase()}
+    <div className="border-b border-[#222837] py-[15px] last:border-b-0">
+      <div className="flex items-start gap-[9px]">
+        <V17Avatar initials={initials || "WT"} size="md" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold">
+            {name}{" "}
+            <span
+              className={verified ? "text-[8.5px] text-emerald-300" : "text-[8.5px] text-amber-300"}
+            >
+              {verified ? "VERIFIED" : "UNVERIFIED"}
+            </span>
           </p>
+          <p className="mt-1 text-[9px] text-slate-500">WTRON member / release tracked by orders</p>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-slate-500">Rate</p>
-          <p className="font-semibold tabular-nums">{money(ad.price_inr, "INR")}</p>
+        <StatusPill label="Online" tone="success" />
+      </div>
+      <div className="mt-[10px] grid grid-cols-3 gap-[7px]">
+        <StatTile label="Total trades" value={String(ad.merchants?.completed_orders ?? 0)} />
+        <StatTile label="Success rate" value={completionRate(ad)} />
+        <StatTile label="WTRON wallet" value={`${money(ad.available_usdt)} U`} />
+      </div>
+      <p className="mt-[10px] text-[22px] font-semibold tracking-[-0.04em] tabular-nums">
+        {money(ad.price_inr, "INR")}{" "}
+        <span className="text-[9px] font-normal text-slate-500">/ USDT</span>
+      </p>
+      <p className="mt-1 text-[8.8px] text-slate-500">
+        {money(ad.min_order_inr, "INR")}-{money(ad.max_order_inr, "INR")} /{" "}
+        {(ad.payment_methods ?? ["upi"]).join(" / ").toUpperCase()} / {money(ad.available_usdt)} U
+        available
+      </p>
+      <div className="mt-[10px] border-t border-dashed border-[#222837] pt-[7px] text-[9px]">
+        <div className="flex justify-between">
+          <span className="text-slate-500">Successful trades</span>
+          <b>{ad.merchants?.completed_orders ?? 0}</b>
+        </div>
+        <div className="mt-1 flex justify-between">
+          <span className="text-slate-500">30-day completion</span>
+          <b>{completionRate(ad)}</b>
         </div>
       </div>
-      <MetricGrid
-        items={[
-          ["Available", money(ad.available_usdt)],
-          ["Min", money(ad.min_order_inr, "INR")],
-          ["Max", money(ad.max_order_inr, "INR")],
-          ["Side", ad.side.toUpperCase()],
-        ]}
-      />
-      <Button
-        className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
-        onClick={onTake}
-      >
-        {ad.side === "sell" ? "Buy USDT" : "Sell USDT"}
-      </Button>
-    </Surface>
+      <div className="mt-[10px] flex justify-end gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => toast.info("Start the order to continue chat with the counterparty.")}
+        >
+          Chat
+        </Button>
+        <Button
+          size="sm"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={onTake}
+        >
+          {ad.side === "sell" ? "Buy" : "Sell"}
+        </Button>
+      </div>
+    </div>
   );
 }
 function VendorCard({ listing, onBuy }: { listing: VendorListingRow; onBuy: () => void }) {
+  const name = listing.trading_vendors?.name ?? "Verified Vendor";
+  const initials = name
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
   return (
-    <Surface className="p-4">
-      <div className="flex justify-between">
-        <div className="min-w-0">
-          <p className="font-semibold">{listing.trading_vendors?.name ?? "Verified Vendor"}</p>
-          <p className="text-xs text-slate-400">
-            {(listing.payment_rails ?? []).join(", ").toUpperCase()}
+    <div className="border-b border-[#222837] py-[15px] last:border-b-0">
+      <div className="flex items-start gap-[10px]">
+        <V17Avatar initials={initials || "WV"} size="md" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold">
+            {name} <span className="text-[8.5px] text-emerald-300">VERIFIED</span>
+          </p>
+          <p className="mt-1 text-[9px] text-slate-500">
+            {listing.trading_vendors?.completed_orders ?? 0} completed / Approved Vendor
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-slate-500">Rate</p>
-          <p className="font-semibold tabular-nums">{money(listing.rate_inr, "INR")}</p>
-        </div>
+        <StatusPill label="ACTIVE" tone="success" />
       </div>
-      <MetricGrid
-        items={[
-          ["Available", money(listing.available_usdt)],
-          ["Min", money(listing.min_order_inr, "INR")],
-          ["Max", money(listing.max_order_inr, "INR")],
-          ["Orders", String(listing.trading_vendors?.completed_orders ?? 0)],
-        ]}
-      />
-      <Button
-        className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
-        onClick={onBuy}
-      >
-        Buy from Vendor
-      </Button>
-    </Surface>
+      <div className="mt-[11px] grid grid-cols-3 gap-[7px]">
+        <StatTile label="Available" value={`${money(listing.available_usdt)} U`} />
+        <StatTile label="Rate" value={money(listing.rate_inr, "INR")} />
+        <StatTile
+          label="Limits"
+          value={`${money(listing.min_order_inr, "INR")}-${money(listing.max_order_inr, "INR")}`}
+        />
+      </div>
+      <p className="mt-[10px] text-[8.8px] text-slate-500">
+        {(listing.payment_rails ?? []).join(" / ").toUpperCase()} / Vendor marketplace liquidity
+      </p>
+      <div className="mt-[10px] flex justify-end gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => toast.info("Open the buy flow to review vendor listing details.")}
+        >
+          Details
+        </Button>
+        <Button
+          size="sm"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={onBuy}
+        >
+          Buy USDT
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -7199,17 +7523,17 @@ function VendorBottomNav({
   screen: MiniScreen;
   setScreen: (screen: MiniScreen) => void;
 }) {
-  const items: Array<[VendorPrimaryTab, string, MiniIcon]> = [
-    ["home", "Home", CircleDollarSign],
-    ["trade", "Trade", MiniIcons.swap],
-    ["wallet", "Wallet", MiniIcons.wallet],
-    ["orders", "Orders", FileText],
-    ["more", "More", MoreHorizontal],
+  const items: Array<[VendorPrimaryTab, string, V17NavIconName]> = [
+    ["home", "Home", "home"],
+    ["trade", "Trade", "trade"],
+    ["wallet", "Wallet", "wallet"],
+    ["orders", "Orders", "orders"],
+    ["more", "More", "more"],
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 px-[9px] pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2">
       <div className="mx-auto grid h-[68px] max-w-[412px] grid-cols-5 gap-0.5 rounded-[23px] border border-[#222837] bg-[#10131a]/90 p-1.5 shadow-[0_18px_48px_rgba(0,0,0,.32)] backdrop-blur-xl">
-        {items.map(([key, label, Icon]) => (
+        {items.map(([key, label, icon]) => (
           <button
             key={key}
             className={`relative grid min-w-0 place-items-center gap-[3px] rounded-2xl border px-1 pt-1 text-[8px] font-bold tracking-[0.005em] transition ${
@@ -7219,7 +7543,8 @@ function VendorBottomNav({
             }`}
             onClick={() => setScreen(key)}
           >
-            <Icon
+            <V17NavIcon
+              name={icon}
               className={`h-5 w-5 ${screen === key ? "drop-shadow-[0_4px_8px_rgba(79,124,255,.26)]" : ""}`}
             />
             <span>{label}</span>
@@ -7239,17 +7564,17 @@ function BottomNav({
   setTab: (tab: PrimaryTab) => void;
   t: MiniT;
 }) {
-  const items: Array<[PrimaryTab, string, MiniIcon]> = [
-    ["home", t("home"), CircleDollarSign],
-    ["p2p", "P2P", MiniIcons.p2p],
-    ["trade", t("trade"), MiniIcons.swap],
-    ["wallet", t("wallet"), MiniIcons.wallet],
-    ["more", t("more"), MoreHorizontal],
+  const items: Array<[PrimaryTab, string, V17NavIconName]> = [
+    ["home", t("home"), "home"],
+    ["p2p", "P2P", "p2p"],
+    ["trade", t("trade"), "trade"],
+    ["wallet", t("wallet"), "wallet"],
+    ["more", t("more"), "more"],
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 px-[9px] pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2">
       <div className="mx-auto grid h-[68px] max-w-[412px] grid-cols-5 gap-0.5 rounded-[23px] border border-[#222837] bg-[#10131a]/90 p-1.5 shadow-[0_18px_48px_rgba(0,0,0,.32)] backdrop-blur-xl">
-        {items.map(([key, label, Icon]) => (
+        {items.map(([key, label, icon]) => (
           <button
             key={key}
             className={`relative grid min-w-0 place-items-center gap-[3px] rounded-2xl border px-1 pt-1 text-[8px] font-bold tracking-[0.005em] transition ${
@@ -7259,7 +7584,8 @@ function BottomNav({
             }`}
             onClick={() => setTab(key)}
           >
-            <Icon
+            <V17NavIcon
+              name={icon}
               className={`h-5 w-5 ${tab === key ? "drop-shadow-[0_4px_8px_rgba(79,124,255,.26)]" : ""}`}
             />
             <span>{label}</span>

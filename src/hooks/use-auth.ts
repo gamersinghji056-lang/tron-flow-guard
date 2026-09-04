@@ -7,6 +7,8 @@ export interface ProfileRecord {
   id: string;
   email: string | null;
   full_name: string | null;
+  avatar_path?: string | null;
+  avatar_updated_at?: string | null;
   balance: number;
   locked_balance?: number;
   pending_balance?: number;
@@ -53,8 +55,10 @@ export function useAuth(): AuthState {
 
       const [{ data: profile }, { data: roles }, { data: perms }] = await Promise.all([
         supabase
-          .from("profiles")
-          .select("id, email, full_name, balance, locked_balance")
+          .from("profiles" as never)
+          .select(
+            "id, email, full_name, avatar_path, avatar_updated_at, balance, locked_balance" as never,
+          )
           .eq("id", session.user.id)
           .maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", session.user.id),
@@ -79,9 +83,9 @@ export function useAuth(): AuthState {
         user: session.user,
         profile: profile
           ? {
-              ...profile,
-              balance: Number(profile.balance),
-              locked_balance: Number(profile.locked_balance ?? 0),
+              ...(profile as unknown as ProfileRecord),
+              balance: Number((profile as unknown as ProfileRecord).balance),
+              locked_balance: Number((profile as unknown as ProfileRecord).locked_balance ?? 0),
             }
           : null,
         role,

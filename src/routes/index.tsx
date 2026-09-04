@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { WtronLogo } from "@/components/mini-app/crypto-icons";
+import { V17NavIcon, WtronLogo } from "@/components/mini-app/crypto-icons";
 import { WTRON_ANDROID_VERSION } from "@/lib/app-release";
 
 export const Route = createFileRoute("/")({
@@ -38,6 +38,7 @@ export const Route = createFileRoute("/")({
 });
 
 const nav = [
+  ["About", "about"],
   ["Wallet", "wallet"],
   ["P2P", "p2p"],
   ["Trade", "trade"],
@@ -125,8 +126,10 @@ function Landing() {
             WTRON
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-            A production TRON platform for Mainnet wallets, P2P marketplace orders, direct WTRON
-            company trades and approved vendor sell operations.
+            WTRON is built as a Telegram-native TRON wallet and P2P platform, with the same account
+            ecosystem available through Web, Telegram Mini App and Android. It combines TRON Mainnet
+            wallet workflows, USDT/TRX balances, P2P orders, Trade with WTRON and approved Vendor
+            SELL operations without presenting prototype balances as production state.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button asChild size="lg" className="bg-primary text-white hover:bg-primary/90">
@@ -162,10 +165,47 @@ function Landing() {
 
       <section className="border-y border-white/10 bg-white/[0.035]">
         <div className="mx-auto grid max-w-7xl gap-4 px-4 py-8 sm:px-6 md:grid-cols-4">
-          <Proof label="Network" value="TRON Mainnet" />
-          <Proof label="Wallet" value="Create, import, send, receive" />
-          <Proof label="Trading" value="P2P and direct WTRON sell" />
-          <Proof label="Android" value={`Release ${WTRON_ANDROID_VERSION}`} />
+          <Proof label="Web" value="Trader and Vendor browser UI" />
+          <Proof label="Telegram" value="Mini App and bot-linked account flow" />
+          <Proof label="Android" value={`Standalone app release ${WTRON_ANDROID_VERSION}`} />
+          <Proof label="Backend" value="Same account, wallet and order system" />
+        </div>
+      </section>
+
+      <section id="about" className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
+        <div className="grid gap-8 rounded-[30px] border border-[#222837] bg-[#10131a] p-6 shadow-[0_30px_100px_rgba(0,0,0,.35)] lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+          <div>
+            <p className="kicker-v17">About WTRON</p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
+              One WTRON account across Web, Telegram and Android.
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-slate-400">
+              WTRON brings wallet and P2P workflows directly into Telegram alongside a responsive
+              website and Android application. Traders can manage TRON Mainnet Standard wallets,
+              receive and send supported assets, place P2P orders, sell directly to WTRON and track
+              order history. Approved Vendors receive a separate SELL-only workspace for liquidity,
+              payout accounts, listings and matched orders.
+            </p>
+            <p className="mt-3 text-sm leading-7 text-slate-400">
+              The public site shows product previews only. Live balances, rates, addresses,
+              confirmations, vendor status and payment details come from the authenticated
+              production backend after login.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <PreviewRail
+              title="Web"
+              body="Full Trader and Vendor routes for wallets, P2P, orders and settings."
+            />
+            <PreviewRail
+              title="Telegram Mini App"
+              body="Telegram-linked wallet and P2P flows using the same backend contracts."
+            />
+            <PreviewRail
+              title="Android"
+              body="In-app WebView shell loading /app with persistent first-party APK distribution."
+            />
+          </div>
         </div>
       </section>
 
@@ -237,20 +277,6 @@ function Landing() {
         ]}
       />
 
-      <section id="about" className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
-        <div className="rounded-[17px] border border-[#222837] bg-[#10131a] p-6">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-            About WTRON
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold">Built for real TRON operations.</h2>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-400">
-            WTRON keeps public website, Trader web UI, Vendor portal, Telegram Mini App and Android
-            entry aligned around the same production backend. Operational data appears only after
-            authentication from live account, wallet, order and listener state.
-          </p>
-        </div>
-      </section>
-
       <section className="border-y border-white/10 bg-white/[0.035] px-4 py-14 sm:px-6">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-2">
           <FlowCard
@@ -281,43 +307,67 @@ function Landing() {
           {[
             [
               "What is WTRON?",
-              "WTRON is a production TRON Mainnet wallet and USDT trading platform with Trader, Vendor, Telegram Mini App and Android access paths.",
+              "WTRON is a TRON Mainnet wallet and USDT trading platform for Traders and approved Vendors. It combines self-custody wallet workflows, P2P order handling, direct Trade with WTRON and role-aware Vendor SELL operations under the same authenticated backend.",
+            ],
+            [
+              "Where can I use WTRON?",
+              "WTRON is designed for three production experiences: the website, the Telegram Mini App/bot-linked flow and the Android application. These access paths use the same account ecosystem rather than separate demo backends.",
             ],
             [
               "Which network does the wallet use?",
-              "Normal wallet creation and import use TRON Mainnet in the user UX. Historical internal Nile data is not exposed as a normal user choice.",
+              "Normal user wallet creation and import use TRON Mainnet in the production UX. Historical Nile/testnet records may still exist internally, but normal Traders and Vendors are not asked to choose Nile or testnet when creating or importing a production wallet.",
             ],
             [
               "Which assets are shown?",
-              "Wallet screens are built around TRC20 USDT and native TRX balances loaded from authenticated backend and wallet state.",
+              "The wallet UI focuses on TRC20 USDT and native TRX. USDT is the primary trading asset, while TRX is used by normal TRON wallets for network resources and transaction costs where applicable.",
             ],
             [
               "What is a Standard wallet?",
-              "A Standard wallet uses normal TRON resources and the protected WTRON send flow with transaction password, signer authorization and broadcast controls.",
+              "A Standard wallet is a normal TRON Mainnet wallet managed through WTRON’s protected wallet flow. Send actions remain subject to transaction password checks, signer authorization, balance/resource requirements, active-send protection and server-side transfer controls.",
             ],
             [
               "What is GasFree?",
-              "GasFree is available only where the configured provider and wallet capability checks say it is ready for supported USDT transfers.",
+              "GasFree is a wallet capability for supported USDT transfers when the configured provider and the selected wallet are ready. WTRON does not show GasFree as available unless provider configuration and wallet capability checks support it.",
+            ],
+            [
+              "How does recovery phrase import work?",
+              "A valid WTRON Standard wallet recovery phrase is deterministically derived using the same TRON derivation path. The same phrase and derivation path recover the same underlying TRON address on another WTRON installation or wallet entry.",
+            ],
+            [
+              "Can WTRON support see my recovery phrase?",
+              "No. Recovery phrases and private keys must never be sent to support, admins or counterparties. WTRON’s admin surfaces are designed not to expose wallet seed phrases, private keys or transaction passwords.",
             ],
             [
               "Can Traders buy USDT?",
-              "Trader P2P and vendor marketplace flows are role-controlled by the existing backend policies.",
+              "Yes, Traders can use supported P2P BUY flows and approved Vendor marketplace flows where available. Orders use the existing marketplace, reservation, payment proof, UTR and dispute logic.",
+            ],
+            [
+              "Can Traders sell USDT?",
+              "Traders can create supported P2P SELL ads and can also use Trade with WTRON to sell USDT directly to the company flow where configured. Settlement state depends on real order and blockchain confirmation logic.",
             ],
             [
               "Can Vendors buy USDT?",
-              "No. Vendors are SELL-only and do not receive buyer controls.",
+              "No. Vendor accounts are SELL-only. Vendor registration, approval, payout accounts, liquidity listings and matched orders are separated from Trader buyer functionality by role-aware UI and backend policy.",
+            ],
+            [
+              "Why does Vendor approval matter?",
+              "Vendor tools affect marketplace liquidity and payout capacity, so the Vendor workspace remains blocked until the account is approved. Pending Vendors can sign in to see status but do not receive operational SELL tools until approval.",
             ],
             [
               "How are deposits confirmed?",
-              "Deposit and direct-trade screens rely on the existing listener to verify real on-chain TRC20 transfers before settlement state advances.",
+              "Deposit and direct-trade screens rely on WTRON’s existing TRON listener to verify real on-chain transfers. The assigned address, token, network, transaction receipt and confirmation count must match before settlement state advances.",
             ],
             [
               "How do P2P orders work?",
-              "Trader P2P uses the existing orderbook, payment methods, proof submission, order timers and dispute states.",
+              "Trader P2P uses live marketplace rows and order state. A buyer or seller follows the order timer, uses saved payment rails where required, submits proof or UTR in the order flow and can open a dispute from the relevant order if something goes wrong.",
+            ],
+            [
+              "How should I judge a seller?",
+              "WTRON surfaces available profile, completion and order metrics where implemented, but users should still review order terms and keep all communication and proof inside the WTRON flow. Verification indicators are product state, not a guarantee of future behavior.",
             ],
             [
               "How do direct WTRON trades work?",
-              "The app creates a WTRON trade order, assigns the configured company receiving address and tracks the deposit/payment state through existing order logic.",
+              "Trade with WTRON creates a direct order and assigns the configured company receiving address for the supported asset. Blockchain confirmation and payout state are tracked separately through the existing order logic.",
             ],
             [
               "Where do I add payment methods?",
@@ -325,11 +375,11 @@ function Landing() {
             ],
             [
               "What protects wallet actions?",
-              "Sensitive wallet actions keep transaction-password validation, server-side wallet ownership checks, signer authorization and idempotency.",
+              "Sensitive wallet actions keep transaction-password validation, server-side wallet ownership checks, signer authorization, idempotency and explicit transfer controls. The public website does not expose private operational details or secrets.",
             ],
             [
               "Can support ask for my seed phrase?",
-              "No. WTRON support and admins should never receive or view your recovery phrase, private key or transaction password.",
+              "No. Treat any request for your recovery phrase, private key or transaction password as unsafe. Support can help with account and order issues, but secrets should remain only with the wallet owner.",
             ],
             [
               "Does WTRON show fake balances?",
@@ -341,24 +391,24 @@ function Landing() {
             ],
             [
               "How does Direct Sell work?",
-              "WTRON assigns a company address and tracks confirmation.",
+              "Direct Sell assigns a company TRON receiving address and tracks the expected USDT deposit through the listener. Payout and blockchain confirmation are separate states so the UI should not mark settlement complete before the underlying events happen.",
             ],
             [
               "Does Android use the same account?",
-              "Yes. The Android app opens the `/app` entry and uses the same production account/session flow as wtron.org.",
+              "Yes. The Android app opens the `/app` entry inside the WTRON app shell and uses the same production account/session flow as wtron.org. It should not display browser chrome or claim Play Store availability.",
             ],
             [
               "Does Telegram use a separate backend?",
-              "No. The Mini App links Telegram access to existing WTRON accounts and uses the same production functions.",
+              "No. The Telegram Mini App links Telegram access to existing WTRON accounts and uses the same production functions, while Telegram-specific verification and handoff behavior remain isolated from normal web authentication.",
             ],
             ["Is there a Play Store listing?", "No. Android distribution is first-party for now."],
             [
               "Where is the Android APK?",
-              "The download page links it only after the artifact is published.",
+              "The download page uses WTRON’s first-party release flow and should link the signed APK only after the release asset is published. Unsigned builds may be useful for testing, but they are not presented as the production signed release.",
             ],
             [
               "How do I contact support?",
-              "Use Telegram @laura_luxee and keep payment proof inside the relevant WTRON order when possible.",
+              "Use the listed WTRON support contact and keep payment proof, UTRs, screenshots and dispute messages inside the relevant WTRON order whenever possible. Never move order evidence into private channels unless support explicitly instructs you without requesting secrets.",
             ],
           ].map(([question, answer]) => (
             <details key={question} className="group p-5">
@@ -414,11 +464,13 @@ function Landing() {
         <div className="mx-auto flex max-w-7xl flex-col gap-5 md:flex-row md:items-center">
           <WtronLogo markClassName="h-8 w-8" textClassName="font-semibold text-white" />
           <div className="flex flex-wrap gap-4 text-sm md:ml-auto">
+            <a href="#about">About</a>
+            <a href="#faq">FAQ</a>
+            <a href="#support">Support</a>
+            <a href="#support">Contact</a>
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
             <Link to="/risk-disclosure">Risk Disclosure</Link>
-            <a href="https://t.me/laura_luxee">Support</a>
-            <a href="#support">Contact</a>
           </div>
         </div>
       </footer>
@@ -442,12 +494,21 @@ function FlowCard({ title, steps }: { title: string; steps: string[] }) {
   );
 }
 
+function PreviewRail({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-[17px] border border-[#222837] bg-[#151925] p-4">
+      <p className="text-[13px] font-semibold">{title}</p>
+      <p className="mt-2 text-[11px] leading-5 text-slate-400">{body}</p>
+    </div>
+  );
+}
+
 function ProductPreview() {
   const actions = [
-    { icon: Wallet2, label: "Wallet" },
-    { icon: Banknote, label: "P2P" },
-    { icon: HandCoins, label: "Trade" },
-    { icon: History, label: "Orders" },
+    { icon: "wallet", label: "Wallet" },
+    { icon: "p2p", label: "P2P" },
+    { icon: "trade", label: "Trade" },
+    { icon: "orders", label: "Orders" },
   ];
   return (
     <div className="mx-auto w-full max-w-[430px] rounded-[30px] border border-[#151a24] bg-[#080a0f] p-3 shadow-[0_30px_100px_rgba(0,0,0,.55)]">
@@ -472,10 +533,13 @@ function ProductPreview() {
           </div>
         </div>
         <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs text-slate-300">
-          {actions.map(({ icon: PreviewIcon, label }) => (
+          {actions.map(({ icon, label }) => (
             <div key={label}>
               <span className="mx-auto grid h-[45px] w-[45px] place-items-center rounded-[14px] border border-[#222837] bg-[#10131a] text-[#7ba0ff]">
-                <PreviewIcon className="h-4 w-4" />
+                <V17NavIcon
+                  name={icon as "wallet" | "p2p" | "trade" | "orders"}
+                  className="h-5 w-5"
+                />
               </span>
               <span className="mt-2 block">{label}</span>
             </div>

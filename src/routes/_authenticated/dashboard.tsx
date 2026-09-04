@@ -133,12 +133,11 @@ function HomeAction({
   label: string;
 }) {
   return (
-    <Link
-      to={to}
-      className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-sm font-medium transition hover:border-primary/50 hover:bg-white/8"
-    >
-      <Icon className="h-5 w-5 text-primary" />
-      <span>{label}</span>
+    <Link to={to} className="text-center">
+      <span className="mx-auto grid h-[45px] w-[45px] place-items-center rounded-[14px] border border-[#222837] bg-[#10131a] text-[#7ba0ff]">
+        <Icon className="h-[19px] w-[19px]" />
+      </span>
+      <span className="mt-2 block text-[9.5px] text-slate-300">{label}</span>
     </Link>
   );
 }
@@ -218,42 +217,33 @@ function DashboardPage() {
   const totalCredited = confirmed.reduce((sum, row) => sum + (row.received_amount ?? 0), 0);
 
   return (
-    <div className="space-y-6">
-      <section className="panel overflow-hidden p-5">
+    <div className="mx-auto max-w-[430px] space-y-[23px] md:max-w-7xl">
+      <section>
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-              WTRON Mainnet
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-normal">Home</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Wallet, P2P, direct WTRON trade and order activity use your live account state.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex">
-            <Button asChild variant="secondary">
-              <Link to="/wallet">
-                <ArrowDownLeft className="mr-1.5 h-4 w-4" />
-                Receive
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link to="/wallet">
-                <ArrowUpRight className="mr-1.5 h-4 w-4" />
-                Send
-              </Link>
-            </Button>
+            <p className="kicker-v17">TRADER ACCOUNT</p>
+            <h1 className="title-v17">Good day, {profile?.full_name || "WTRON Trader"}</h1>
+            <p className="body-v17">Your personal WTRON wallet, P2P and direct trading overview.</p>
           </div>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <HomeAction to="/wallet" icon={Wallet2} label="Wallet" />
-          <HomeAction to="/p2p" icon={Banknote} label="P2P" />
+        <div className="mt-5">
+          <p className="text-[9px] text-slate-500">Total portfolio</p>
+          <p className="balance-v17">{formatUsdt(profile?.balance)} USDT</p>
+          <p className="text-[10px] text-slate-500">Available platform balance</p>
+        </div>
+        <div className="mt-[18px] grid grid-cols-4 gap-[10px]">
+          <HomeAction to="/deposits" icon={ArrowDownLeft} label="Deposit" />
+          <HomeAction to="/wallet" icon={ArrowUpRight} label="Send" />
+          <HomeAction to="/wallet" icon={Copy} label="Receive" />
           <HomeAction to="/trade" icon={HandCoins} label="Trade" />
-          <HomeAction to="/orders" icon={ShieldCheck} label="Orders" />
+        </div>
+        <div className="mt-[18px] grid grid-cols-2 gap-[10px]">
+          <StatCard label="WTRON balance" value={`${formatUsdt(profile?.balance)} USDT`} />
+          <StatCard label="Wallet balance" value="Open Wallet" hint="Loaded from wallet page" />
         </div>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Available balance"
           value={`${formatUsdt(profile?.balance)} USDT`}

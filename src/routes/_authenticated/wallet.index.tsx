@@ -241,11 +241,12 @@ function WalletsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[430px] space-y-[23px] md:max-w-7xl">
       <header className="grid gap-4 lg:grid-cols-[1fr_auto]">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Wallet</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="kicker-v17">TRON MAINNET</p>
+          <h1 className="title-v17">Wallet</h1>
+          <p className="body-v17">
             Personal wallets are separate from platform deposit addresses. Platform deposits still
             use assigned company wallets and the existing blockchain listener.
           </p>
@@ -288,11 +289,11 @@ function WalletsPage() {
         </Dialog>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_.8fr]">
-        <div className="panel p-5">
-          <p className="text-xs tracking-wide text-muted-foreground uppercase">Total Assets</p>
-          <p className="mono mt-1 text-4xl font-semibold">{formatUsdt(total)} USDT</p>
-          <div className="mt-5 grid grid-cols-3 gap-3">
+      <section className="grid gap-[10px] lg:grid-cols-[1.4fr_.8fr]">
+        <div className="panel rounded-[17px] p-4">
+          <p className="text-[9px] text-muted-foreground">Portfolio balance</p>
+          <p className="balance-v17 mt-1">{formatUsdt(total)} USDT</p>
+          <div className="mt-5 grid grid-cols-3 gap-2">
             <Metric label="Available" value={`${formatUsdt(profile?.balance)} USDT`} />
             <Metric label="Locked" value={`${formatUsdt(profile?.locked_balance)} USDT`} />
             <Metric
@@ -301,10 +302,12 @@ function WalletsPage() {
             />
           </div>
         </div>
-        <div className="panel p-5">
-          <p className="text-sm font-medium">Active wallet</p>
-          <p className="mt-2 text-lg font-semibold">{activeWallet?.name ?? "No wallet selected"}</p>
-          <p className="mono mt-1 text-xs text-muted-foreground">
+        <div className="panel rounded-[17px] p-4">
+          <p className="text-[13px] font-semibold">Active wallet</p>
+          <p className="mt-2 text-[17px] font-semibold">
+            {activeWallet?.name ?? "No wallet selected"}
+          </p>
+          <p className="mono mt-1 text-[9.5px] text-muted-foreground">
             {activeWallet ? shortenHash(activeWallet.address, 10) : "Create or import a wallet"}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-2">
@@ -320,7 +323,7 @@ function WalletsPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="grid grid-cols-4 gap-[10px] sm:grid-cols-4 lg:grid-cols-5">
         <WalletDialog
           mode="create"
           open={createOpen}
@@ -359,13 +362,13 @@ function WalletsPage() {
           icon={ArrowDownLeft}
           label="Receive"
         />
-        <QuickLink to="/deposits" icon={ShieldCheck} label="PLATFORM DEPOSIT" />
+        <QuickLink to="/deposits" icon={ShieldCheck} label="Deposit" />
       </section>
 
-      <section className="panel overflow-hidden">
-        <div className="border-b px-5 py-4">
-          <h2 className="font-semibold">My Wallets</h2>
-          <p className="text-sm text-muted-foreground">
+      <section className="panel overflow-hidden rounded-[17px]">
+        <div className="border-b border-[#222837] px-4 py-3">
+          <h2 className="text-[13px] font-semibold">Manage Wallets</h2>
+          <p className="mt-1 text-[11px] text-muted-foreground">
             Select a wallet to control receive, send and wallet-specific activity.
           </p>
         </div>
@@ -628,10 +631,12 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function QuickLink({ to, icon: Icon, label }: { to: string; icon: typeof Wallet2; label: string }) {
   return (
-    <Button asChild variant="secondary" className="h-12 justify-start">
-      <Link to={to}>
-        <Icon className="mr-2 h-4 w-4" />
-        {label}
+    <Button asChild variant="ghost" className="h-auto p-0 hover:bg-transparent">
+      <Link to={to} className="text-center">
+        <span className="mx-auto grid h-[45px] w-[45px] place-items-center rounded-[14px] border border-[#222837] bg-[#10131a] text-[#7ba0ff]">
+          <Icon className="h-[19px] w-[19px]" />
+        </span>
+        <span className="mt-2 block text-[9.5px] text-slate-300">{label}</span>
       </Link>
     </Button>
   );
