@@ -65,8 +65,8 @@ CREATE INDEX IF NOT EXISTS user_wallets_wallet_identity_idx
 
 INSERT INTO public.personal_wallet_identities
   (network, address, first_wallet_id, onchain_usdt_balance, onchain_trx_balance, onchain_checked_at)
-SELECT DISTINCT ON (network, address)
-  network,
+SELECT DISTINCT ON (network::text, address)
+  network::text,
   address,
   id,
   COALESCE(onchain_balance, balance, 0),
@@ -76,14 +76,42 @@ FROM public.user_wallets
 WHERE address IS NOT NULL
   AND network IS NOT NULL
   AND is_archived = false
+ORDER BY network::text, address, onchain_checked_at DESC NULLS LAST, id
 ON CONFLICT (network, address) DO UPDATE
-SET updated_at = now();
+SET onchain_usdt_balance = CASE
+      WHEN EXCLUDED.onchain_checked_at IS NULL
+        AND public.personal_wallet_identities.onchain_checked_at IS NOT NULL
+        THEN public.personal_wallet_identities.onchain_usdt_balance
+      WHEN public.personal_wallet_identities.onchain_checked_at IS NULL
+        OR EXCLUDED.onchain_checked_at >= public.personal_wallet_identities.onchain_checked_at
+        THEN EXCLUDED.onchain_usdt_balance
+      ELSE public.personal_wallet_identities.onchain_usdt_balance
+    END,
+    onchain_trx_balance = CASE
+      WHEN EXCLUDED.onchain_checked_at IS NULL
+        AND public.personal_wallet_identities.onchain_checked_at IS NOT NULL
+        THEN public.personal_wallet_identities.onchain_trx_balance
+      WHEN public.personal_wallet_identities.onchain_checked_at IS NULL
+        OR EXCLUDED.onchain_checked_at >= public.personal_wallet_identities.onchain_checked_at
+        THEN EXCLUDED.onchain_trx_balance
+      ELSE public.personal_wallet_identities.onchain_trx_balance
+    END,
+    onchain_checked_at = CASE
+      WHEN EXCLUDED.onchain_checked_at IS NULL
+        AND public.personal_wallet_identities.onchain_checked_at IS NOT NULL
+        THEN public.personal_wallet_identities.onchain_checked_at
+      WHEN public.personal_wallet_identities.onchain_checked_at IS NULL
+        OR EXCLUDED.onchain_checked_at >= public.personal_wallet_identities.onchain_checked_at
+        THEN EXCLUDED.onchain_checked_at
+      ELSE public.personal_wallet_identities.onchain_checked_at
+    END,
+    updated_at = now();
 
 UPDATE public.user_wallets wallet
 SET wallet_identity_id = identity.id
 FROM public.personal_wallet_identities identity
 WHERE wallet.wallet_identity_id IS NULL
-  AND identity.network = wallet.network
+  AND identity.network = wallet.network::text
   AND identity.address = wallet.address;
 
 INSERT INTO public.personal_wallet_identity_links (identity_id, wallet_id, user_id, status)
@@ -112,7 +140,7 @@ BEGIN
   INSERT INTO public.personal_wallet_identities
     (network, address, first_wallet_id, onchain_usdt_balance, onchain_trx_balance, onchain_checked_at)
   VALUES (
-    NEW.network,
+    NEW.network::text,
     NEW.address,
     NEW.id,
     COALESCE(NEW.onchain_balance, NEW.balance, 0),
@@ -120,15 +148,33 @@ BEGIN
     NEW.onchain_checked_at
   )
   ON CONFLICT (network, address) DO UPDATE
-  SET onchain_usdt_balance = GREATEST(
-        public.personal_wallet_identities.onchain_usdt_balance,
-        COALESCE(EXCLUDED.onchain_usdt_balance, 0)
-      ),
-      onchain_trx_balance = GREATEST(
-        public.personal_wallet_identities.onchain_trx_balance,
-        COALESCE(EXCLUDED.onchain_trx_balance, 0)
-      ),
-      onchain_checked_at = COALESCE(EXCLUDED.onchain_checked_at, public.personal_wallet_identities.onchain_checked_at),
+  SET onchain_usdt_balance = CASE
+        WHEN EXCLUDED.onchain_checked_at IS NULL
+          AND public.personal_wallet_identities.onchain_checked_at IS NOT NULL
+          THEN public.personal_wallet_identities.onchain_usdt_balance
+        WHEN public.personal_wallet_identities.onchain_checked_at IS NULL
+          OR EXCLUDED.onchain_checked_at >= public.personal_wallet_identities.onchain_checked_at
+          THEN EXCLUDED.onchain_usdt_balance
+        ELSE public.personal_wallet_identities.onchain_usdt_balance
+      END,
+      onchain_trx_balance = CASE
+        WHEN EXCLUDED.onchain_checked_at IS NULL
+          AND public.personal_wallet_identities.onchain_checked_at IS NOT NULL
+          THEN public.personal_wallet_identities.onchain_trx_balance
+        WHEN public.personal_wallet_identities.onchain_checked_at IS NULL
+          OR EXCLUDED.onchain_checked_at >= public.personal_wallet_identities.onchain_checked_at
+          THEN EXCLUDED.onchain_trx_balance
+        ELSE public.personal_wallet_identities.onchain_trx_balance
+      END,
+      onchain_checked_at = CASE
+        WHEN EXCLUDED.onchain_checked_at IS NULL
+          AND public.personal_wallet_identities.onchain_checked_at IS NOT NULL
+          THEN public.personal_wallet_identities.onchain_checked_at
+        WHEN public.personal_wallet_identities.onchain_checked_at IS NULL
+          OR EXCLUDED.onchain_checked_at >= public.personal_wallet_identities.onchain_checked_at
+          THEN EXCLUDED.onchain_checked_at
+        ELSE public.personal_wallet_identities.onchain_checked_at
+      END,
       updated_at = now()
   RETURNING id INTO identity_id;
 
@@ -283,6 +329,9 @@ DECLARE
   available numeric;
   reservation_id uuid;
 BEGIN
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() AND _owner_id <> auth.uid() THEN
+    RAISE EXCEPTION 'Cannot reserve another user wallet';
+  END IF;
   IF _wallet_id IS NULL THEN
     RAISE EXCEPTION 'Select a source wallet';
   END IF;
@@ -611,14 +660,14 @@ CREATE TRIGGER p2p_orders_release_personal_wallet_reservation
 
 REVOKE ALL ON FUNCTION public.personal_wallet_available_usdt(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.personal_wallet_available_usdt_for_wallet(uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.assert_and_reserve_personal_wallet_usdt(uuid,uuid,text,uuid,numeric,numeric) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.release_personal_wallet_reservation(text,uuid,text) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.release_p2p_ad_wallet_reservation_if_finished(uuid,text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.assert_and_reserve_personal_wallet_usdt(uuid,uuid,text,uuid,numeric,numeric) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.release_personal_wallet_reservation(text,uuid,text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.release_p2p_ad_wallet_reservation_if_finished(uuid,text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.personal_wallet_available_usdt(uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.personal_wallet_available_usdt_for_wallet(uuid) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.assert_and_reserve_personal_wallet_usdt(uuid,uuid,text,uuid,numeric,numeric) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.release_personal_wallet_reservation(text,uuid,text) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.release_p2p_ad_wallet_reservation_if_finished(uuid,text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.assert_and_reserve_personal_wallet_usdt(uuid,uuid,text,uuid,numeric,numeric) TO service_role;
+GRANT EXECUTE ON FUNCTION public.release_personal_wallet_reservation(text,uuid,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.release_p2p_ad_wallet_reservation_if_finished(uuid,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.p2p_create_ad(public.p2p_side,numeric,numeric,numeric,numeric,text[],text,boolean,uuid,uuid) TO authenticated, service_role;
 
 DROP FUNCTION IF EXISTS public.p2p_create_order_from_ad(uuid,numeric,uuid);

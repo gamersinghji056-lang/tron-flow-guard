@@ -3515,6 +3515,10 @@ describe("GasFree transfer service safety", () => {
     assert.match(sql, /personal_wallet_available_usdt_for_wallet/);
     assert.match(sql, /assert_and_reserve_personal_wallet_usdt/);
     assert.match(sql, /source_wallet_identity_id/);
+    assert.match(sql, /SELECT DISTINCT ON \(network::text, address\)/);
+    assert.match(sql, /identity\.network = wallet\.network::text/);
+    assert.match(sql, /NEW\.network::text/);
+    assert.doesNotMatch(sql, /identity\.network = wallet\.network(?!::text)/);
     assert.match(sql, /p2p_create_ad\(/);
     assert.match(sql, /CREATE OR REPLACE FUNCTION public\.p2p_update_ad/);
     assert.match(sql, /CREATE OR REPLACE FUNCTION public\.p2p_set_ad_active/);
@@ -3526,6 +3530,37 @@ describe("GasFree transfer service safety", () => {
     assert.match(sql, /ord\.source_wallet_identity_id IS NULL/);
     assert.match(sql, /release_personal_wallet_reservation\('p2p_order', ord\.id, 'settled'\)/);
     assert.match(sql, /release_personal_wallet_reservation\('p2p_order', ord\.id, 'cancelled'\)/);
+    assert.match(
+      sql,
+      /EXCLUDED\.onchain_checked_at >= public\.personal_wallet_identities\.onchain_checked_at/,
+    );
+    assert.match(
+      sql,
+      /EXCLUDED\.onchain_checked_at IS NULL[\s\S]*public\.personal_wallet_identities\.onchain_checked_at IS NOT NULL[\s\S]*THEN public\.personal_wallet_identities\.onchain_usdt_balance/,
+    );
+    assert.doesNotMatch(
+      sql.match(
+        /CREATE OR REPLACE FUNCTION public\.attach_personal_wallet_identity[\s\S]*?END;\s*\$\$/,
+      )?.[0] ?? "",
+      /GREATEST\(/,
+    );
+    assert.match(
+      sql,
+      /REVOKE ALL ON FUNCTION public\.assert_and_reserve_personal_wallet_usdt\(uuid,uuid,text,uuid,numeric,numeric\) FROM PUBLIC, anon, authenticated/,
+    );
+    assert.match(
+      sql,
+      /REVOKE ALL ON FUNCTION public\.release_personal_wallet_reservation\(text,uuid,text\) FROM PUBLIC, anon, authenticated/,
+    );
+    assert.match(
+      sql,
+      /REVOKE ALL ON FUNCTION public\.release_p2p_ad_wallet_reservation_if_finished\(uuid,text\) FROM PUBLIC, anon, authenticated/,
+    );
+    assert.doesNotMatch(
+      sql,
+      /GRANT EXECUTE ON FUNCTION public\.(assert_and_reserve_personal_wallet_usdt|release_personal_wallet_reservation|release_p2p_ad_wallet_reservation_if_finished).*authenticated/,
+    );
+    assert.match(sql, /_owner_id <> auth\.uid\(\)[\s\S]*Cannot reserve another user wallet/);
     assert.match(
       walletsServer,
       /Shared wallet linking requires the latest WTRON wallet identity migration/,
