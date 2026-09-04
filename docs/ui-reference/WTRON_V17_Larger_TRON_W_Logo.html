@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>WTRON V13 — Trader & Vendor Usable Prototype</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+:root{
+ --bg:#080a0f;--panel:#10131a;--panel2:#151925;--line:#222837;--text:#f6f8fc;--muted:#8e98aa;
+ --blue:#4f7cff;--blue2:#7ba0ff;--coral:#ff5e68;--green:#35cf9a;--amber:#e9ae52;--red:#ff6673;
+ --shadow:0 30px 100px rgba(0,0,0,.55)
+}
+body.light{--bg:#f3f5f9;--panel:#fff;--panel2:#f7f8fb;--line:#e2e6ee;--text:#151922;--muted:#727d8e;--shadow:0 24px 70px rgba(30,42,65,.14)}
+body{background:#020307;color:var(--text);display:grid;place-items:center;padding:18px}
+.app{width:min(430px,100vw);height:min(920px,100dvh);background:var(--bg);border:1px solid #151a24;border-radius:30px;overflow:hidden;position:relative;box-shadow:var(--shadow)}
+body.light .app{border-color:#dfe4ec}
+button,input,select,textarea{font:inherit}button{cursor:pointer}
+svg{display:block}.hidden{display:none!important}
+.header{height:66px;padding:0 17px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 91%,transparent);backdrop-filter:blur(16px);position:absolute;top:0;left:0;right:0;z-index:20}
+.brand{display:flex;align-items:center;gap:9px}.mark{width:35px;height:35px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,#6a8bff,#345bd8);box-shadow:0 8px 22px rgba(79,124,255,.28)}
+.mark svg{width:23px;height:23px}.brand b{font-size:15px;letter-spacing:-.03em}.brand small{display:block;font-size:9px;color:var(--muted);margin-top:1px}
+.head-actions{display:flex;gap:8px}.iconbtn{width:35px;height:35px;border-radius:11px;border:1px solid var(--line);background:var(--panel);color:var(--text);display:grid;place-items:center}.iconbtn svg{width:18px;height:18px}
+.content{position:absolute;inset:66px 0 72px;overflow:auto;padding:18px 18px 28px;scrollbar-width:none}.content::-webkit-scrollbar{display:none}
+.auth-content{position:absolute;inset:0;overflow:auto;padding:28px 18px;background:radial-gradient(circle at 85% 0,rgba(79,124,255,.18),transparent 28%),var(--bg)}
+.auth-brand{text-align:center;padding-top:12px}.auth-brand .mark{width:52px;height:52px;border-radius:16px;margin:0 auto 14px}.auth-brand h1{margin:0;font-size:28px;letter-spacing:-.055em}.auth-brand p{max-width:320px;margin:8px auto 0;color:var(--muted);font-size:12px;line-height:1.5}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:28px 0 15px}.role{border:1px solid var(--line);border-radius:17px;background:var(--panel);padding:15px;text-align:left;color:var(--text);min-height:116px}.role.active{border-color:rgba(79,124,255,.65);background:linear-gradient(145deg,rgba(79,124,255,.16),rgba(79,124,255,.05));box-shadow:0 12px 34px rgba(29,55,130,.16)}
+.role .ri{width:34px;height:34px;border-radius:11px;background:rgba(79,124,255,.12);color:var(--blue2);display:grid;place-items:center;margin-bottom:16px}.ri svg{width:18px;height:18px}.role b{font-size:14px}.role small{display:block;color:var(--muted);font-size:10px;line-height:1.4;margin-top:5px}
+.card{border:1px solid var(--line);border-radius:17px;background:var(--panel);padding:14px}.auth-card{margin-top:10px}.auth-card h2{font-size:17px;margin:0}.auth-card .sub{font-size:10px;color:var(--blue2);font-weight:750}
+.rowbetween{display:flex;justify-content:space-between;align-items:center;gap:10px}.field{margin-top:13px}.field label{display:block;font-size:10px;color:var(--muted);margin:0 0 7px 2px}.input,.select,.textarea{width:100%;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;padding:12px;outline:none}.textarea{min-height:74px;resize:none}.input:focus,.select:focus,.textarea:focus{border-color:var(--blue)}
+.btn{border:0;border-radius:12px;padding:12px 14px;font-weight:750;color:#fff;background:#222837}.btn.primary{background:linear-gradient(135deg,var(--blue),#365fd8)}.btn.coral{background:linear-gradient(135deg,var(--coral),#dc4450)}.btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}.btn.sm{padding:8px 10px;border-radius:9px;font-size:10px}.btn.full{width:100%;margin-top:14px}
+.auth-help{text-align:center;font-size:10.5px;color:var(--muted);margin:12px 0}.linkbtn{border:0;background:none;color:var(--blue2);padding:0;font-weight:750}
+.demo{display:flex;justify-content:center;gap:7px;flex-wrap:wrap;margin-top:14px}.chipbtn{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:7px 10px;font-size:9.5px}
+.title{margin:2px 0 18px}.title h1{font-size:27px;letter-spacing:-.055em;margin:0}.title p{color:var(--muted);font-size:11px;line-height:1.5;margin:6px 0 0}
+.kicker{font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--blue2);font-weight:800;margin-bottom:8px}
+.balance{font-size:38px;letter-spacing:-.06em;font-weight:760}.muted{color:var(--muted)}
+.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}.qa{text-align:center;border:0;background:none;color:var(--text);padding:0}.qa i{width:45px;height:45px;border-radius:14px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;margin:0 auto 7px;font-style:normal}.qa i svg{width:19px;height:19px;color:var(--blue2)}.qa span{font-size:9.5px;color:#cbd2df}body.light .qa span{color:#424a58}
+.section{margin-top:23px}.sectionhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.sectionhead h2{font-size:13px;margin:0}.sectionhead button,.sectionhead span{font-size:9.5px;border:0;background:none;color:var(--blue2);padding:0}
+.listrow{display:flex;align-items:center;justify-content:space-between;gap:11px;padding:13px 0;border-bottom:1px solid var(--line)}.listrow:last-child{border-bottom:0}.left{display:flex;align-items:center;gap:10px;min-width:0}.ico{width:37px;height:37px;border-radius:12px;background:var(--panel2);display:grid;place-items:center;flex:none}.ico svg{width:17px;height:17px;color:var(--blue2)}.copy{min-width:0}.copy b{font-size:12.5px;display:block}.copy small{display:block;font-size:9.5px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.right{text-align:right}.right b{font-size:12px;display:block}.right small{display:block;font-size:9px;color:var(--muted);margin-top:3px}
+.pill{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:999px;padding:5px 7px;font-size:8.5px;color:var(--muted)}.pill.green{color:var(--green);background:rgba(53,207,154,.08);border-color:rgba(53,207,154,.18)}.pill.blue{color:var(--blue2);background:rgba(79,124,255,.09);border-color:rgba(79,124,255,.18)}.pill.amber{color:var(--amber);background:rgba(233,174,82,.09);border-color:rgba(233,174,82,.18)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--panel)}.stat small{font-size:9px;color:var(--muted)}.stat b{font-size:17px;display:block;margin-top:5px;letter-spacing:-.03em}
+.nav{height:64px;position:absolute;left:9px;right:9px;bottom:8px;z-index:20;border:1px solid var(--line);border-radius:19px;background:color-mix(in srgb,var(--panel) 93%,transparent);backdrop-filter:blur(18px);display:grid;grid-template-columns:repeat(5,1fr);padding:4px}.nav button{border:0;background:none;color:var(--muted);font-size:8.5px;display:grid;place-items:center;gap:2px;position:relative}.nav svg{width:19px;height:19px}.nav button.active{color:var(--text)}.nav button.active svg{color:var(--blue2)}.nav button.active:before{content:"";position:absolute;top:3px;width:31px;height:31px;border-radius:11px;background:rgba(79,124,255,.1);z-index:-1}
+.tabs{display:flex;gap:20px;border-bottom:1px solid var(--line);margin-bottom:13px}.tabs button{position:relative;border:0;background:none;color:var(--muted);padding:9px 0 11px;font-size:11px}.tabs button.active{color:var(--text);font-weight:700}.tabs button.active:after{content:"";height:2px;position:absolute;left:0;right:0;bottom:-1px;background:var(--blue)}
+.filters{display:flex;gap:7px;overflow:auto;padding-bottom:5px}.filter{white-space:nowrap;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:7px 9px;font-size:9px}.filter.active{background:var(--text);color:var(--bg)}
+.market{padding:15px 0;border-bottom:1px solid var(--line)}.merchant{display:flex;gap:9px;align-items:flex-start}.avatar{width:42px;height:42px;border-radius:13px;object-fit:cover;background:#202531;display:grid;place-items:center;font-size:12px;font-weight:800;flex:none}.verify{font-size:8.5px;font-weight:800;margin-left:5px}.verify.y{color:var(--green)}.verify.n{color:var(--amber)}.trust{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:10px 0}.trust div{border:1px solid var(--line);border-radius:10px;padding:8px}.trust small{display:block;font-size:8px;color:var(--muted)}.trust b{display:block;font-size:10.5px;margin-top:3px}.rate{font-size:22px;font-weight:760;letter-spacing:-.04em;margin:10px 0 3px}.rate small{font-size:9px;color:var(--muted);font-weight:500}.meta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);font-size:8.8px}.reports{margin-top:10px}.report{display:flex;justify-content:space-between;border-top:1px dashed var(--line);padding:7px 0;font-size:9px}.report span{color:var(--muted)}.mactions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.sheetback{position:absolute;inset:0;background:rgba(0,0,0,.58);z-index:50;display:none;align-items:flex-end}.sheetback.show{display:flex}.sheet{width:100%;max-height:80%;overflow:auto;background:var(--panel);border-top:1px solid var(--line);border-radius:25px 25px 0 0;padding:17px 18px 24px}.sheetgrab{width:38px;height:4px;border-radius:999px;background:#343b49;margin:0 auto 16px}.sheet h3{margin:0;font-size:17px}.sheet p{font-size:10.5px;color:var(--muted);line-height:1.45}.chat{display:grid;gap:8px;margin:13px 0}.bubble{max-width:84%;padding:9px 11px;border-radius:13px;background:var(--panel2);font-size:10px;line-height:1.4}.bubble.me{justify-self:end;background:rgba(79,124,255,.16)}
+.settingshero{display:flex;align-items:center;gap:12px;margin:4px 0 16px}.settingshero .avatar{width:54px;height:54px;border-radius:16px}.settinggroup{border:1px solid var(--line);border-radius:15px;background:var(--panel);padding:0 12px;margin-bottom:12px}.gtitle{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-weight:800;margin:19px 1px 7px}
+.brandlogo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:9px;font-weight:900;flex:none}.hdfc{background:white;color:#d71920}.sbi{background:#1477c9;color:white}.gpay{background:white;color:#4285f4}.phonepe{background:#5f259f;color:white}
+.toast{position:absolute;left:50%;bottom:84px;transform:translate(-50%,15px);z-index:80;background:#f5f7fb;color:#111;border-radius:999px;padding:8px 12px;font-size:10px;opacity:0;pointer-events:none;transition:.2s}.toast.show{opacity:1;transform:translate(-50%,0)}
+.logout{color:#ff7e88!important}
+.pending{text-align:center;padding:70px 16px}.pending .bigicon{width:62px;height:62px;border-radius:20px;background:rgba(233,174,82,.12);color:var(--amber);display:grid;place-items:center;margin:0 auto 17px}.pending h2{font-size:23px;margin:0}.pending p{font-size:11px;color:var(--muted);line-height:1.5}
+@media(max-width:500px){body{padding:0}.app{width:100vw;height:100dvh;border:0;border-radius:0}}
+</style>
+
+<style id="v14">
+.nav{height:66px;border-radius:22px;padding:5px 6px;box-shadow:0 16px 42px rgba(0,0,0,.28)}
+.nav button{border-radius:15px;transition:.18s ease;font-weight:650}
+.nav button svg{width:20px;height:20px;stroke-width:1.65}
+.nav button.active{background:rgba(79,124,255,.08)}
+.nav button.active:before{display:none}
+.nav button.active svg{filter:drop-shadow(0 5px 10px rgba(79,124,255,.24))}
+.nav button span{font-size:8px;letter-spacing:.01em}
+.profile-photo-wrap{position:relative;width:72px;height:72px}
+.profile-photo{width:72px;height:72px;border-radius:20px;object-fit:cover;border:1px solid var(--line);background:var(--panel2)}
+.photo-edit{position:absolute;right:-4px;bottom:-4px;width:27px;height:27px;border-radius:9px;border:2px solid var(--bg);background:var(--blue);color:white;display:grid;place-items:center}
+.photo-edit svg{width:13px;height:13px}
+.profile-head-photo{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.vendor-ad{padding:15px 0;border-bottom:1px solid var(--line)}
+.vendor-ad:last-child{border-bottom:0}
+.vendor-head{display:flex;align-items:flex-start;gap:10px}
+.vendor-logo{width:43px;height:43px;border-radius:13px;background:linear-gradient(145deg,#5b7fff,#293f8f);display:grid;place-items:center;color:white;font-weight:850;flex:none}
+.vendor-name{font-size:13px;font-weight:760}
+.vendor-sub{font-size:9px;color:var(--muted);margin-top:3px}
+.vendor-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:11px 0}
+.vendor-metrics>div{border:1px solid var(--line);background:var(--panel2);border-radius:11px;padding:8px}
+.vendor-metrics small{font-size:7.8px;color:var(--muted);display:block}
+.vendor-metrics b{display:block;font-size:10.5px;margin-top:3px}
+.reserve-note{padding:10px 11px;border:1px solid rgba(79,124,255,.18);background:rgba(79,124,255,.07);border-radius:12px;font-size:9px;color:var(--muted);line-height:1.45;margin:12px 0}
+.order-timer{font-size:27px;font-weight:820;letter-spacing:-.05em;color:var(--blue2)}
+.timeline{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:14px 0}
+.timeline .step{text-align:center;font-size:7.5px;color:var(--muted);position:relative;padding-top:17px}
+.timeline .step:before{content:"";position:absolute;width:8px;height:8px;border-radius:50%;background:#39404e;top:2px;left:50%;transform:translateX(-50%)}
+.timeline .step.done:before,.timeline .step.active:before{background:var(--blue)}
+.timeline .step.active{color:var(--text);font-weight:700}
+.setting-tile{display:flex;align-items:center;gap:11px}
+.setting-icon{width:33px;height:33px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;flex:none}
+.setting-icon svg{width:16px;height:16px;color:var(--blue2)}
+.settinggroup .listrow{cursor:pointer}
+.settings-top{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:12px 0 4px}
+.settings-top .stat{background:linear-gradient(145deg,rgba(79,124,255,.07),var(--panel))}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:5px;background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:4px;margin-bottom:13px}
+.seg button{border:0;border-radius:9px;padding:8px;background:transparent;color:var(--muted);font-size:10px}
+.seg button.active{background:var(--panel);color:var(--text);box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.empty-note{text-align:center;padding:30px 10px;color:var(--muted);font-size:10px}
+</style>
+
+
+<style id="v15-nav-icons">
+.nav{
+  padding:6px 7px;
+  gap:2px;
+  background:color-mix(in srgb,var(--panel) 91%,transparent);
+  border:1px solid color-mix(in srgb,var(--line) 84%,transparent);
+  box-shadow:0 18px 48px rgba(0,0,0,.32);
+}
+.nav button{
+  min-width:0;
+  gap:3px;
+  color:var(--muted);
+  border:1px solid transparent;
+}
+.nav button svg{
+  width:21px;
+  height:21px;
+  overflow:visible;
+  transition:transform .18s ease,color .18s ease,filter .18s ease;
+}
+.nav button span{
+  font-size:8.2px;
+  font-weight:690;
+  letter-spacing:.01em;
+}
+.nav button.active{
+  color:var(--blue2);
+  background:linear-gradient(180deg,rgba(79,124,255,.105),rgba(79,124,255,.035));
+  border-color:rgba(79,124,255,.10);
+}
+.nav button.active svg{
+  transform:translateY(-1px);
+  filter:drop-shadow(0 5px 8px rgba(79,124,255,.28));
+}
+.nav button:active svg{transform:scale(.92)}
+</style>
+
+
+<style id="v16-brand-nav">
+.mark{
+  position:relative;
+  background:
+    radial-gradient(circle at 30% 20%,rgba(255,255,255,.16),transparent 32%),
+    linear-gradient(145deg,#6488ff 0%,#3e62dc 48%,#273d91 100%);
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.13),
+    0 10px 26px rgba(55,86,194,.28);
+}
+.mark:after{
+  content:"";
+  position:absolute;
+  inset:4px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,.06);
+  pointer-events:none;
+}
+.mark svg{width:24px!important;height:24px!important;filter:drop-shadow(0 1px 2px rgba(0,0,0,.18))}
+.auth-brand .mark{box-shadow:inset 0 1px 0 rgba(255,255,255,.15),0 18px 40px rgba(55,86,194,.32)}
+.nav{
+  height:68px;
+  border-radius:23px;
+  padding:6px;
+}
+.nav button{
+  border-radius:16px;
+  padding-top:4px;
+  transition:background .18s ease,border-color .18s ease,color .18s ease;
+}
+.nav button svg{
+  width:20.5px;
+  height:20.5px;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.nav button span{
+  font-size:8px;
+  font-weight:700;
+  letter-spacing:.005em;
+}
+.nav button.active{
+  background:
+    linear-gradient(180deg,rgba(79,124,255,.13),rgba(79,124,255,.045));
+  border-color:rgba(79,124,255,.12);
+  color:var(--blue2);
+}
+.nav button.active svg{
+  transform:translateY(-1px) scale(1.02);
+  filter:drop-shadow(0 4px 8px rgba(79,124,255,.26));
+}
+body.light .mark{
+  background:linear-gradient(145deg,#5178eb,#3154bf);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 9px 22px rgba(49,84,191,.20);
+}
+</style>
+
+
+<style id="v17-logo-artwork-scale">
+/* Outer logo tile unchanged; only TRON + W artwork enlarged */
+.mark svg{width:29px!important;height:29px!important;transform:scale(1.04);transform-origin:center}
+.auth-brand .mark svg{width:39px!important;height:39px!important;transform:scale(1.04)}
+</style>
+
+</head>
+<body>
+<div class="app" id="app">
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="logo" viewBox="0 0 24 24">
+  <!-- TRON-inspired triangular shell -->
+  <path d="M4.1 4.6 20.1 7.2 12.3 20.2 4.1 4.6Z"
+        fill="none" stroke="white" stroke-width="1.55"
+        stroke-linejoin="round"/>
+  <path d="m4.8 5.2 7.5 5.2 7-2.7M12.3 10.4v9.1"
+        fill="none" stroke="white" stroke-width="1.15"
+        stroke-linecap="round" stroke-linejoin="round" opacity=".72"/>
+  <!-- W monogram nested inside -->
+  <path d="m7.5 9 2.2 6.1 2.6-4.7 2.5 4.7 2-5.1"
+        fill="none" stroke="white" stroke-width="1.55"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</symbol>
+<symbol id="home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9H6v-9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+<symbol id="trade" viewBox="0 0 24 24"><path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3 3m-3-3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="wallet" viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v11H4a2 2 0 0 1-2-2V7a3 3 0 0 1 3-3h12M15 12h5v4h-5a2 2 0 1 1 0-4Z" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></symbol>
+<symbol id="user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 21c1-4.5 3.7-7 8-7s7 2.5 8 7" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="bank" viewBox="0 0 24 24"><path d="M3 9h18L12 3 3 9Zm2 3v6m4-6v6m6-6v6m4-6v6M3 21h18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="bell" viewBox="0 0 24 24"><path d="M6 10a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Zm4 9h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+<symbol id="moon" viewBox="0 0 24 24"><path d="M20 15.5A8 8 0 0 1 8.5 4 8.6 8.6 0 1 0 20 15.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="send" viewBox="0 0 24 24"><path d="m21 3-8 18-3.3-7.7L2 10l19-7Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+<symbol id="receive" viewBox="0 0 24 24"><path d="M12 3v14m0 0-5-5m5 5 5-5M4 21h16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+<symbol id="shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3 8-8 9-5-1-8-4-8-9V6l8-3Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m8.5 12 2.2 2.2 4.8-5" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="orders" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+
+<symbol id="camera" viewBox="0 0 24 24"><path d="M4 7h4l1.5-2h5L16 7h4v12H4V7Z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="chart" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19V3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+<symbol id="gift" viewBox="0 0 24 24"><path d="M4 10h16v10H4V10Zm-1-4h18v4H3V6Zm9 0v14" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.2-5.5L4 8M4 4v4h4M12 8v5l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m11 12 8-8M16 7l2 2M14 9l2 2" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3 12h18M12 3c2.3 2.4 3.5 5.4 3.5 9S14.3 18.6 12 21c-2.3-2.4-3.5-5.4-3.5-9S9.7 5.4 12 3Z" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Zm8 0v5h5" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+<symbol id="zap" viewBox="0 0 24 24"><path d="m13 2-8 12h6l-1 8 9-13h-6V2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+
+<symbol id="nav-home" viewBox="0 0 24 24">
+  <path d="M4.2 10.2 12 3.8l7.8 6.4v8.3a1.8 1.8 0 0 1-1.8 1.8h-4v-5.8h-4v5.8H6a1.8 1.8 0 0 1-1.8-1.8v-8.3Z"
+        fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</symbol>
+<symbol id="nav-p2p" viewBox="0 0 24 24">
+  <circle cx="8.3" cy="8" r="2.8" fill="none" stroke="currentColor" stroke-width="1.75"/>
+  <circle cx="16.3" cy="9.2" r="2.25" fill="none" stroke="currentColor" stroke-width="1.65"/>
+  <path d="M3.2 19.3c.8-3.2 2.5-4.9 5.1-4.9 2.7 0 4.4 1.7 5.2 4.9M13.5 15.2c.8-.7 1.8-1.1 3-1.1 2.1 0 3.6 1.4 4.3 3.9"
+        fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+</symbol>
+<symbol id="nav-trade" viewBox="0 0 24 24">
+  <path d="M4 7.2h13.1M14.3 4.4l2.8 2.8-2.8 2.8M20 16.8H6.9M9.7 14l-2.8 2.8 2.8 2.8"
+        fill="none" stroke="currentColor" stroke-width="1.85"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</symbol>
+<symbol id="nav-wallet" viewBox="0 0 24 24">
+  <path d="M4 6.3A2.3 2.3 0 0 1 6.3 4h10.5A2.2 2.2 0 0 1 19 6.2V8.1H7.2a3.2 3.2 0 0 0 0 6.4H19v3.3a2.2 2.2 0 0 1-2.2 2.2H6.3A2.3 2.3 0 0 1 4 17.7V6.3Z"
+        fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  <path d="M19 8.1H7.2a3.2 3.2 0 0 0 0 6.4H19V8.1Z"
+        fill="none" stroke="currentColor" stroke-width="1.7"/>
+  <circle cx="8" cy="11.3" r=".95" fill="currentColor"/>
+</symbol>
+<symbol id="nav-orders" viewBox="0 0 24 24">
+  <path d="M6.2 4.2h11.6a1.6 1.6 0 0 1 1.6 1.6v14l-2.7-1.5-4.7 1.8-4.7-1.8-2.7 1.5v-14a1.6 1.6 0 0 1 1.6-1.6Z"
+        fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  <path d="M8.4 8.3h7.2M8.4 12h7.2M8.4 15.7h4.2"
+        fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>
+</symbol>
+<symbol id="nav-more" viewBox="0 0 24 24">
+  <circle cx="5.5" cy="12" r="1.55" fill="currentColor"/>
+  <circle cx="12" cy="12" r="1.55" fill="currentColor"/>
+  <circle cx="18.5" cy="12" r="1.55" fill="currentColor"/>
+</symbol>
+
+</defs></svg>
+
+<div id="authView" class="auth-content">
+ <div class="auth-brand"><div class="mark"><svg><use href="#logo"/></svg></div><h1>WTRON</h1><p>Secure TRON wallet and trading workspace. Choose your account type to continue.</p></div>
+ <div class="roles">
+  <button class="role active" data-role="trader"><div class="ri"><svg><use href="#trade"/></svg></div><b>Trader</b><small>P2P, WTRON Trade, personal wallets and payment methods.</small></button>
+  <button class="role" data-role="vendor"><div class="ri"><svg><use href="#bank"/></svg></div><b>Vendor</b><small>Liquidity, listings, payout capacity and vendor orders.</small></button>
+ </div>
+ <div class="auth-card card">
+  <div class="rowbetween"><h2 id="loginTitle">Trader Login</h2><span class="sub" id="roleHint">TRADING</span></div>
+  <div class="field"><label>Email</label><input id="loginEmail" class="input" value="trader@wtron.demo"/></div>
+  <div class="field"><label>Password</label><input id="loginPassword" class="input" type="password" value="12345678"/></div>
+  <button id="loginBtn" class="btn primary full">Login as Trader</button>
+  <div class="auth-help">You don't have an account? <button class="linkbtn" id="createAccount">Create an account</button></div>
+ </div>
+ <div class="demo"><button class="chipbtn" id="fillTrader">Use Trader Demo</button><button class="chipbtn" id="fillVendor">Use Vendor Demo</button><button class="chipbtn" id="pendingVendor">Preview Pending Vendor</button></div>
+</div>
+
+<div id="registerView" class="auth-content hidden">
+ <div class="auth-brand"><div class="mark"><svg><use href="#logo"/></svg></div><h1 id="regTitle">Create Trader Account</h1><p id="regSub">Register a new WTRON Trader account.</p></div>
+ <div class="card" style="margin-top:25px">
+   <div class="field"><label id="nameLabel">Full name</label><input id="regName" class="input" value="Demo Trader"/></div>
+   <div class="field vendor-only hidden"><label>Business name</label><input id="regBusiness" class="input" value="Nova Liquidity"/></div>
+   <div class="field"><label>Telegram</label><input class="input" value="@demo_user"/></div>
+   <div class="field"><label>Email</label><input id="regEmail" class="input" value="new@wtron.demo"/></div>
+   <div class="field"><label>Password</label><input class="input" type="password" value="12345678"/></div>
+   <button id="registerBtn" class="btn primary full">Create Trader Account</button>
+   <div class="auth-help">Already have an account? <button id="backLogin" class="linkbtn">Login</button></div>
+ </div>
+</div>
+
+<div id="pendingView" class="auth-content hidden">
+ <div class="pending"><div class="bigicon"><svg width="28" height="28"><use href="#shield"/></svg></div><h2>Vendor application pending</h2><p>Your Vendor account requires approval before the Vendor workspace becomes available. This matches the repository's vendor entry policy.</p><button class="btn ghost full" id="pendingBack">Back to Login</button></div>
+</div>
+
+<div id="appView" class="hidden">
+ <header class="header">
+  <div class="brand"><div class="mark"><svg><use href="#logo"/></svg></div><div><b>WTRON</b><small id="roleLabel">TRADER WORKSPACE</small></div></div>
+  <div class="head-actions"><button class="iconbtn" id="themeBtn"><svg><use id="themeIcon" href="#sun"/></svg></button><button class="iconbtn" data-go="notifications"><svg><use href="#bell"/></svg></button><button class="iconbtn" data-go="profile" id="headerProfileBtn" style="overflow:hidden;padding:0"><div id="headerAvatar" style="width:100%;height:100%;display:grid;place-items:center;font-size:10px;font-weight:800">DS</div></button></div>
+ </header>
+ <main class="content" id="content"></main>
+ <nav class="nav" id="nav"></nav>
+</div>
+<div class="sheetback" id="sheetback"><div class="sheet" id="sheet"></div></div>
+<input type="file" id="photoInput" accept="image/*" style="display:none"><div class="toast" id="toast"></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let selectedRole='trader', loggedRole=null, current='home', theme='dark';
+let tradeMode='sell';
+let profilePhoto='';
+let activeVendorOrder=null;
+const vendorListingsData=[
+ {id:'nova',name:'Nova Liquidity',initials:'NL',rate:104.55,available:4200,min:'₹10K',max:'₹2L',rails:['UPI','IMPS'],success:99.4,completed:2840,release:3,wallet:8420,active:true,reserved:false},
+ {id:'axisdesk',name:'Axis Trade Desk',initials:'AD',rate:104.72,available:1750,min:'₹5K',max:'₹1L',rails:['UPI','NEFT'],success:98.9,completed:1365,release:4,wallet:3900,active:true,reserved:false},
+ {id:'prime',name:'Prime Vendor',initials:'PV',rate:104.88,available:960,min:'₹20K',max:'₹3L',rails:['IMPS','NEFT','RTGS'],success:99.7,completed:4122,release:2,wallet:6180,active:true,reserved:false}
+];
+const state={
+ trader:{wallet:'Main Wallet',walletBalance:1420.25,trx:88.4,platform:315.00},
+ vendor:{wallet:'Vendor Treasury',walletBalance:8420.00,trx:215.8,platform:0}
+};
+function icon(id){return `<svg><use href="#${id}"/></svg>`}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(window.__tt);window.__tt=setTimeout(()=>t.classList.remove('show'),1700)}
+function closeSheet(){$('#sheetback').classList.remove('show')}
+function openSheet(html){$('#sheet').innerHTML=`<div class="sheetgrab"></div>${html}`;$('#sheetback').classList.add('show');wireDynamic()}
+$('#sheetback').addEventListener('click',e=>{if(e.target===$('#sheetback'))closeSheet()})
+function setRole(role){
+ selectedRole=role;$$('.role').forEach(x=>x.classList.toggle('active',x.dataset.role===role));
+ $('#loginTitle').textContent=role==='trader'?'Trader Login':'Vendor Login';
+ $('#roleHint').textContent=role==='trader'?'TRADING':'BUSINESS';
+ $('#loginBtn').textContent=role==='trader'?'Login as Trader':'Login as Vendor';
+ $('#loginEmail').value=role==='trader'?'trader@wtron.demo':'vendor@wtron.demo';
+}
+$$('.role').forEach(x=>x.onclick=()=>setRole(x.dataset.role));
+$('#fillTrader').onclick=()=>{setRole('trader');$('#loginEmail').value='trader@wtron.demo';$('#loginPassword').value='12345678'}
+$('#fillVendor').onclick=()=>{setRole('vendor');$('#loginEmail').value='vendor@wtron.demo';$('#loginPassword').value='12345678'}
+$('#pendingVendor').onclick=()=>{$('#authView').classList.add('hidden');$('#pendingView').classList.remove('hidden')}
+$('#pendingBack').onclick=()=>{$('#pendingView').classList.add('hidden');$('#authView').classList.remove('hidden')}
+$('#createAccount').onclick=()=>showRegister()
+$('#backLogin').onclick=()=>{$('#registerView').classList.add('hidden');$('#authView').classList.remove('hidden')}
+function showRegister(){
+ $('#authView').classList.add('hidden');$('#registerView').classList.remove('hidden');
+ const v=selectedRole==='vendor';
+ $('#regTitle').textContent=v?'Create Vendor Account':'Create Trader Account';
+ $('#regSub').textContent=v?'Submit a Vendor application. Approval is required before access.':'Register a new WTRON Trader account.';
+ $('#registerBtn').textContent=v?'Submit Vendor Application':'Create Trader Account';
+ $$('.vendor-only').forEach(x=>x.classList.toggle('hidden',!v));
+ $('#nameLabel').textContent=v?'Contact name':'Full name';
+}
+$('#registerBtn').onclick=()=>{
+ if(selectedRole==='vendor'){ $('#registerView').classList.add('hidden');$('#pendingView').classList.remove('hidden');}
+ else login('trader')
+}
+$('#loginBtn').onclick=()=>{
+ if(!$('#loginEmail').value||!$('#loginPassword').value)return toast('Enter email and password');
+ login(selectedRole)
+}
+function login(role){
+ loggedRole=role;
+ $('#authView,#registerView,#pendingView').forEach?.(()=>{});
+ $('#authView').classList.add('hidden');$('#registerView').classList.add('hidden');$('#pendingView').classList.add('hidden');
+ $('#appView').classList.remove('hidden');
+ $('#roleLabel').textContent=role==='trader'?'TRADER WORKSPACE':'VENDOR WORKSPACE';
+ current='home';renderNav();render();updateAvatarDisplays();
+}
+function logout(){
+ if(activeVendorOrder){const v=vendorListingsData.find(x=>x.id===activeVendorOrder.vendorId);if(v)v.reserved=false;activeVendorOrder=null} tradeMode='sell';
+ loggedRole=null;$('#appView').classList.add('hidden');$('#authView').classList.remove('hidden');setRole(selectedRole);closeSheet()
+}
+function navItems(){
+ return loggedRole==='vendor'
+ ? [['home','nav-home','Home'],['trade','nav-trade','Trade'],['wallet','nav-wallet','Wallet'],['orders','nav-orders','Orders'],['more','nav-more','More']]
+ : [['home','nav-home','Home'],['p2p','nav-p2p','P2P'],['trade','nav-trade','Trade'],['wallet','nav-wallet','Wallet'],['more','nav-more','More']];
+}
+function renderNav(){
+ $('#nav').innerHTML=navItems().map(([id,ic,label])=>`<button data-nav="${id}" class="${current===id?'active':''}">${icon(ic)}<span>${label}</span></button>`).join('');
+ $$('[data-nav]').forEach(b=>b.onclick=()=>go(b.dataset.nav));
+}
+function go(id){current=id;renderNav();render();$('#content').scrollTop=0}
+function render(){
+ if(!loggedRole)return;
+ const f=loggedRole==='vendor'?vendorScreens():traderScreens();
+ $('#content').innerHTML=f[current]?f[current]():generic(current);
+ wireDynamic();
+ if(current==='vendor-buy-order')startVendorCountdown();
+ updateAvatarDisplays();
+}
+function userPhoto(name='DS'){return `<div class="avatar" style="background:linear-gradient(145deg,#4f7cff,#2c4180);color:white">${name}</div>`}
+function traderScreens(){return{
+home:()=>`<div class="kicker">TRADER ACCOUNT</div><div class="title"><h1>Good afternoon, Devid</h1><p>Your personal WTRON wallet, P2P and direct trading overview.</p></div>
+<div class="muted" style="font-size:9px">Total portfolio</div><div class="balance">$1,735.25</div><div class="muted" style="font-size:10px">1,735.25 USDT equivalent</div>
+<div class="actions"><button class="qa" data-go="deposit"><i>${icon('plus')}</i><span>Deposit</span></button><button class="qa" data-go="send"><i>${icon('send')}</i><span>Send</span></button><button class="qa" data-go="receive"><i>${icon('receive')}</i><span>Receive</span></button><button class="qa" data-go="trade"><i>${icon('trade')}</i><span>Trade</span></button></div>
+<div class="grid2"><div class="stat"><small>WTRON balance</small><b>315.00 U</b></div><div class="stat"><small>Wallet balance</small><b>1,420.25 U</b></div></div>
+<div class="section"><div class="sectionhead"><h2>Active orders</h2><button data-go="orders">View all</button></div>
+<div class="listrow" data-go="p2p-order"><div class="left">${userPhoto('AT')}<div class="copy"><b>P2P Buy • Arjun Trades</b><small>#P2P-8804 • Payment window open</small></div></div><div class="right"><b>100 U</b><small>₹10,380</small></div></div>
+<div class="listrow" data-go="direct-sell"><div class="left"><div class="ico">${icon('trade')}</div><div class="copy"><b>Sell to WTRON</b><small>#WT-9254 • Confirming</small></div></div><div class="right"><b>200 U</b><small>12/20 conf.</small></div></div></div>`,
+p2p:()=>p2pScreen(),
+trade:()=>tradeScreen(false),
+wallet:()=>walletScreen(false),
+more:()=>moreScreen(false),
+orders:()=>ordersScreen(false),
+profile:()=>profileScreen(false),
+notifications:()=>notifications(),
+send:()=>sendScreen(),receive:()=>receiveScreen(),deposit:()=>depositScreen(),bank:()=>bankScreen(false),
+analytics:()=>analyticsScreen(),history:()=>historyScreen(),security:()=>securityScreen(),wallets:()=>walletManager(false),backup:()=>backupScreen(),gasfree:()=>gasfreeScreen(),referral:()=>referralScreen(),appearance:()=>appearanceScreen(),language:()=>languageScreen(),privacy:()=>legalScreen('Privacy Policy'),terms:()=>legalScreen('Terms of Service'),risk:()=>legalScreen('Risk Disclosure'),
+'direct-sell':()=>directSell(), 'p2p-order':()=>p2pOrder(), 'vendor-buy-order':()=>vendorBuyOrderScreen()
+}}
+function vendorScreens(){return{
+home:()=>`<div class="kicker">APPROVED VENDOR</div><div class="title"><h1>Vendor Workspace</h1><p>Liquidity, listings, payout capacity and vendor order operations.</p></div>
+<div class="card" style="border-color:rgba(79,124,255,.22);background:linear-gradient(130deg,rgba(79,124,255,.12),var(--panel))"><div class="rowbetween"><div><small class="muted">Available liquidity</small><div class="balance" style="font-size:31px;margin-top:4px">8,420 U</div></div><span class="pill green">APPROVED</span></div></div>
+<div class="grid2" style="margin-top:10px"><div class="stat"><small>Today sold</small><b>1,260 U</b></div><div class="stat"><small>Completion</small><b>99.4%</b></div><div class="stat"><small>Active listings</small><b>4</b></div><div class="stat"><small>Vendor orders</small><b>18</b></div></div>
+<div class="section"><div class="sectionhead"><h2>Payout capacity</h2><button data-go="bank">Manage</button></div>
+<div class="listrow"><div class="left"><div class="brandlogo hdfc">HDFC</div><div class="copy"><b>HDFC ••••3210</b><small>UPI • IMPS • NEFT • RTGS</small></div></div><div class="right"><b>₹3.8L left</b><small>of ₹5L/day</small></div></div>
+<div class="listrow"><div class="left"><div class="brandlogo sbi">SBI</div><div class="copy"><b>SBI ••••1098</b><small>IMPS • NEFT</small></div></div><div class="right"><b>₹1.2L left</b><small>of ₹2L/day</small></div></div></div>`,
+trade:()=>tradeScreen(true),
+wallet:()=>walletScreen(true),
+orders:()=>ordersScreen(true),
+more:()=>moreScreen(true),
+profile:()=>profileScreen(true),
+notifications:()=>notifications(),
+bank:()=>bankScreen(true),wallets:()=>walletManager(true),history:()=>historyScreen(),security:()=>securityScreen(),backup:()=>backupScreen(),gasfree:()=>gasfreeScreen(),referral:()=>referralScreen(),analytics:()=>analyticsScreen(),appearance:()=>appearanceScreen(),language:()=>languageScreen(),privacy:()=>legalScreen('Privacy Policy'),terms:()=>legalScreen('Terms of Service'),risk:()=>legalScreen('Risk Disclosure'),
+listing:()=>vendorListings(), 'vendor-order':()=>vendorOrder()
+}}
+function p2pScreen(){return `<div class="title"><h1>P2P Market</h1><p>User-to-user USDT trading. Seller trust and wallet liquidity are shown before you trade.</p></div>
+<div class="tabs"><button class="active">Buy</button><button data-action="sellTab">Sell</button><button data-action="myAds">My Ads</button><button data-go="orders">My Orders</button></div>
+<div class="filters"><button class="filter active">Best rate</button><button class="filter">Verified</button><button class="filter">UPI</button><button class="filter">High completion</button></div>
+${sellerCard('Arjun Trades','AT',true,'1,842','99.2%','1,420 U','1,827','15 / 2','₹103.80')}
+${sellerCard('QuickPay Desk','QP',false,'921','98.6%','680 U','908','13 / 4','₹103.92')}`}
+function sellerCard(name,ini,ver,trades,success,bal,completed,cd,rate){return `<div class="market"><div class="merchant">${userPhoto(ini)}<div style="flex:1;min-width:0"><div><b style="font-size:13px">${name}</b><span class="verify ${ver?'y':'n'}">${ver?'● VERIFIED':'● UNVERIFIED'}</span></div><small class="muted" style="font-size:9px">WTRON member • Avg release ${ver?'2':'4'} min</small></div><span class="pill green">Online</span></div>
+<div class="trust"><div><small>Total trades</small><b>${trades}</b></div><div><small>Success rate</small><b>${success}</b></div><div><small>WTRON wallet</small><b>${bal}</b></div></div>
+<div class="rate">${rate} <small>/ USDT</small></div><div class="meta"><span>₹2K–₹50K</span><span>UPI • IMPS</span><span>${bal} available</span></div>
+<div class="reports"><div class="report"><span>Successful trades</span><b>${completed}</b></div><div class="report"><span>Cancelled / disputes</span><b>${cd}</b></div><div class="report"><span>30-day completion</span><b>${success}</b></div></div>
+<div class="mactions"><button class="btn ghost sm" data-chat="${name}">Chat</button><button class="btn primary sm" data-chat="${name}">Buy</button></div></div>`}
+function tradeScreen(vendor){
+ if(vendor)return `<div class="title"><h1>Vendor Trade</h1><p>Vendor sell-side operations and your liquidity listings.</p></div>
+ <div class="card"><div class="rowbetween"><div><small class="muted">WTRON buying rate</small><div class="rate">₹104.20 <small>/ USDT</small></div></div><span class="pill blue">LIVE</span></div>
+ <div class="field"><label>USDT amount</label><input class="input" value="500"/></div><div class="field"><label>Vendor payout account</label><select class="select"><option>HDFC ••••3210 — ₹3.8L remaining</option><option>SBI ••••1098 — ₹1.2L remaining</option></select></div>
+ <button class="btn primary full" data-action="vendorDirectSell">Create Vendor Sell Order</button></div>
+ <div class="section"><div class="sectionhead"><h2>Your Vendor listings</h2><button data-go="listing">Manage</button></div><div class="listrow"><div class="copy"><b>₹104.55 / USDT</b><small>₹10K–₹2L • UPI/IMPS • 4,200 U</small></div><span class="pill green">Active</span></div></div>`;
+ return `<div class="title"><h1>Trade</h1><p>Sell directly to WTRON or buy from approved Vendor listings.</p></div>
+ <div class="seg"><button class="${tradeMode==='sell'?'active':''}" data-action="tradeSellMode">Sell to WTRON</button><button class="${tradeMode==='buy'?'active':''}" data-action="tradeBuyMode">Buy from Vendors</button></div>
+ ${tradeMode==='sell'?traderSellPanel():vendorMarketplacePanel()}`;
+}
+function traderSellPanel(){return `<div class="card"><div class="rowbetween"><div><small class="muted">WTRON buying rate</small><div class="rate">₹104.20 <small>/ USDT</small></div></div><span class="pill blue">04:58 LOCK</span></div>
+<div class="field"><label>USDT amount</label><input class="input" value="200"/></div><div class="field"><label>Payout account</label><select class="select"><option>HDFC ••••3210</option><option>devid@okhdfcbank</option></select></div>
+<div class="listrow"><div class="copy"><b>Expected payout</b><small>Rate locked for this quote</small></div><div class="right"><b>₹20,840</b></div></div><button class="btn coral full" data-go="direct-sell">Create Sell Order</button></div>`}
+function vendorMarketplacePanel(){
+ const ads=vendorListingsData.filter(v=>v.active && v.available>0 && !v.reserved);
+ return `<div class="reserve-note">Vendor payment details stay private. A listing is reserved when you create an order. The reserved liquidity is removed from the public marketplace while the countdown is active.</div>
+ <div class="filters"><button class="filter active">Best rate</button><button class="filter">Verified</button><button class="filter">UPI</button><button class="filter">IMPS</button><button class="filter">High success</button></div>
+ ${ads.length?ads.map(v=>vendorAd(v)).join(''):`<div class="empty-note">No Vendor liquidity is currently available.</div>`}`;
+}
+function vendorAd(v){return `<div class="vendor-ad">
+ <div class="vendor-head"><div class="vendor-logo">${v.initials}</div><div style="flex:1"><div class="vendor-name">${v.name} <span class="verify y">● VERIFIED</span></div><div class="vendor-sub">${v.completed.toLocaleString()} completed • ${v.success}% success • Approved Vendor</div></div><span class="pill green">ACTIVE</span></div>
+ <div class="vendor-metrics"><div><small>Available</small><b>${v.available.toLocaleString()} U</b></div><div><small>Rate</small><b>₹${v.rate}</b></div><div><small>Limits</small><b>${v.min}–${v.max}</b></div></div>
+ <div class="meta"><span>${v.rails.join(' • ')}</span><span>Avg confirm ${v.release} min</span><span>Vendor wallet ${v.wallet.toLocaleString()} U</span></div>
+ <div class="mactions"><button class="btn ghost sm" data-action="vendorInfo" data-vendor="${v.id}">Details</button><button class="btn primary sm" data-action="reserveVendor" data-vendor="${v.id}">Buy USDT</button></div></div>`}
+function walletScreen(vendor){const s=state[vendor?'vendor':'trader'];return `<div class="title"><h1>${s.wallet}</h1><p>Self-custody TRON Mainnet wallet${vendor?' used by Vendor account':''}.</p></div><div class="muted" style="font-size:9px">Portfolio balance</div><div class="balance">${s.walletBalance.toLocaleString()} U</div><div class="muted" style="font-size:10px">${s.trx} TRX</div>
+<div class="actions"><button class="qa" data-go="send"><i>${icon('send')}</i><span>Send</span></button><button class="qa" data-go="receive"><i>${icon('receive')}</i><span>Receive</span></button><button class="qa" data-action="createWallet"><i>${icon('plus')}</i><span>Create</span></button><button class="qa" data-go="wallets"><i>${icon('wallet')}</i><span>Wallets</span></button></div>
+<div class="section"><div class="sectionhead"><h2>Assets</h2><button data-action="refresh">Refresh</button></div><div class="listrow"><div class="left"><div class="ico" style="color:#28b78c;font-weight:900">$</div><div class="copy"><b>USDT</b><small>TRC20</small></div></div><div class="right"><b>${s.walletBalance.toLocaleString()}</b><small>USDT</small></div></div><div class="listrow"><div class="left"><div class="ico" style="color:#ff5362;font-weight:900">T</div><div class="copy"><b>TRX</b><small>TRON</small></div></div><div class="right"><b>${s.trx}</b><small>TRX</small></div></div></div>
+<div class="section"><div class="sectionhead"><h2>Resources</h2><button data-action="refresh">Refresh</button></div><div class="grid2"><div class="stat"><small>Bandwidth</small><b>420 / 600</b></div><div class="stat"><small>Energy</small><b>18.2K</b></div></div></div>`}
+function ordersScreen(vendor){return `<div class="title"><h1>${vendor?'Vendor Orders':'Orders'}</h1><p>${vendor?'Orders matched to your Vendor listings.':'P2P and WTRON Direct Sell orders.'}</p></div>
+${vendor?`<div class="listrow" data-go="vendor-order"><div class="left">${userPhoto('DS')}<div class="copy"><b>#VO-1882 • Buyer Devid</b><small>300 USDT • UPI • Awaiting payment</small></div></div><span class="pill amber">OPEN</span></div><div class="listrow" data-go="vendor-order"><div class="left">${userPhoto('AK')}<div class="copy"><b>#VO-1879 • Aakash</b><small>120 USDT • IMPS • Paid</small></div></div><span class="pill blue">PAID</span></div>`:
+`<div class="listrow" data-go="p2p-order"><div class="left">${userPhoto('AT')}<div class="copy"><b>#P2P-8804 • Buy</b><small>Arjun Trades • Payment open</small></div></div><div class="right"><b>100 U</b><small>₹10,380</small></div></div><div class="listrow" data-go="direct-sell"><div class="left"><div class="ico">${icon('trade')}</div><div class="copy"><b>#WT-9254 • Direct Sell</b><small>Blockchain confirming</small></div></div><span class="pill blue">12/20</span></div>`}`}
+function moreScreen(vendor){return `<div class="title"><h1>More</h1><p>${vendor?'Vendor business, wallet and application controls.':'Trader account, payment, wallet and application controls.'}</p></div>
+<div class="settingshero"><div class="profile-photo-wrap"><div class="avatar" id="moreAvatar" style="width:72px;height:72px;border-radius:20px;background:linear-gradient(145deg,#4f7cff,#2c4180);color:#fff;font-size:16px">${vendor?'NV':'DS'}</div><button class="photo-edit" data-action="uploadPhoto">${icon('camera')}</button></div><div><b style="font-size:17px">${vendor?'Nova Liquidity':'Devid Singh'}</b><small class="muted" style="display:block;margin-top:3px">${vendor?'Approved Vendor':'Trader account'}</small><div style="margin-top:7px"><span class="pill blue">${vendor?'VENDOR':'TRADER'}</span> <span class="pill green">VERIFIED</span></div></div></div>
+<div class="settings-top"><div class="stat"><small>Security</small><b>92 / 100</b></div><div class="stat"><small>Wallets</small><b>${vendor?'2':'3'} active</b></div></div>
+${settingsGroup('Account',[
+ ['profile','user','Profile','Identity, profile photo and Telegram'],
+ ['notifications','bell','Notifications','Wallet, order and system alerts'],
+ ['security','shield','Security','Transaction password and wallet protection']
+])}
+${settingsGroup(vendor?'Business & Orders':'Payments & Orders',[
+ ['bank','bank',vendor?'Vendor Payout Accounts':'Bank & UPI',vendor?'Limits, capacity, default/freeze state':'Saved personal payout methods'],
+ ['orders','orders','Orders',vendor?'Vendor matched orders':'P2P and WTRON orders'],
+ ['history','history','History','Wallet and trade activity']
+].concat(vendor?[['listing','trade','Vendor Listings','Liquidity, rates, limits and rails']]:[]))}
+${settingsGroup('Wallet',[
+ ['wallets','wallet','Manage Wallets','Create, import, switch and default'],
+ ['backup','key','Backup','Recovery phrase and backup status'],
+ ['gasfree','zap','GasFree','GasFree capability and transfers']
+])}
+${settingsGroup('Insights & Growth',[
+ ['analytics','chart','Analytics','Volume and performance insights'],
+ ['referral','gift','Referral','Invite users and track rewards']
+])}
+${settingsGroup('Preferences',[
+ ['appearance','sun','Appearance','System, Light or Dark'],
+ ['language','globe','Language','Mini App language and locale']
+])}
+${settingsGroup('Legal & Help',[
+ ['privacy','file','Privacy Policy','How WTRON handles data'],
+ ['terms','file','Terms of Service','Product terms'],
+ ['risk','shield','Risk Disclosure','Crypto and trading risks']
+])}
+<div class="gtitle">Session</div><div class="settinggroup"><div class="listrow logout" data-action="logout"><div class="setting-tile"><div class="setting-icon">${icon('user')}</div><div class="copy"><b>Logout</b><small>Return to Trader / Vendor login</small></div></div><span>›</span></div></div>`}
+function settingsGroup(title,items){return `<div class="gtitle">${title}</div><div class="settinggroup">${items.map(i=>`<div class="listrow" data-go="${i[0]}"><div class="setting-tile"><div class="setting-icon">${icon(i[1])}</div><div class="copy"><b>${i[2]}</b><small>${i[3]}</small></div></div><span>›</span></div>`).join('')}</div>`}
+function bankScreen(vendor){return `<div class="title"><h1>${vendor?'Vendor Payout Accounts':'Bank & UPI'}</h1><p>${vendor?'Account capacity and lifecycle are Vendor-specific.':'Saved personal payout methods.'}</p></div>
+<div class="listrow"><div class="left"><div class="brandlogo hdfc">HDFC</div><div class="copy"><b>HDFC Bank ••••3210</b><small>${vendor?'UPI • IMPS • NEFT • RTGS':'IMPS • NEFT • RTGS'}</small></div></div><span class="pill green">Default</span></div>
+${vendor?`<div class="grid2" style="margin-top:10px"><div class="stat"><small>Daily limit</small><b>₹5L</b></div><div class="stat"><small>Remaining</small><b>₹3.8L</b></div></div><div class="mactions"><button class="btn ghost sm" data-action="freeze">Freeze</button><button class="btn ghost sm" data-action="disable">Disable</button><button class="btn primary sm" data-action="addAccount">Add account</button></div>`:`<div class="listrow"><div class="left"><div class="brandlogo gpay">G</div><div class="copy"><b>devid@okhdfcbank</b><small>Google Pay • Verified</small></div></div><span class="pill blue">UPI</span></div><button class="btn primary full" data-action="addAccount">Add Payment Method</button>`}`}
+function profileScreen(vendor){return `<div class="title"><h1>Profile</h1><p>Account identity visible only after login.</p></div><div class="settingshero">${userPhoto(vendor?'NV':'DS')}<div><b style="font-size:18px">${vendor?'Nova Liquidity':'Devid Singh'}</b><small class="muted" style="display:block">${vendor?'Vendor business account':'Trader personal account'}</small></div></div><div class="listrow"><div class="copy"><b>Account type</b><small>Repository role</small></div><span class="pill blue">${vendor?'VENDOR':'TRADER'}</span></div><div class="listrow"><div class="copy"><b>Status</b><small>${vendor?'Vendor approval':'Account verification'}</small></div><span class="pill green">${vendor?'APPROVED':'VERIFIED'}</span></div>`}
+function notifications(){return `<div class="title"><h1>Notifications</h1><p>Wallet, order and trading alerts.</p></div><div class="listrow"><div class="left"><div class="ico">${icon('bell')}</div><div class="copy"><b>Order updated</b><small>2 minutes ago</small></div></div><span class="pill blue">NEW</span></div><div class="listrow"><div class="left"><div class="ico">${icon('shield')}</div><div class="copy"><b>Wallet backup reminder</b><small>Today</small></div></div><span>›</span></div>`}
+function sendScreen(){return `<div class="title"><h1>Send</h1><p>Prototype transfer review with transaction password.</p></div><div class="field"><label>Recipient TRON address</label><input class="input" value="TQ8n6...9Zp"/></div><div class="field"><label>Asset</label><select class="select"><option>USDT</option><option>TRX</option></select></div><div class="field"><label>Amount</label><input class="input" value="25"/></div><button class="btn primary full" data-action="reviewSend">Review Transfer</button>`}
+function receiveScreen(){return `<div class="title"><h1>Receive</h1><p>Selected wallet TRON address.</p></div><div class="card" style="text-align:center;padding:25px"><div style="width:150px;height:150px;background:repeating-conic-gradient(#fff 0 25%,#111 0 50%) 50%/16px 16px;margin:auto;border:12px solid white;border-radius:15px"></div><b style="display:block;margin-top:17px;font-size:11px">TQ9b...8P2z</b><button class="btn ghost full" data-action="copy">Copy Address</button></div>`}
+function depositScreen(){return `<div class="title"><h1>Platform Deposit</h1><p>Create a USDT TRC20 deposit request for your WTRON platform balance.</p></div><div class="field"><label>USDT amount</label><input class="input" value="100"/></div><button class="btn primary full" data-action="createDeposit">Create Deposit Request</button>`}
+function directSell(){return `<div class="title"><h1>WTRON Sell #WT-9254</h1><p>Company TRON deposit and automatic blockchain confirmation.</p></div><div class="card"><div class="rowbetween"><div><small class="muted">Expected</small><div class="rate">200 USDT</div></div><span class="pill blue">CONFIRMING</span></div><div class="listrow"><div class="copy"><b>Company address</b><small>TG4W...8Z2P</small></div><button class="btn ghost sm" data-action="copy">Copy</button></div><div class="grid2" style="margin-top:10px"><div class="stat"><small>Confirmations</small><b>12 / 20</b></div><div class="stat"><small>Expected payout</small><b>₹20,840</b></div></div></div><div class="section"><div class="sectionhead"><h2>Payout items</h2></div><div class="listrow"><div class="copy"><b>₹10,000</b><small>UTR 418290233771</small></div><button class="btn primary sm" data-action="confirmPayout">Confirm</button></div><div class="listrow"><div class="copy"><b>₹10,840</b><small>Waiting for payout</small></div><span class="pill amber">PENDING</span></div></div><button class="btn ghost full" data-action="dispute">Dispute Payout</button>`}
+function p2pOrder(){return `<div class="title"><h1>P2P Order</h1><p>#P2P-8804 • Arjun Trades</p></div><div class="card"><div class="rowbetween"><div><small class="muted">You pay</small><div class="rate">₹10,380</div></div><div class="right"><b>100 USDT</b><small>12:42 left</small></div></div><div class="listrow"><div class="left">${userPhoto('AT')}<div class="copy"><b>Arjun Trades <span class="verify y">● VERIFIED</span></b><small>99.2% • 1,842 trades • 1,420 U wallet</small></div></div><button class="btn ghost sm" data-chat="Arjun Trades">Chat</button></div><div class="listrow"><div class="copy"><b>UPI</b><small>arjun@okhdfcbank</small></div><button class="btn ghost sm" data-action="copy">Copy</button></div><button class="btn primary full" data-action="paid">I Have Paid</button><button class="btn ghost full" data-action="dispute">Report a Problem</button></div>`}
+function vendorListings(){return `<div class="title"><h1>Vendor Listings</h1><p>Create and manage liquidity listings.</p></div><button class="btn primary full" data-action="newListing">Create Listing</button><div class="section"><div class="listrow"><div class="copy"><b>₹104.55 / USDT</b><small>₹10K–₹2L • UPI/IMPS • 4,200 U</small></div><span class="pill green">ACTIVE</span></div><div class="mactions"><button class="btn ghost sm" data-action="pauseListing">Pause</button><button class="btn ghost sm" data-action="closeListing">Close</button></div></div>`}
+function vendorOrder(){return `<div class="title"><h1>Vendor Order #VO-1882</h1><p>Matched from your active Vendor listing.</p></div><div class="card"><div class="rowbetween"><div><small class="muted">Sell</small><div class="rate">300 USDT</div></div><span class="pill amber">AWAITING PAYMENT</span></div><div class="listrow"><div class="copy"><b>Buyer</b><small>Devid Singh • Verified</small></div><span>›</span></div><div class="listrow"><div class="copy"><b>Payment account</b><small>HDFC ••••3210</small></div><span>UPI</span></div><button class="btn primary full" data-action="vendorPaid">Confirm Payment Received</button><button class="btn ghost full" data-action="dispute">Open Dispute</button></div>`}
+function walletManager(vendor){return `<div class="title"><h1>Manage Wallets</h1><p>Multiple Standard TRON wallets. GasFree is a wallet capability, not a separate primary wallet.</p></div><div class="listrow"><div class="left"><div class="ico">${icon('wallet')}</div><div class="copy"><b>${vendor?'Vendor Treasury':'Main Wallet'}</b><small>TQ9b...8P2z • Standard • Default</small></div></div><span class="pill green">ACTIVE</span></div><div class="listrow"><div class="left"><div class="ico">${icon('wallet')}</div><div class="copy"><b>${vendor?'Settlement Wallet':'Trading Wallet'}</b><small>TX8d...91Qa • Standard</small></div></div><button class="btn ghost sm" data-action="switchWallet">Switch</button></div><div class="grid2" style="margin-top:14px"><button class="btn primary" data-action="createWallet">Create Wallet</button><button class="btn ghost" data-action="importWallet">Import Wallet</button></div>`}
+function analyticsScreen(){return `<div class="title"><h1>Analytics</h1><p>Trader performance.</p></div><div class="grid2"><div class="stat"><small>30d volume</small><b>18,420 U</b></div><div class="stat"><small>Completed</small><b>164</b></div><div class="stat"><small>Success rate</small><b>98.9%</b></div><div class="stat"><small>Disputes</small><b>2</b></div></div>`}
+function historyScreen(){return `<div class="title"><h1>History</h1><p>Wallet and trade activity.</p></div><div class="listrow"><div class="copy"><b>USDT Received</b><small>Today • Main Wallet</small></div><div class="right"><b>+50 U</b><small>Confirmed</small></div></div><div class="listrow"><div class="copy"><b>WTRON Sell</b><small>Yesterday • #WT-9254</small></div><div class="right"><b>200 U</b><small>₹20,840</small></div></div>`}
+function securityScreen(){return `<div class="title"><h1>Security</h1><p>Transaction password and wallet protection.</p></div><div class="listrow"><div class="copy"><b>Transaction password</b><small>Required for wallet sends</small></div><span class="pill green">ENABLED</span></div><div class="listrow"><div class="copy"><b>Wallet backup</b><small>Recovery phrase status</small></div><span class="pill amber">CHECK</span></div><button class="btn primary full" data-action="securityUpdate">Update Security</button>`}
+function backupScreen(){return `<div class="title"><h1>Wallet Backup</h1><p>Recovery and security status for the selected Standard wallet.</p></div><div class="card"><div class="listrow"><div class="copy"><b>Recovery phrase</b><small>Main Wallet</small></div><span class="pill amber">PENDING CHECK</span></div><div class="listrow"><div class="copy"><b>Transaction password</b><small>Required before reveal</small></div><span class="pill green">ENABLED</span></div><button class="btn primary full" data-action="revealBackup">Verify & Reveal Backup</button></div>`}
+function gasfreeScreen(){return `<div class="title"><h1>GasFree</h1><p>Companion capability for Standard TRON wallets.</p></div><div class="card"><div class="rowbetween"><div><b>Main Wallet</b><small class="muted" style="display:block;margin-top:3px">GasFree USDT capability</small></div><span class="pill green">AVAILABLE</span></div><div class="grid2" style="margin-top:12px"><div class="stat"><small>Transfer fee</small><b>1.50 U</b></div><div class="stat"><small>TRX needed</small><b>0</b></div></div><button class="btn primary full" data-go="send">Send GasFree</button></div>`}
+function referralScreen(){return `<div class="title"><h1>Referral</h1><p>Invite users and track rewards.</p></div><div class="card"><small class="muted">Referral code</small><div class="rate">WTRON-7K9D</div><button class="btn primary full" data-action="copy">Copy Referral Link</button></div><div class="grid2" style="margin-top:10px"><div class="stat"><small>Invited</small><b>28</b></div><div class="stat"><small>Qualified</small><b>11</b></div></div>`}
+function appearanceScreen(){return `<div class="title"><h1>Appearance</h1><p>Choose how WTRON looks on this device.</p></div><div class="settinggroup"><div class="listrow" data-action="themeDark"><div class="copy"><b>Dark</b><small>Premium dark mode</small></div><span class="pill blue">SELECT</span></div><div class="listrow" data-action="themeLight"><div class="copy"><b>Light</b><small>Clean light mode</small></div><span>›</span></div><div class="listrow"><div class="copy"><b>System</b><small>Follow device appearance</small></div><span>›</span></div></div>`}
+function languageScreen(){return `<div class="title"><h1>Language</h1><p>Mini App interface language.</p></div><div class="settinggroup"><div class="listrow" data-action="lang"><div class="copy"><b>English</b><small>Current</small></div><span class="pill green">SELECTED</span></div><div class="listrow" data-action="lang"><div class="copy"><b>हिन्दी</b><small>Hindi</small></div><span>›</span></div><div class="listrow" data-action="lang"><div class="copy"><b>Русский</b><small>Russian</small></div><span>›</span></div></div>`}
+function legalScreen(title){return `<div class="title"><h1>${title}</h1><p>Prototype legal content surface.</p></div><div class="card"><p class="muted" style="font-size:10px;line-height:1.6">This screen represents the repository's ${title} route/content. Production text should load the full approved policy without exposing account data publicly.</p></div>`}
+function vendorBuyOrderScreen(){
+ const v=vendorListingsData.find(x=>x.id===activeVendorOrder.vendorId);
+ return `<div class="title"><h1>Buy USDT</h1><p>Order ${activeVendorOrder.ref} • Vendor liquidity is reserved.</p></div>
+ <div class="card"><div class="rowbetween"><div><small class="muted">Time remaining</small><div class="order-timer" id="vendorCountdown">${formatCountdown(activeVendorOrder.expiresAt-Date.now())}</div></div><span class="pill blue">${activeVendorOrder.paid?'PAID':'RESERVED'}</span></div>
+ <div class="timeline"><div class="step done">Reserved</div><div class="step ${activeVendorOrder.paid?'done':'active'}">Payment</div><div class="step ${activeVendorOrder.paid?'active':''}">Vendor Confirm</div><div class="step">Complete</div></div>
+ <div class="listrow"><div class="copy"><b>${v.name} <span class="verify y">● VERIFIED</span></b><small>${v.success}% success • ${v.completed} completed</small></div><span>${activeVendorOrder.amount} U</span></div>
+ <div class="listrow"><div class="copy"><b>You pay</b><small>Rate ₹${v.rate} / USDT</small></div><div class="right"><b>₹${Math.round(activeVendorOrder.amount*v.rate).toLocaleString()}</b><small>${activeVendorOrder.rail}</small></div></div>
+ <div class="reserve-note">${activeVendorOrder.paid?'Payment submitted. Vendor payment details and this order are now private to the two counterparties.':'This liquidity is temporarily hidden from other buyers until the timer expires or the order is cancelled.'}</div>
+ ${activeVendorOrder.paid?`<div class="listrow"><div class="copy"><b>UTR</b><small>418290233771</small></div><span class="pill blue">SUBMITTED</span></div><button class="btn ghost full" data-action="dispute">Open Dispute</button>`:`<div class="listrow"><div class="copy"><b>HDFC UPI</b><small>nova@okhdfcbank</small></div><button class="btn ghost sm" data-action="copy">Copy</button></div><div class="field"><label>UTR / Reference</label><input id="vendorUtr" class="input" value="418290233771"/></div><button class="btn primary full" data-action="vendorPaymentPaid">I Have Paid</button><button class="btn ghost full" data-action="cancelVendorOrder">Cancel Order</button>`}</div>`;
+}
+
+function generic(id){return `<div class="title"><h1>${id}</h1><p>Prototype screen.</p></div><button class="btn ghost full" data-nav="home">Back Home</button>`}
+function chatSheet(name){openSheet(`<div class="rowbetween"><div><h3>${name}</h3><p>Pre-trade conversation. Review counterparty details before starting.</p></div><span class="pill green">ONLINE</span></div><div class="chat"><div class="bubble">Hi, payment details are ready. Please use your own verified account.</div><div class="bubble me">I want to buy 100 USDT via UPI.</div><div class="bubble">Okay. Rate is locked at ₹103.80 for this order.</div></div><div class="card"><div class="rowbetween"><div><small class="muted">Quote</small><b style="display:block;margin-top:3px">100 USDT</b></div><div class="right"><b>₹10,380</b><small>UPI / IMPS</small></div></div></div><button class="btn primary full" data-action="startTrade">Start Trade</button><button class="btn ghost full" data-action="closeSheet">Close</button>`)}
+function formSheet(title,fields,actionLabel='Save'){openSheet(`<h3>${title}</h3>${fields}<button class="btn primary full" data-action="sheetSave">${actionLabel}</button><button class="btn ghost full" data-action="closeSheet">Cancel</button>`)}
+function formatCountdown(ms){if(ms<=0)return'00:00';const s=Math.floor(ms/1000),m=Math.floor(s/60),r=s%60;return String(m).padStart(2,'0')+':'+String(r).padStart(2,'0')}
+function startVendorCountdown(){clearInterval(window.__vendorTimer);window.__vendorTimer=setInterval(()=>{if(!activeVendorOrder)return;const el=$('#vendorCountdown');const left=activeVendorOrder.expiresAt-Date.now();if(el)el.textContent=formatCountdown(left);if(left<=0){clearInterval(window.__vendorTimer);const v=vendorListingsData.find(x=>x.id===activeVendorOrder.vendorId);if(v)v.reserved=false;activeVendorOrder=null;toast('Order expired. Vendor listing is visible again.');go('trade')}},1000)}
+function updateAvatarDisplays(){
+ const h=$('#headerAvatar');if(h){if(profilePhoto)h.innerHTML=`<img class="profile-head-photo" src="${profilePhoto}">`;else h.textContent=loggedRole==='vendor'?'NV':'DS'}
+ const m=$('#moreAvatar');if(m&&profilePhoto)m.innerHTML=`<img class="profile-head-photo" src="${profilePhoto}">`;
+}
+$('#photoInput').addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{profilePhoto=String(r.result||'');updateAvatarDisplays();toast('Profile photo updated')};r.readAsDataURL(f)});
+
+function wireDynamic(){
+ $$('[data-go]').forEach(x=>x.onclick=()=>go(x.dataset.go));
+ $$('[data-chat]').forEach(x=>x.onclick=()=>chatSheet(x.dataset.chat));
+ $$('[data-action]').forEach(x=>x.onclick=()=>handleAction(x.dataset.action,x));
+}
+function handleAction(a,el){
+ if(a==='tradeSellMode'){tradeMode='sell';return render()}
+ if(a==='tradeBuyMode'){tradeMode='buy';return render()}
+ if(a==='reserveVendor'){
+   const v=vendorListingsData.find(x=>x.id===el.dataset.vendor);if(!v||v.reserved)return toast('Listing no longer available');
+   const amount=100;if(amount>v.available)return toast('Not enough Vendor liquidity');
+   v.reserved=true;activeVendorOrder={vendorId:v.id,amount,rail:v.rails[0],ref:'#VB-'+Math.floor(1000+Math.random()*8999),expiresAt:Date.now()+15*60*1000,paid:false};
+   go('vendor-buy-order');return;
+ }
+ if(a==='vendorInfo'){const v=vendorListingsData.find(x=>x.id===el.dataset.vendor);return openSheet(`<h3>${v.name}</h3><p>Approved Vendor • ${v.success}% success • ${v.completed.toLocaleString()} completed trades</p><div class="grid2"><div class="stat"><small>Available</small><b>${v.available.toLocaleString()} U</b></div><div class="stat"><small>Vendor wallet</small><b>${v.wallet.toLocaleString()} U</b></div></div><button class="btn ghost full" data-action="closeSheet">Close</button>`)}
+ if(a==='vendorPaymentPaid'){if(!activeVendorOrder)return;activeVendorOrder.paid=true;const v=vendorListingsData.find(x=>x.id===activeVendorOrder.vendorId);v.available=Math.max(0,v.available-activeVendorOrder.amount);render();toast('Payment submitted privately');return}
+ if(a==='cancelVendorOrder'){if(activeVendorOrder){const v=vendorListingsData.find(x=>x.id===activeVendorOrder.vendorId);if(v)v.reserved=false;activeVendorOrder=null}tradeMode='buy';go('trade');toast('Order cancelled');return}
+ if(a==='uploadPhoto'){return $('#photoInput').click()}
+ if(a==='themeDark'){document.body.classList.remove('light');theme='dark';toast('Dark theme selected');return}
+ if(a==='themeLight'){document.body.classList.add('light');theme='light';toast('Light theme selected');return}
+ if(a==='lang'){toast('Language preference updated');return}
+ if(a==='revealBackup'){return formSheet('Verify Wallet Backup','<div class="field"><label>Transaction password</label><input class="input" type="password" value="12345678"></div><div class="reserve-note">Recovery phrase is hidden in this prototype for safety.</div>','Verify')}
+ if(a==='vendorDirectSell'){return toast('Vendor Direct Sell order created')}
+
+ const simple={refresh:'Balances refreshed',copy:'Copied',freeze:'Account frozen',disable:'Account disabled',confirmPayout:'Payout confirmed',dispute:'Dispute form opened',paid:'Seller notified of payment',vendorPaid:'Vendor payment confirmed',pauseListing:'Listing paused',closeListing:'Listing closed',switchWallet:'Wallet switched',securityUpdate:'Security settings updated'};
+ if(simple[a])return toast(simple[a]);
+ if(a==='logout')return logout();
+ if(a==='closeSheet')return closeSheet();
+ if(a==='startTrade'){closeSheet();return go('p2p-order')}
+ if(a==='reviewSend')return formSheet('Confirm Transfer','<div class="listrow"><div class="copy"><b>25 USDT</b><small>To TQ8n6...9Zp</small></div><div class="right"><b>Fee 1.5 U</b><small>Total 26.5 U</small></div></div><div class="field"><label>Transaction password</label><input type="password" class="input" value="123456"/> </div>','Send Now');
+ if(a==='sheetSave'){closeSheet();return toast('Saved successfully')}
+ if(a==='createDeposit')return formSheet('Deposit Request Created','<p>Send exactly 100 USDT TRC20 to the assigned company address. Blockchain status will update automatically.</p><div class="listrow"><div class="copy"><b>TG4W...8Z2P</b><small>TRON Mainnet • USDT TRC20</small></div><button class="btn ghost sm" data-action="copy">Copy</button></div>','Done');
+ if(a==='createWallet')return formSheet('Create Standard Wallet','<div class="field"><label>Wallet name</label><input class="input" value="New Wallet"/></div><div class="field"><label>Transaction password</label><input type="password" class="input" value="12345678"/></div>','Create & Backup');
+ if(a==='importWallet')return formSheet('Import Wallet','<div class="field"><label>Wallet name</label><input class="input" value="Imported Wallet"/></div><div class="field"><label>Recovery phrase</label><textarea class="textarea">word1 word2 word3 ...</textarea></div>','Import Wallet');
+ if(a==='addAccount')return formSheet(loggedRole==='vendor'?'Add Vendor Payout Account':'Add Payment Method','<div class="field"><label>Bank / UPI</label><input class="input" value="HDFC Bank"/></div><div class="field"><label>Account / UPI</label><input class="input" value="devid@okhdfcbank"/></div>','Save Account');
+ if(a==='newListing')return formSheet('Create Vendor Listing','<div class="field"><label>USDT liquidity</label><input class="input" value="1000"/></div><div class="field"><label>Rate INR</label><input class="input" value="104.55"/></div><div class="field"><label>Min / Max INR</label><input class="input" value="10000 / 200000"/></div>','Create Listing');
+ if(a==='sellTab')return formSheet('Create P2P Sell Ad','<div class="field"><label>USDT amount</label><input class="input" value="500"/></div><div class="field"><label>Selling rate</label><input class="input" value="104.10"/></div><div class="field"><label>Saved UPI</label><select class="select"><option>devid@okhdfcbank</option></select></div>','Create Sell Ad');
+ if(a==='myAds')return formSheet('My Ads','<div class="listrow"><div class="copy"><b>Sell • ₹104.10</b><small>500 U • UPI • Active</small></div><span class="pill green">ACTIVE</span></div>','Done');
+ if(a==='buyVendor')return formSheet('Buy from Vendor','<div class="listrow"><div class="copy"><b>Nova Liquidity <span class="verify y">● VERIFIED</span></b><small>99.4% • ₹104.55 • 8,420 U liquidity</small></div></div><div class="field"><label>USDT amount</label><input class="input" value="250"/></div><div class="field"><label>Rail</label><select class="select"><option>UPI</option><option>IMPS</option><option>NEFT</option><option>RTGS</option></select></div>','Create Buy Order');
+}
+$('#themeBtn').onclick=()=>{document.body.classList.toggle('light');theme=document.body.classList.contains('light')?'light':'dark';$('#themeIcon').setAttribute('href',theme==='light'?'#moon':'#sun')}
+wireDynamic();
+</script>
+</body></html>
