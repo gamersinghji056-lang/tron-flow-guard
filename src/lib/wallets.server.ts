@@ -630,7 +630,7 @@ export async function importPersonalWallet(params: {
     .limit(1);
   if (duplicateError) throw new Error(duplicateError.message);
   const duplicateRecord = ((duplicate as unknown[])?.[0] ?? null) as Record<string, unknown> | null;
-  const duplicateRow = duplicateRecord as {
+  let duplicateRow = duplicateRecord as {
     id: string;
     user_id?: string | null;
     network?: ChainNetwork;
@@ -640,10 +640,10 @@ export async function importPersonalWallet(params: {
   } | null;
   if (duplicateRow) {
     if (duplicateRow.user_id !== params.userId) {
-      throw new Error(
-        "This wallet is already linked to another WTRON account. Contact support to recover access.",
-      );
+      duplicateRow = null;
     }
+  }
+  if (duplicateRow) {
     const duplicateMetadata = await readWalletGasfreeMetadata(duplicateRow.id);
     const importedGasfree =
       duplicateRow.wallet_type === "gasfree" && duplicateRow.backup_status === "imported";
@@ -759,7 +759,7 @@ export async function importPersonalWallet(params: {
       };
     }
     throw new Error(
-      "This wallet is already linked to another WTRON account. Contact support to recover access.",
+      "Shared wallet linking requires the latest WTRON wallet identity migration before this address can be linked to another account.",
     );
   }
   if (error) throw new Error(error.message);

@@ -22,6 +22,23 @@ import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
 import { V17Avatar } from "@/components/v17-avatar";
 
+const PROFILE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const PROFILE_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+
+function profileUploadError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("invalid_type") ||
+    lower.includes("too_big") ||
+    lower.includes("zod") ||
+    lower.includes('"path"')
+  ) {
+    return "Could not upload profile photo";
+  }
+  return message || "Could not upload profile photo";
+}
+
 export const Route = createFileRoute("/_authenticated/profile-security")({
   head: () => ({ meta: [{ title: "Profile - WTRON" }] }),
   component: ProfileSecurityPage,
@@ -66,8 +83,19 @@ function ProfileSecurityPage() {
   async function uploadPhoto(file: File) {
     setAvatarUploading(true);
     try {
+      if (!PROFILE_PHOTO_TYPES.has(file.type)) {
+        throw new Error("Upload a JPEG, PNG, WebP or GIF image.");
+      }
+      if (file.size <= 0) throw new Error("Choose a valid image file.");
+      if (file.size > PROFILE_PHOTO_MAX_BYTES) {
+        throw new Error("Profile photo must be 2 MB or smaller.");
+      }
       const upload = await createAvatarUpload({
-        data: { fileName: file.name || "profile.jpg", contentType: file.type as never },
+        data: {
+          fileName: file.name || "profile.jpg",
+          contentType: file.type as never,
+          sizeBytes: file.size,
+        },
       });
       const { error } = await supabase.storage
         .from("user-avatars")
@@ -77,6 +105,7 @@ function ProfileSecurityPage() {
         data: {
           fileName: file.name || "profile.jpg",
           contentType: file.type as never,
+          sizeBytes: file.size,
           storagePath: upload.path,
         },
       });
@@ -84,7 +113,7 @@ function ProfileSecurityPage() {
       setAvatarUrl(view.url);
       toast.success("Profile photo updated");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not upload profile photo");
+      toast.error(profileUploadError(error));
     } finally {
       setAvatarUploading(false);
     }

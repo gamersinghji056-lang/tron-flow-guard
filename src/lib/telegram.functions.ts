@@ -129,17 +129,17 @@ export const linkTelegramMiniAppAccount = createServerFn({ method: "POST" })
 export const fetchTelegramHome = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => initDataInput.parse(input))
   .handler(async ({ data }) => {
-    const { fetchTelegramOverview } = await import("@/lib/telegram.server");
-    return fetchTelegramOverview(data.initData);
+    const { fetchTelegramHomeSummary } = await import("@/lib/telegram.server");
+    return fetchTelegramHomeSummary(data.initData);
   });
 
 export const fetchTelegramWallet = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => initDataInput.parse(input))
   .handler(async ({ data }) => {
-    const { fetchTelegramOverview, fetchTelegramDepositAddress, fetchTelegramDeposits } =
+    const { fetchTelegramWalletSummary, fetchTelegramDepositAddress, fetchTelegramDeposits } =
       await import("@/lib/telegram.server");
     const [overview, address, deposits] = await Promise.all([
-      fetchTelegramOverview(data.initData),
+      fetchTelegramWalletSummary(data.initData),
       fetchTelegramDepositAddress(data.initData),
       fetchTelegramDeposits(data.initData),
     ]);
@@ -149,11 +149,11 @@ export const fetchTelegramWallet = createServerFn({ method: "POST" })
 export const fetchTelegramP2p = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => initDataInput.parse(input))
   .handler(async ({ data }) => {
-    const { fetchTelegramMarketplace, fetchTelegramOverview } =
+    const { fetchTelegramMarketplace, fetchTelegramP2pOrders } =
       await import("@/lib/telegram.server");
     const [marketplace, overview] = await Promise.all([
       fetchTelegramMarketplace(data.initData),
-      fetchTelegramOverview(data.initData),
+      fetchTelegramP2pOrders(data.initData),
     ]);
     return { marketplace, orders: overview.orders };
   });

@@ -130,10 +130,22 @@ import { onChainSendEnabled, selectActiveWallet, walletDisplayBalance } from "@/
 import { V17Avatar } from "@/components/v17-avatar";
 
 const MINI_THEME_STORAGE_KEY = "wtron-mini-theme";
+const PROFILE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const PROFILE_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 
 async function qrToDataUrl(payload: string) {
   const qrcode = await import("qrcode");
   return qrcode.default.toDataURL(payload, { width: 260, margin: 1 });
+}
+
+function validateProfilePhoto(file: File) {
+  if (!PROFILE_PHOTO_TYPES.has(file.type)) {
+    throw new Error("Upload a JPEG, PNG, WebP or GIF image.");
+  }
+  if (file.size <= 0) throw new Error("Choose a valid image file.");
+  if (file.size > PROFILE_PHOTO_MAX_BYTES) {
+    throw new Error("Profile photo must be 2 MB or smaller.");
+  }
 }
 
 export const Route = createFileRoute("/mini-app")({
@@ -182,6 +194,12 @@ type TradeTab = "sell" | "buy";
 type ReceiveAsset = "USDT" | "TRX";
 type WalletHistoryAssetFilter = "ALL" | ReceiveAsset;
 type WalletHistoryDirectionFilter = "ALL" | "in" | "out";
+type P2pFilters = {
+  bestRate: boolean;
+  verified: boolean;
+  upi: boolean;
+  highCompletion: boolean;
+};
 
 interface TelegramWebApp {
   initData?: string;
@@ -667,6 +685,41 @@ function completionRate(ad: AdRow) {
   return `${Math.round((completed / total) * 100)}%`;
 }
 
+function completionRateNumber(ad: AdRow) {
+  const completed = Number(ad.merchants?.completed_orders ?? 0);
+  const total = Number(ad.merchants?.total_orders ?? 0);
+  return total > 0 ? Math.round((completed / total) * 100) : 0;
+}
+
+function isVerifiedSeller(ad: AdRow) {
+  return ad.merchants?.status === "verified" || Number(ad.merchants?.completed_orders ?? 0) > 0;
+}
+
+function applyP2pFilters(ads: AdRow[], filters: P2pFilters) {
+  const rows = ads
+    .filter((ad) => ad.side === "sell")
+    .filter((ad) => !filters.verified || isVerifiedSeller(ad))
+    .filter((ad) => !filters.upi || (ad.payment_methods ?? []).includes("upi"))
+    .filter((ad) => !filters.highCompletion || completionRateNumber(ad) >= 95);
+  return filters.bestRate
+    ? [...rows].sort((a, b) => Number(a.price_inr ?? 0) - Number(b.price_inr ?? 0))
+    : rows;
+}
+
+function personalSpendWallets(wallets: WalletRow[]) {
+  return wallets.filter(
+    (wallet) => wallet.wallet_role !== "gasfree" && wallet.wallet_type !== "gasfree",
+  );
+}
+
+function personalWalletTotals(wallets: WalletRow[]) {
+  const spendableWallets = personalSpendWallets(wallets);
+  return {
+    usdt: spendableWallets.reduce((sum, wallet) => sum + walletDisplayBalance(wallet), 0),
+    trx: spendableWallets.reduce((sum, wallet) => sum + Number(wallet.onchain_trx_balance ?? 0), 0),
+  };
+}
+
 function safeAddress(address?: string | null) {
   return address && /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address) ? address : "";
 }
@@ -731,6 +784,42 @@ async function scanRecipientQrWithTelegram(webApp: TelegramWebApp) {
   });
 }
 
+async function scanRecoveryPhraseQrWithTelegram(webApp: TelegramWebApp) {
+  const showScanQrPopup = webApp.showScanQrPopup;
+  if (!showScanQrPopup) throw new QrScanError("unsupported");
+  return await new Promise<string>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      webApp.offEvent?.("scanQrPopupClosed", onClosed);
+      window.clearTimeout(timeout);
+    };
+    const onClosed = () => {
+      cleanup();
+      reject(new QrScanError("cancelled"));
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      webApp.closeScanQrPopup?.();
+      reject(new QrScanError("cancelled"));
+    }, 60_000);
+    webApp.onEvent?.("scanQrPopupClosed", onClosed);
+    showScanQrPopup({ text: "Scan WTRON recovery phrase QR" }, (payload) => {
+      const phrase = normalizeRecoveryPhrase(payload);
+      if (!phrase) {
+        cleanup();
+        webApp.closeScanQrPopup?.();
+        reject(new QrScanError("invalid"));
+        return true;
+      }
+      cleanup();
+      resolve(phrase);
+      return true;
+    });
+  });
+}
+
 async function scanRecipientQrWithCamera() {
   const detectorConstructor = (
     window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }
@@ -785,10 +874,81 @@ async function scanRecipientQrWithCamera() {
   }
 }
 
+async function scanRecoveryPhraseQrWithCamera() {
+  const detectorConstructor = (
+    window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }
+  ).BarcodeDetector;
+  if (!navigator.mediaDevices?.getUserMedia || !detectorConstructor) {
+    throw new QrScanError("unsupported");
+  }
+  const supported = detectorConstructor.getSupportedFormats
+    ? await detectorConstructor.getSupportedFormats().catch(() => [])
+    : ["qr_code"];
+  if (!supported.includes("qr_code")) throw new QrScanError("unsupported");
+
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+  } catch {
+    throw new QrScanError("denied");
+  }
+
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = stream;
+  video.style.cssText =
+    "position:fixed;inset:0;z-index:9999;width:100vw;height:100vh;object-fit:cover;background:#000;";
+  document.body.appendChild(video);
+
+  const stop = () => {
+    stream.getTracks().forEach((track) => track.stop());
+    video.remove();
+  };
+
+  try {
+    await video.play();
+    const detector = new detectorConstructor({ formats: ["qr_code"] });
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 30_000) {
+      const codes = await detector.detect(video).catch(() => []);
+      for (const code of codes) {
+        const phrase = normalizeRecoveryPhrase(code.rawValue ?? "");
+        if (phrase) return phrase;
+      }
+      if (codes.length > 0) throw new QrScanError("invalid");
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
+    throw new QrScanError("cancelled");
+  } finally {
+    stop();
+  }
+}
+
 async function scanRecipientQr() {
   const webApp = typeof window !== "undefined" ? (window as TelegramWindow).Telegram?.WebApp : null;
   if (webApp?.showScanQrPopup) return await scanRecipientQrWithTelegram(webApp);
   return await scanRecipientQrWithCamera();
+}
+
+function normalizeRecoveryPhrase(payload: string) {
+  const value = payload
+    .replace(/^wtron:\/\//i, "")
+    .replace(/^mnemonic:/i, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  const words = value.split(" ").filter(Boolean);
+  return [12, 15, 18, 21, 24].includes(words.length) ? words.join(" ") : "";
+}
+
+async function scanRecoveryPhraseQr() {
+  const webApp = typeof window !== "undefined" ? (window as TelegramWindow).Telegram?.WebApp : null;
+  if (webApp?.showScanQrPopup) return await scanRecoveryPhraseQrWithTelegram(webApp);
+  return await scanRecoveryPhraseQrWithCamera();
 }
 
 function shareText(value: string) {
@@ -852,12 +1012,21 @@ function friendlyMiniError(error: unknown, fallback: string) {
   const lower = message.toLowerCase();
   const parsed = (() => {
     try {
-      return JSON.parse(message) as { error?: { code?: string; message?: string } };
+      return JSON.parse(message) as { error?: { code?: string; message?: string } } | unknown[];
     } catch {
       return null;
     }
   })();
-  const code = parsed?.error?.code ?? "";
+  if (Array.isArray(parsed)) return fallback;
+  const code = parsed && !Array.isArray(parsed) ? (parsed.error?.code ?? "") : "";
+  if (
+    lower.includes("invalid_type") ||
+    lower.includes("too_big") ||
+    lower.includes("zod") ||
+    lower.includes('"path"')
+  ) {
+    return fallback;
+  }
   if (code === "INSUFFICIENT_BALANCE" || lower.includes("insufficient_trx")) {
     return "Insufficient TRX balance to cover the transfer fee.";
   }
@@ -1011,6 +1180,7 @@ function TelegramMiniApp() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [bootstrapError, setBootstrapError] = useState("");
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [ads, setAds] = useState<AdRow[]>([]);
   const [deposits, setDeposits] = useState<DepositRow[]>([]);
@@ -1048,6 +1218,12 @@ function TelegramMiniApp() {
   const [depositAmount, setDepositAmount] = useState("");
   const [p2pAmount, setP2pAmount] = useState("");
   const [p2pTab, setP2pTab] = useState<P2pTab>("buy");
+  const [p2pFilters, setP2pFilters] = useState<P2pFilters>({
+    bestRate: true,
+    verified: false,
+    upi: false,
+    highCompletion: false,
+  });
   const [tradeTab, setTradeTab] = useState<TradeTab>("sell");
   const [directSellAmount, setDirectSellAmount] = useState("");
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
@@ -1093,6 +1269,7 @@ function TelegramMiniApp() {
     null,
   );
   const [sellAd, setSellAd] = useState({ amount: "", rate: "", min: "", max: "", terms: "" });
+  const [sellAdSourceWalletId, setSellAdSourceWalletId] = useState("");
   const [upiForm, setUpiForm] = useState({ upiId: "", holderName: "", label: "" });
   const [bankForm, setBankForm] = useState({
     accountHolder: "",
@@ -1181,8 +1358,13 @@ function TelegramMiniApp() {
   async function uploadProfilePhoto(file: File) {
     setAvatarUploading(true);
     try {
+      validateProfilePhoto(file);
       const upload = await createAvatarUpload({
-        data: { fileName: file.name || "profile.jpg", contentType: file.type as never },
+        data: {
+          fileName: file.name || "profile.jpg",
+          contentType: file.type as never,
+          sizeBytes: file.size,
+        },
       });
       const { error } = await supabase.storage
         .from("user-avatars")
@@ -1192,6 +1374,7 @@ function TelegramMiniApp() {
         data: {
           fileName: file.name || "profile.jpg",
           contentType: file.type as never,
+          sizeBytes: file.size,
           storagePath: upload.path,
         },
       });
@@ -1207,7 +1390,7 @@ function TelegramMiniApp() {
       }));
       toast.success("Profile photo updated");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not upload profile photo");
+      toast.error(friendlyMiniError(error, "Could not upload profile photo"));
     } finally {
       setAvatarUploading(false);
     }
@@ -1264,7 +1447,8 @@ function TelegramMiniApp() {
   const platformBalance = Number(profile?.balance ?? 0);
   const lockedBalance = Number(profile?.locked_balance ?? 0);
   const pendingBalance = Number(profile?.pending_balance ?? 0);
-  const totalAssets = platformBalance + lockedBalance + pendingBalance;
+  const personalTotals = personalWalletTotals(wallets);
+  const totalAssets = personalTotals.usdt;
   const latestDeposit = deposits[0];
   const directSellOrders = overview?.directSellOrders ?? [];
   const directSellPaymentItems = overview?.directSellPaymentItems ?? [];
@@ -1339,6 +1523,14 @@ function TelegramMiniApp() {
     activeUpiMethods.find((method) => method.is_default) ??
     activeUpiMethods[0] ??
     null;
+  const activeSellWallets = personalSpendWallets(wallets).filter(
+    (wallet) => walletDisplayBalance(wallet) > 0,
+  );
+  const selectedSellAdWallet =
+    activeSellWallets.find((wallet) => wallet.id === sellAdSourceWalletId) ??
+    activeSellWallets.find((wallet) => wallet.id === selectedWallet?.id) ??
+    activeSellWallets[0] ??
+    null;
 
   function applyWalletResult(
     result: Overview & {
@@ -1375,6 +1567,26 @@ function TelegramMiniApp() {
     setDeposits((depositData.deposits ?? []) as DepositRow[]);
     setDepositAddress(depositData.depositAddress as { address?: string; network?: string } | null);
     dataLoadedRef.current.deposits = true;
+  }
+
+  async function loadDirectSellPaymentItemsData(force = false, orderId = selectedDirectSellId) {
+    const directSellId = orderId;
+    if (!directSellId) return;
+    const { data, error } = await supabase
+      .from("direct_sell_payment_items" as never)
+      .select(
+        "id, direct_sell_order_id, amount_inr, utr_reference, proof_path, status, confirmation_deadline, confirmed_at, disputed_at, created_at",
+      )
+      .eq("direct_sell_order_id", directSellId as never)
+      .order("created_at", { ascending: false });
+    if (error) {
+      toast.error("Could not load payout items");
+      return;
+    }
+    setOverview((current) => ({
+      ...(current ?? {}),
+      directSellPaymentItems: (data ?? []) as unknown as DirectSellPaymentItemRow[],
+    }));
   }
 
   async function loadPaymentMethodsData(force = false) {
@@ -1467,6 +1679,9 @@ function TelegramMiniApp() {
     if (primary === "wallet") requests.push(loadWalletData(launch, force));
     if (nextScreen === "platform-deposit" || nextScreen === "direct-sell-detail") {
       requests.push(loadDepositsData(launch, force));
+    }
+    if (nextScreen === "direct-sell-detail") {
+      requests.push(loadDirectSellPaymentItemsData(force));
     }
     if (
       ["trade", "bank-accounts", "send", "profile", "security"].includes(nextScreen) ||
@@ -1634,6 +1849,38 @@ function TelegramMiniApp() {
   }, [theme]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const visualViewport = window.visualViewport;
+    const updateKeyboardState = () => {
+      const viewportHeight = visualViewport?.height ?? window.innerHeight;
+      setKeyboardOpen(window.innerHeight - viewportHeight > 120);
+    };
+    const scrollFocusedControl = (event: Event) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        window.setTimeout(() => {
+          target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+        }, 80);
+      }
+    };
+    updateKeyboardState();
+    visualViewport?.addEventListener("resize", updateKeyboardState);
+    visualViewport?.addEventListener("scroll", updateKeyboardState);
+    window.addEventListener("focusin", scrollFocusedControl);
+    window.addEventListener("focusout", updateKeyboardState);
+    return () => {
+      visualViewport?.removeEventListener("resize", updateKeyboardState);
+      visualViewport?.removeEventListener("scroll", updateKeyboardState);
+      window.removeEventListener("focusin", scrollFocusedControl);
+      window.removeEventListener("focusout", updateKeyboardState);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!initData || !linked) return;
     if (linkedAccountType === "vendor" && vendorStatus !== "approved") return;
     const renew = async () => {
@@ -1766,6 +2013,11 @@ function TelegramMiniApp() {
     void qrToDataUrl(payload).then(setDirectSellQr);
   }, [screen, selectedDirectSell?.assigned_company_address, selectedDirectSell?.expected_usdt]);
 
+  useEffect(() => {
+    if (screen !== "direct-sell-detail" || !selectedDirectSellId) return;
+    void loadDirectSellPaymentItemsData(true, selectedDirectSellId);
+  }, [screen, selectedDirectSellId]);
+
   async function loadSelectedWalletTransactions(walletId: string, reset = false) {
     const pageSize = 50;
     const offset = reset ? 0 : walletTransactions.length;
@@ -1839,7 +2091,8 @@ function TelegramMiniApp() {
         };
         setWalletResources(snapshot.resources ?? null);
         setWalletResourcesCheckedAt(snapshot.checkedAt ?? new Date().toISOString());
-        return void refresh(screen);
+        void loadWalletData(initData, true);
+        void loadHomeData(initData, true);
       },
       () => undefined,
     );
@@ -1862,6 +2115,7 @@ function TelegramMiniApp() {
       next = "trade";
     }
     setRevealedPhrase("");
+    if (screen === "wallet-import" && next !== "wallet-import") setImportPhrase("");
     setScreen(next);
     await loadScreenData(next);
   }
@@ -2041,6 +2295,10 @@ function TelegramMiniApp() {
       toast.error("Add UPI ID first");
       return;
     }
+    if (!selectedSellAdWallet?.id) {
+      toast.error("Select a funded personal wallet for this sell ad");
+      return;
+    }
     setBusy(true);
     try {
       await createSellAd({
@@ -2052,6 +2310,7 @@ function TelegramMiniApp() {
           maxOrderInr: max,
           paymentMethods: ["upi"],
           paymentMethodId: selectedActiveUpi.id,
+          sourceWalletId: selectedSellAdWallet.id,
           terms: sellAd.terms || undefined,
           isActive: true,
         },
@@ -2213,6 +2472,20 @@ function TelegramMiniApp() {
       toast.error(friendlyMiniError(error, "Could not import wallet"));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function scanImportRecoveryPhrase() {
+    try {
+      const phrase = await scanRecoveryPhraseQr();
+      setImportPhrase(phrase);
+      toast.success("Recovery phrase added");
+    } catch (error) {
+      const message =
+        error instanceof QrScanError && error.code === "invalid"
+          ? "QR code does not contain a valid recovery phrase."
+          : qrScanErrorMessage(error);
+      if (!(error instanceof QrScanError) || error.code !== "cancelled") toast.error(message);
     }
   }
 
@@ -2739,6 +3012,7 @@ function TelegramMiniApp() {
             busy={busy}
             t={t}
             onSubmit={submitImportWallet}
+            onScanPhrase={() => void scanImportRecoveryPhrase()}
           />
         ) : null}
         {screen === "wallet" && wallets.length ? (
@@ -2987,6 +3261,11 @@ function TelegramMiniApp() {
             paymentMethods={activeUpiMethods}
             selectedPaymentMethodId={selectedPaymentMethodId}
             setSelectedPaymentMethodId={setSelectedPaymentMethodId}
+            sourceWallets={activeSellWallets}
+            selectedSourceWalletId={selectedSellAdWallet?.id ?? ""}
+            setSelectedSourceWalletId={setSellAdSourceWalletId}
+            filters={p2pFilters}
+            setFilters={setP2pFilters}
             busy={busy}
             onTakeAd={takeAd}
             onCreateAd={submitSellAd}
@@ -3124,9 +3403,18 @@ function TelegramMiniApp() {
         {screen === "referral" ? <ReferralScreen summary={referral} /> : null}
       </div>
       {entryState === "vendor_app" ? (
-        <VendorBottomNav screen={screen} setScreen={(next) => void navigate(next)} />
+        <VendorBottomNav
+          screen={screen}
+          setScreen={(next) => void navigate(next)}
+          hidden={keyboardOpen}
+        />
       ) : (
-        <BottomNav tab={primaryTab} setTab={(next) => void navigate(next)} t={t} />
+        <BottomNav
+          tab={primaryTab}
+          setTab={(next) => void navigate(next)}
+          t={t}
+          hidden={keyboardOpen}
+        />
       )}
     </MiniFrame>
   );
@@ -3442,7 +3730,9 @@ function HomeScreen({
         <div>
           <p className="text-[9px] text-slate-500">Total portfolio</p>
           <p className="balance-v17">{money(total)} USDT</p>
-          <p className="text-[10px] text-slate-500">{money(total)} USDT equivalent</p>
+          <p className="text-[10px] text-slate-500">
+            Personal Mainnet wallets. Active wallet TRX: {money(walletTrx, "TRX")} TRX
+          </p>
         </div>
         <div className="grid grid-cols-4 gap-3">
           <QuickAction
@@ -3647,6 +3937,7 @@ function WalletImportScreen(props: {
   busy: boolean;
   t: MiniT;
   onSubmit: (event: FormEvent) => void;
+  onScanPhrase: () => void | Promise<void>;
 }) {
   return (
     <Screen title={props.t("importWallet")} subtitle={props.t("importWalletSubtitle")}>
@@ -3670,6 +3961,19 @@ function WalletImportScreen(props: {
             onChange={(event) => props.setPhrase(event.target.value)}
             placeholder={props.t("enterRecoveryPhrase")}
           />
+          <Button
+            type="button"
+            variant="secondary"
+            className="mt-2 w-full"
+            onClick={props.onScanPhrase}
+          >
+            <ScanLine className="mr-2 h-4 w-4" />
+            Scan recovery QR
+          </Button>
+          <p className="mt-2 text-xs text-slate-500">
+            QR scanning only fills this local form. Anyone with the phrase or QR can control the
+            wallet.
+          </p>
         </FormCard>
         <FormCard title={props.t("transactionPassword")}>
           <Input
@@ -4584,6 +4888,21 @@ function BackupScreen({
   onSubmit: (event: FormEvent) => void;
 }) {
   const words = revealedPhrase.trim().split(/\s+/).filter(Boolean);
+  const [phraseQr, setPhraseQr] = useState("");
+  useEffect(() => {
+    let active = true;
+    if (!revealedPhrase) {
+      setPhraseQr("");
+      return;
+    }
+    void qrToDataUrl(`wtron://${revealedPhrase}`).then((url) => {
+      if (active) setPhraseQr(url);
+    });
+    return () => {
+      active = false;
+      setPhraseQr("");
+    };
+  }, [revealedPhrase]);
   return (
     <Screen title={t("backup")} subtitle={wallet?.name ?? t("selectedWallet")}>
       <p className="rounded-2xl bg-red-500/10 p-3 text-sm text-red-100">
@@ -4624,6 +4943,16 @@ function BackupScreen({
           >
             {t("copyAddress")}
           </Button>
+          {phraseQr ? (
+            <div className="rounded-2xl border border-white/10 bg-white p-3 text-slate-950">
+              <div className="mx-auto h-52 w-52 max-w-full">
+                <img src={phraseQr} alt="Recovery phrase QR" />
+              </div>
+              <p className="mt-3 text-xs font-semibold text-red-700">
+                Anyone who scans this QR can control this wallet.
+              </p>
+            </div>
+          ) : null}
           <Button
             variant="secondary"
             className="w-full"
@@ -5303,10 +5632,24 @@ function P2pScreen(props: {
   paymentMethods: PaymentMethodRow[];
   selectedPaymentMethodId: string;
   setSelectedPaymentMethodId: (id: string) => void;
+  sourceWallets: WalletRow[];
+  selectedSourceWalletId: string;
+  setSelectedSourceWalletId: (id: string) => void;
+  filters: P2pFilters;
+  setFilters: (filters: P2pFilters) => void;
   busy: boolean;
   onTakeAd: (ad: AdRow) => void;
   onCreateAd: (event: FormEvent) => void;
 }) {
+  const filteredAds = applyP2pFilters(props.ads, props.filters);
+  const toggleFilter = (key: keyof P2pFilters) =>
+    props.setFilters({ ...props.filters, [key]: !props.filters[key] });
+  const filterItems: Array<[keyof P2pFilters, string]> = [
+    ["bestRate", "Best rate"],
+    ["verified", "Verified"],
+    ["upi", "UPI"],
+    ["highCompletion", "High completion"],
+  ];
   return (
     <Screen
       title={props.vendorMode ? "P2P Sell" : "P2P Market"}
@@ -5333,17 +5676,19 @@ function P2pScreen(props: {
       {!props.vendorMode && props.tab === "buy" ? (
         <div className="space-y-3">
           <div className="flex gap-[7px] overflow-x-auto pb-1">
-            {["Best rate", "Verified", "UPI", "High completion"].map((filter, index) => (
-              <span
-                key={filter}
+            {filterItems.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
                 className={`shrink-0 rounded-full border px-[9px] py-[7px] text-[9px] ${
-                  index === 0
+                  props.filters[key]
                     ? "border-white bg-white text-[#080a0f]"
                     : "border-[#222837] bg-[#10131a] text-slate-500"
                 }`}
+                onClick={() => toggleFilter(key)}
               >
-                {filter}
-              </span>
+                {label}
+              </button>
             ))}
           </div>
           <FormField label="USDT amount">
@@ -5353,8 +5698,10 @@ function P2pScreen(props: {
               placeholder="USDT amount"
             />
           </FormField>
-          {props.ads.length ? (
-            props.ads.map((ad) => <AdCard key={ad.id} ad={ad} onTake={() => props.onTakeAd(ad)} />)
+          {filteredAds.length ? (
+            filteredAds.map((ad) => (
+              <AdCard key={ad.id} ad={ad} onTake={() => props.onTakeAd(ad)} />
+            ))
           ) : (
             <CompactEmpty
               title="No seller ads"
@@ -5403,6 +5750,27 @@ function P2pScreen(props: {
               body="A saved active UPI account is required for sell ads."
             />
           )}
+          {props.sourceWallets.length ? (
+            <FormField label="Source wallet">
+              <select
+                aria-label="P2P sell source wallet"
+                className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none"
+                value={props.selectedSourceWalletId}
+                onChange={(event) => props.setSelectedSourceWalletId(event.target.value)}
+              >
+                {props.sourceWallets.map((wallet) => (
+                  <option key={wallet.id} className="bg-slate-950" value={wallet.id}>
+                    {wallet.name ?? "Wallet"} - {money(walletDisplayBalance(wallet))} USDT
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          ) : (
+            <CompactEmpty
+              title="Fund a personal wallet first"
+              body="P2P sell ads reserve USDT from an eligible Mainnet wallet."
+            />
+          )}
           <textarea
             className="min-h-20 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-primary"
             value={props.sellAd.terms}
@@ -5411,7 +5779,13 @@ function P2pScreen(props: {
           />
           <Button
             className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-            disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
+            disabled={
+              props.busy ||
+              !props.paymentMethods.length ||
+              !props.selectedPaymentMethodId ||
+              !props.sourceWallets.length ||
+              !props.selectedSourceWalletId
+            }
           >
             Create Sell Ad
           </Button>
@@ -7646,9 +8020,11 @@ function PendingVendorScreen({
 function VendorBottomNav({
   screen,
   setScreen,
+  hidden,
 }: {
   screen: MiniScreen;
   setScreen: (screen: MiniScreen) => void;
+  hidden?: boolean;
 }) {
   const items: Array<[VendorPrimaryTab, string, V17NavIconName]> = [
     ["home", "Home", "home"],
@@ -7658,7 +8034,11 @@ function VendorBottomNav({
     ["more", "More", "more"],
   ];
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 px-[9px] pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2">
+    <nav
+      className={`fixed inset-x-0 bottom-0 z-40 px-[9px] pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 transition ${
+        hidden ? "pointer-events-none translate-y-full opacity-0" : ""
+      }`}
+    >
       <div className="mx-auto grid h-[68px] max-w-[412px] grid-cols-5 gap-0.5 rounded-[23px] border border-[#222837] bg-[#10131a]/90 p-1.5 shadow-[0_18px_48px_rgba(0,0,0,.32)] backdrop-blur-xl">
         {items.map(([key, label, icon]) => (
           <button
@@ -7686,10 +8066,12 @@ function BottomNav({
   tab,
   setTab,
   t,
+  hidden,
 }: {
   tab: PrimaryTab;
   setTab: (tab: PrimaryTab) => void;
   t: MiniT;
+  hidden?: boolean;
 }) {
   const items: Array<[PrimaryTab, string, V17NavIconName]> = [
     ["home", t("home"), "home"],
@@ -7699,7 +8081,11 @@ function BottomNav({
     ["more", t("more"), "more"],
   ];
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 px-[9px] pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2">
+    <nav
+      className={`fixed inset-x-0 bottom-0 z-40 px-[9px] pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 transition ${
+        hidden ? "pointer-events-none translate-y-full opacity-0" : ""
+      }`}
+    >
       <div className="mx-auto grid h-[68px] max-w-[412px] grid-cols-5 gap-0.5 rounded-[23px] border border-[#222837] bg-[#10131a]/90 p-1.5 shadow-[0_18px_48px_rgba(0,0,0,.32)] backdrop-blur-xl">
         {items.map(([key, label, icon]) => (
           <button

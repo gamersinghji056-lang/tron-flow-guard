@@ -1306,6 +1306,146 @@ export async function fetchTelegramOverview(initData: string) {
   };
 }
 
+async function fetchTelegramProfile(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, full_name, avatar_path, avatar_updated_at, balance, locked_balance")
+    .eq("id", userId as never)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function fetchTelegramMainnetWallets(userId: string, limit = 20) {
+  const { data, error } = await supabaseAdmin
+    .from("user_wallets" as never)
+    .select(
+      "id, name, address, network, balance, onchain_balance, onchain_trx_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, gasfree_capability_checked_at, gasfree_capability_error, gasfree_capability_metadata, wallet_role, parent_wallet_id, wallet_group_id",
+    )
+    .eq("user_id", userId as never)
+    .eq("is_archived", false as never)
+    .eq("network", "trc20-mainnet" as never)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchTelegramRecentP2pOrders(userId: string, limit = 8) {
+  const { data, error } = await supabaseAdmin
+    .from("p2p_orders" as never)
+    .select("id, order_ref, side, status, usdt_amount, total_inr, payment_deadline, created_at")
+    .or(`buyer_user_id.eq.${userId},seller_id.eq.${userId}` as never)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchTelegramRecentDirectSellOrders(userId: string, limit = 6) {
+  const { data, error } = await supabaseAdmin
+    .from("direct_sell_orders" as never)
+    .select(
+      "id, order_ref, deposit_request_id, payment_method_id, payment_assignment, expected_usdt, received_usdt, expected_inr, locked_rate_inr, status, assigned_company_address, txid, confirmations, required_confirmations, expires_at, created_at",
+    )
+    .eq("user_id", userId as never)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function fetchTelegramHomeSummary(initData: string) {
+  const { userId } = await requireLinkedTelegramUser(initData);
+  const [
+    profile,
+    orders,
+    directSellOrders,
+    { data: transactions, error: transactionsError },
+    { data: notifications, error: notificationsError },
+    wallets,
+  ] = await Promise.all([
+    fetchTelegramProfile(userId),
+    fetchTelegramRecentP2pOrders(userId, 6),
+    fetchTelegramRecentDirectSellOrders(userId, 4),
+    supabaseAdmin
+      .from("ledger_entries" as never)
+      .select("id, entry_type, currency, amount, bucket, reference_id, memo, created_at")
+      .eq("user_id", userId as never)
+      .order("created_at", { ascending: false })
+      .limit(6),
+    supabaseAdmin
+      .from("notifications")
+      .select("id, title, body, severity, read_at, created_at")
+      .eq("user_id", userId as never)
+      .order("created_at", { ascending: false })
+      .limit(3),
+    fetchTelegramMainnetWallets(userId, 20),
+  ]);
+  if (transactionsError) throw new Error(transactionsError.message);
+  if (notificationsError) throw new Error(notificationsError.message);
+  return {
+    profile,
+    activeOrders:
+      (orders as { status?: string }[] | null)?.filter((order) =>
+        [
+          "created",
+          "escrow_locked",
+          "payment_pending",
+          "payment_submitted",
+          "release_pending",
+          "disputed",
+        ].includes(String(order.status)),
+      ) ?? [],
+    orders,
+    directSellOrders,
+    directSellPaymentItems: [],
+    transactions: transactions ?? [],
+    notifications: notifications ?? [],
+    wallets,
+  };
+}
+
+export async function fetchTelegramWalletSummary(initData: string) {
+  const { userId } = await requireLinkedTelegramUser(initData);
+  const [
+    profile,
+    wallets,
+    { data: transactions, error: transactionsError },
+    { data: notifications, error: notificationsError },
+  ] = await Promise.all([
+    fetchTelegramProfile(userId),
+    fetchTelegramMainnetWallets(userId, 20),
+    supabaseAdmin
+      .from("ledger_entries" as never)
+      .select("id, entry_type, currency, amount, bucket, reference_id, memo, created_at")
+      .eq("user_id", userId as never)
+      .order("created_at", { ascending: false })
+      .limit(8),
+    supabaseAdmin
+      .from("notifications")
+      .select("id, title, body, severity, read_at, created_at")
+      .eq("user_id", userId as never)
+      .order("created_at", { ascending: false })
+      .limit(3),
+  ]);
+  if (transactionsError) throw new Error(transactionsError.message);
+  if (notificationsError) throw new Error(notificationsError.message);
+  return {
+    profile,
+    transactions: transactions ?? [],
+    notifications: notifications ?? [],
+    wallets,
+  };
+}
+
+export async function fetchTelegramP2pOrders(initData: string) {
+  const { userId } = await requireLinkedTelegramUser(initData);
+  const orders = await fetchTelegramRecentP2pOrders(userId, 12);
+  return { orders };
+}
+
 export async function fetchTelegramMarketplace(initData: string) {
   await requireLinkedTelegramUser(initData);
   const { data: adRows, error } = await supabaseAdmin
@@ -1348,33 +1488,69 @@ export async function fetchTelegramMarketplace(initData: string) {
   }));
 }
 
-export async function fetchTelegramDepositAddress(initData: string) {
-  const { userId } = await requireLinkedTelegramUser(initData);
-  const { data } = await supabaseAdmin
-    .from("wallets")
-    .select("id, name, network, address, assigned_user_id, is_default")
-    .or(`assigned_user_id.eq.${userId},is_default.eq.true` as never)
+async function telegramCompanyWalletHasPurpose(walletId: string, purpose: string) {
+  const { data, error } = await supabaseAdmin
+    .from("wallet_purpose_assignments" as never)
+    .select("wallet_id")
+    .eq("wallet_id", walletId as never)
+    .eq("purpose", purpose as never)
     .eq("is_active", true as never)
-    .order("assigned_user_id", { ascending: false, nullsFirst: false })
-    .order("is_default", { ascending: false })
-    .limit(1);
-  return data?.[0] ?? null;
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function findTelegramCompanyWalletForPurpose(network: string, purpose: string) {
+  const { data, error } = await supabaseAdmin
+    .from("wallets")
+    .select("id, name, network, address, purpose, is_default, priority")
+    .eq("network", network as never)
+    .eq("is_active", true as never)
+    .order("priority", { ascending: false })
+    .order("is_default", { ascending: false });
+  if (error) throw new Error(error.message);
+  for (const wallet of (data ?? []) as Array<{
+    id: string;
+    name?: string | null;
+    network?: string | null;
+    address?: string | null;
+    purpose?: string | null;
+    is_default?: boolean | null;
+    priority?: number | null;
+  }>) {
+    if (wallet.purpose === purpose || (await telegramCompanyWalletHasPurpose(wallet.id, purpose))) {
+      return wallet;
+    }
+  }
+  return null;
+}
+
+export async function fetchTelegramDepositAddress(initData: string) {
+  await requireLinkedTelegramUser(initData);
+  const { data: settings, error } = await supabaseAdmin
+    .from("system_settings")
+    .select("key, value")
+    .in("key", ["active_network"]);
+  if (error) throw new Error(error.message);
+  const settingsMap = Object.fromEntries((settings ?? []).map((row) => [row.key, row.value]));
+  const network = String(settingsMap["active_network"] ?? "trc20-mainnet");
+  return findTelegramCompanyWalletForPurpose(network, "USER_DEPOSIT");
 }
 
 export async function createTelegramDepositRequest(input: { initData: string; amount: number }) {
   const { userId } = await requireLinkedTelegramUser(input.initData);
   if (!Number.isFinite(input.amount) || input.amount <= 0) throw new Error("Enter a valid amount");
 
-  const [{ data: settings }, wallet] = await Promise.all([
-    supabaseAdmin
-      .from("system_settings")
-      .select("key, value")
-      .in("key", ["active_network", "required_confirmations", "deposit_expiry_minutes"]),
-    fetchTelegramDepositAddress(input.initData),
-  ]);
+  const { data: settings, error: settingsError } = await supabaseAdmin
+    .from("system_settings")
+    .select("key, value")
+    .in("key", ["active_network", "required_confirmations", "deposit_expiry_minutes"]);
+  if (settingsError) throw new Error(settingsError.message);
 
-  if (!wallet) throw new Error("No active company deposit wallet is configured");
   const settingsMap = Object.fromEntries((settings ?? []).map((row) => [row.key, row.value]));
+  const activeNetwork = String(settingsMap["active_network"] ?? "trc20-mainnet");
+  const wallet = await findTelegramCompanyWalletForPurpose(activeNetwork, "USER_DEPOSIT");
+  if (!wallet) throw new Error("No active company deposit wallet is configured");
   const requiredConfirmations = Number(settingsMap["required_confirmations"] ?? 16) || 16;
   const expiryMinutes = Number(settingsMap["deposit_expiry_minutes"] ?? 120) || 120;
   const expiresAt = new Date(Date.now() + expiryMinutes * 60_000).toISOString();

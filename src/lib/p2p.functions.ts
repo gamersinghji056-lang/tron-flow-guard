@@ -14,6 +14,7 @@ const createAdInput = z.object({
   maxOrderInr: z.number().positive(),
   paymentMethods: z.array(z.string().min(2)).default(["upi"]),
   paymentMethodId: z.string().uuid().optional(),
+  sourceWalletId: z.string().uuid().optional(),
   terms: z.string().max(1000).optional(),
   isActive: z.boolean().default(true),
 });
@@ -214,6 +215,7 @@ export const createP2pAd = createServerFn({ method: "POST" })
         _terms: data.terms ?? null,
         _is_active: data.isActive,
         _payment_method_id: data.paymentMethodId ?? null,
+        _source_wallet_id: data.sourceWalletId ?? null,
       } as never,
     );
     if (error) throw new Error(error.message);

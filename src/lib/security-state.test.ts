@@ -3038,6 +3038,16 @@ describe("GasFree transfer service safety", () => {
     assert.match(directSell, /findCompanyWalletForPurpose\(activeNetwork, "DIRECT_SELL"\)/);
     assert.match(depositApi, /findCompanyWalletForPurpose\(network, "USER_DEPOSIT"\)/);
     assert.match(directSellApi, /findCompanyWalletForPurpose\(network, "DIRECT_SELL"\)/);
+    const telegramServer = readFileSync(
+      resolve(process.cwd(), "src/lib/telegram.server.ts"),
+      "utf8",
+    );
+    assert.match(telegramServer, /findTelegramCompanyWalletForPurpose\(network, "USER_DEPOSIT"\)/);
+    assert.match(
+      telegramServer,
+      /findTelegramCompanyWalletForPurpose\(activeNetwork, "USER_DEPOSIT"\)/,
+    );
+    assert.doesNotMatch(telegramServer, /assigned_user_id\.eq\.\$\{userId\},is_default\.eq\.true/);
   });
 
   it("keeps production customer and vendor wallet creation Mainnet Standard only", () => {
@@ -3409,5 +3419,115 @@ describe("GasFree transfer service safety", () => {
     assert.match(source, /telegramUserId: user\.id/);
     assert.match(source, /accountType: state\.accountType/);
     assert.doesNotMatch(source, /password.*console\.info|token.*console\.info/i);
+  });
+
+  it("keeps Mini App startup screen data focused and realtime updates targeted", () => {
+    const functions = readFileSync(resolve(process.cwd(), "src/lib/telegram.functions.ts"), "utf8");
+    const server = readFileSync(resolve(process.cwd(), "src/lib/telegram.server.ts"), "utf8");
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+
+    assert.match(functions, /fetchTelegramHomeSummary/);
+    assert.match(functions, /fetchTelegramWalletSummary/);
+    assert.match(functions, /fetchTelegramP2pOrders/);
+    assert.doesNotMatch(functions, /fetchTelegramOverview\(data\.initData\)/);
+    assert.match(server, /export async function fetchTelegramHomeSummary/);
+    assert.doesNotMatch(
+      server.match(
+        /export async function fetchTelegramHomeSummary[\s\S]*?export async function fetchTelegramWalletSummary/,
+      )?.[0] ?? "",
+      /backfillGasfreeCapabilitiesForUser|direct_sell_payment_items|fetchTelegramDepositAddress/,
+    );
+    assert.match(mini, /scheduleTargetedRealtimeRefresh/);
+    assert.doesNotMatch(mini, /refresh\(screenRef\.current\)/);
+    assert.match(mini, /void loadWalletData\(initData, true\)/);
+  });
+
+  it("uses personal wallet balances for Mini App Home and P2P sell-source selection", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
+
+    assert.match(mini, /function personalWalletTotals/);
+    assert.match(mini, /const totalAssets = personalTotals\.usdt/);
+    assert.match(mini, /Wallet balance/);
+    assert.match(mini, /Source wallet/);
+    assert.match(mini, /sourceWalletId: selectedSellAdWallet\.id/);
+    assert.match(p2p, /sourceWalletId: z\.string\(\)\.uuid\(\)\.optional\(\)/);
+    assert.match(p2p, /_source_wallet_id: data\.sourceWalletId \?\? null/);
+  });
+
+  it("wires V17 P2P filter chips as real controls", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    assert.match(mini, /type P2pFilters/);
+    assert.match(mini, /function applyP2pFilters/);
+    assert.match(mini, /filters\.verified/);
+    assert.match(mini, /filters\.upi/);
+    assert.match(mini, /filters\.highCompletion/);
+    assert.match(mini, /filters\.bestRate/);
+    assert.match(mini, /onClick=\{\(\) => toggleFilter\(key\)\}/);
+  });
+
+  it("keeps avatar upload validation human-readable and sends sizeBytes", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const profile = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/profile-security.tsx"),
+      "utf8",
+    );
+    assert.match(mini, /validateProfilePhoto\(file\)/);
+    assert.match(mini, /sizeBytes: file\.size/);
+    assert.match(profile, /PROFILE_PHOTO_MAX_BYTES/);
+    assert.match(profile, /sizeBytes: file\.size/);
+    assert.match(mini, /Array\.isArray\(parsed\)/);
+    assert.match(profile, /profileUploadError/);
+  });
+
+  it("adds local mnemonic QR backup/import and mobile keyboard safety", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    assert.match(mini, /qrToDataUrl\(`wtron:\/\/\$\{revealedPhrase\}`\)/);
+    assert.match(mini, /scanRecoveryPhraseQr/);
+    assert.match(mini, /normalizeRecoveryPhrase/);
+    assert.match(mini, /setImportPhrase\(phrase\)/);
+    assert.match(mini, /visualViewport/);
+    assert.match(mini, /translate-y-full opacity-0/);
+  });
+
+  it("ships shared wallet identity and address-wide P2P reservation SQL", () => {
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260904193000_shared_wallet_identity_p2p_reservations.sql",
+      ),
+      "utf8",
+    );
+    const walletsServer = readFileSync(resolve(process.cwd(), "src/lib/wallets.server.ts"), "utf8");
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.personal_wallet_identities/);
+    assert.match(
+      sql,
+      /CONSTRAINT personal_wallet_identities_network_address_key UNIQUE \(network, address\)/,
+    );
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.personal_wallet_identity_links/);
+    assert.match(sql, /DROP INDEX IF EXISTS public\.user_wallets_active_address_key/);
+    assert.match(
+      sql,
+      /CREATE UNIQUE INDEX IF NOT EXISTS user_wallets_user_active_address_network_key/,
+    );
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.personal_wallet_reservations/);
+    assert.match(sql, /public\.personal_wallet_available_usdt/);
+    assert.match(sql, /assert_and_reserve_personal_wallet_usdt/);
+    assert.match(sql, /source_wallet_identity_id/);
+    assert.match(sql, /p2p_create_ad\(/);
+    assert.match(sql, /CREATE OR REPLACE FUNCTION public\.p2p_update_ad/);
+    assert.match(sql, /CREATE OR REPLACE FUNCTION public\.p2p_set_ad_active/);
+    assert.match(sql, /p2p_create_order_from_ad\(/);
+    assert.match(sql, /release_p2p_ad_wallet_reservation_if_finished/);
+    assert.match(sql, /exposure := _available_usdt \+ COALESCE\(ad\.reserved_usdt, 0\)/);
+    assert.match(sql, /CREATE OR REPLACE FUNCTION public\.p2p_release_escrow/);
+    assert.match(sql, /CREATE OR REPLACE FUNCTION public\.p2p_cancel_order/);
+    assert.match(sql, /ord\.source_wallet_identity_id IS NULL/);
+    assert.match(sql, /release_personal_wallet_reservation\('p2p_order', ord\.id, 'settled'\)/);
+    assert.match(sql, /release_personal_wallet_reservation\('p2p_order', ord\.id, 'cancelled'\)/);
+    assert.match(
+      walletsServer,
+      /Shared wallet linking requires the latest WTRON wallet identity migration/,
+    );
   });
 });
