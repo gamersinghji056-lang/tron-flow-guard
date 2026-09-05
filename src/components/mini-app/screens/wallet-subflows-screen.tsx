@@ -27,7 +27,13 @@ import {
   type MiniIcon,
 } from "@/components/mini-app/crypto-icons";
 import { qrToDataUrl } from "@/lib/mini-app-qr";
-import { formatUsdt, isTronAddress, networkConfig, shortenHash } from "@/lib/chain";
+import {
+  formatUsdt,
+  isTronAddress,
+  networkConfig,
+  shortenHash,
+  type ChainNetwork,
+} from "@/lib/chain";
 import { networkLabelForMini, technicalTextDirection, type MiniT } from "@/lib/mini-i18n";
 import {
   extractTronAddressFromQrPayload,
@@ -87,6 +93,10 @@ function money(value: unknown, currency = "USDT") {
 
 function safeAddress(address?: string | null) {
   return address && /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address) ? address : "";
+}
+
+function supportedWalletNetwork(network: string | null | undefined): ChainNetwork {
+  return network === "trc20-nile" ? "trc20-nile" : "trc20-mainnet";
 }
 
 function copyText(value: string, label = "Copied") {
@@ -742,7 +752,7 @@ export function WalletTransactionDetailScreen({
       </Screen>
     );
   }
-  const network = networkConfig(wallet.network);
+  const network = networkConfig(supportedWalletNetwork(wallet.network));
   const direction = transaction.direction === "in" ? t("received") : t("sent");
   const counterparty = safeAddress(transaction.counterparty_address);
   const from = transaction.direction === "in" ? counterparty : safeAddress(wallet.address);
@@ -843,7 +853,7 @@ export function WalletMoreScreen({
       </Screen>
     );
   }
-  const network = networkConfig(wallet.network);
+  const network = networkConfig(supportedWalletNetwork(wallet.network));
   const address = safeAddress(wallet.address);
   return (
     <Screen title={t("more")} subtitle={wallet.name ?? t("selectedWallet")}>
@@ -1444,7 +1454,7 @@ export function SendScreen({
   const [sendStep, setSendStep] = useState<"recipient" | "amount" | "confirm">("recipient");
   const [scanBusy, setScanBusy] = useState(false);
   const enabled = onChainSendEnabled(wallet);
-  const network = networkConfig(wallet?.network);
+  const network = networkConfig(supportedWalletNetwork(wallet?.network));
   const available =
     asset === "USDT" ? walletDisplayBalance(wallet) : Number(wallet?.onchain_trx_balance ?? 0);
   const gasfreeMode = mode === "gasfree" && wallet?.wallet_role === "gasfree";
@@ -2566,7 +2576,9 @@ function WalletCard({
   );
 }
 function NetworkBadge({ wallet, t }: { wallet: WalletRow; t?: MiniT }) {
-  const network = t ? networkLabelForMini(wallet.network, t) : networkConfig(wallet.network).label;
+  const network = t
+    ? networkLabelForMini(wallet.network, t)
+    : networkConfig(supportedWalletNetwork(wallet.network)).label;
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs">
       <TronIcon className="h-4 w-4" />

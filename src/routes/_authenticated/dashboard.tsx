@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import QRCode from "qrcode";
@@ -83,7 +84,7 @@ interface PersonalWalletRow {
   id: string;
   name: string;
   address: string;
-  network: ChainNetwork;
+  network: ChainNetwork | string | null;
   balance: number;
   onchain_balance?: number | null;
   onchain_trx_balance?: number | null;
@@ -96,6 +97,7 @@ function useDeposits(userId: string | undefined) {
   const [deposits, setDeposits] = useState<DepositRow[]>([]);
   const [wallets, setWallets] = useState<Record<string, WalletRow>>({});
   const [personalWallets, setPersonalWallets] = useState<PersonalWalletRow[]>([]);
+  const [preservedWallets, setPreservedWallets] = useState<PersonalWalletRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -118,8 +120,7 @@ function useDeposits(userId: string | undefined) {
             .select(
               "id, name, address, network, balance, onchain_balance, onchain_trx_balance, custody, wallet_type, wallet_role",
             )
-            .eq("is_archived", false as never)
-            .eq("network", DEFAULT_NETWORK as never),
+            .eq("is_archived", false as never),
         ]);
       if (!active) return;
       setDeposits(
@@ -131,18 +132,21 @@ function useDeposits(userId: string | undefined) {
       );
       setWallets(Object.fromEntries((walletRows ?? []).map((w) => [w.id, w as WalletRow])));
       if (personalError) toast.error("Unable to load personal wallet balance.");
-      setPersonalWallets(
-        ((personalRows ?? []) as unknown as PersonalWalletRow[])
-          .filter((wallet) => wallet.wallet_type !== "gasfree" && wallet.wallet_role !== "gasfree")
-          .map((wallet) => ({
-            ...wallet,
-            balance: Number(wallet.balance ?? 0),
-            onchain_balance:
-              wallet.onchain_balance == null ? null : Number(wallet.onchain_balance ?? 0),
-            onchain_trx_balance:
-              wallet.onchain_trx_balance == null ? null : Number(wallet.onchain_trx_balance ?? 0),
-          })),
+      const normalizedPersonalRows = ((personalRows ?? []) as unknown as PersonalWalletRow[]).map(
+        (wallet) => ({
+          ...wallet,
+          balance: Number(wallet.balance ?? 0),
+          onchain_balance:
+            wallet.onchain_balance == null ? null : Number(wallet.onchain_balance ?? 0),
+          onchain_trx_balance:
+            wallet.onchain_trx_balance == null ? null : Number(wallet.onchain_trx_balance ?? 0),
+        }),
       );
+      const nonGasfreeRows = normalizedPersonalRows.filter(
+        (wallet) => wallet.wallet_type !== "gasfree" && wallet.wallet_role !== "gasfree",
+      );
+      setPersonalWallets(nonGasfreeRows.filter((wallet) => wallet.network === DEFAULT_NETWORK));
+      setPreservedWallets(nonGasfreeRows.filter((wallet) => wallet.network !== DEFAULT_NETWORK));
       setLoading(false);
     }
 
@@ -163,7 +167,7 @@ function useDeposits(userId: string | undefined) {
     };
   }, [userId]);
 
-  return { deposits, wallets, personalWallets, loading, reload: () => void 0 };
+  return { deposits, wallets, personalWallets, preservedWallets, loading, reload: () => void 0 };
 }
 
 function HomeAction({
@@ -185,6 +189,23 @@ function HomeAction({
   );
 }
 
+function Badge({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex w-fit items-center rounded-md border px-2 py-1 text-xs text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-card/70 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mono mt-1 text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
 function Countdown({ expiresAt }: { expiresAt: string }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -203,7 +224,7 @@ function Countdown({ expiresAt }: { expiresAt: string }) {
 
 function DashboardPage() {
   const { user, profile } = useAuth();
-  const { deposits, wallets, personalWallets, loading } = useDeposits(user?.id);
+  const { deposits, wallets, personalWallets, preservedWallets, loading } = useDeposits(user?.id);
   const createDeposit = useServerFn(createDepositRequest);
   const [amount, setAmount] = useState("25");
   const [pending, setPending] = useState(false);
@@ -266,6 +287,14 @@ function DashboardPage() {
     (sum, wallet) => sum + Number(wallet.onchain_trx_balance ?? 0),
     0,
   );
+  const preservedUsdt = preservedWallets.reduce(
+    (sum, wallet) => sum + walletDisplayBalance(wallet),
+    0,
+  );
+  const preservedTrx = preservedWallets.reduce(
+    (sum, wallet) => sum + Number(wallet.onchain_trx_balance ?? 0),
+    0,
+  );
 
   return (
     <div className="mx-auto max-w-[430px] space-y-[23px] md:max-w-7xl">
@@ -294,6 +323,25 @@ function DashboardPage() {
           <StatCard label="WTRON balance" value={`${formatUsdt(profile?.balance)} USDT`} />
           <StatCard label="Wallet balance" value={`${formatUsdt(personalUsdt)} USDT`} />
         </div>
+        {preservedWallets.length ? (
+          <div className="panel mt-[10px] rounded-[17px] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-semibold">Preserved wallet data</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {preservedWallets.length} historical wallet
+                  {preservedWallets.length === 1 ? "" : "s"} visible read-only. These balances are
+                  excluded from Mainnet portfolio totals.
+                </p>
+              </div>
+              <Badge>READ ONLY</Badge>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Metric label="Historical USDT" value={`${formatUsdt(preservedUsdt)} USDT`} />
+              <Metric label="Historical TRX" value={`${formatUsdt(preservedTrx)} TRX`} />
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <div className="grid gap-[10px] sm:grid-cols-2 lg:grid-cols-4">

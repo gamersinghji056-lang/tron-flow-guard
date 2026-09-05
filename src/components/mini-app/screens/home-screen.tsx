@@ -59,6 +59,9 @@ export interface HomeAdRow {
 
 export interface HomeWalletRow {
   id: string;
+  name?: string | null;
+  address?: string | null;
+  network?: string | null;
   balance?: number | string | null;
   onchain_balance?: number | string | null;
   onchain_trx_balance?: number | string | null;
@@ -214,6 +217,7 @@ export default function HomeScreen({
   transactions,
   ads,
   wallet,
+  preservedWallets = [],
   onNavigate,
 }: {
   vendorMode?: boolean;
@@ -223,11 +227,17 @@ export default function HomeScreen({
   transactions: HomeTransactionRow[];
   ads: HomeAdRow[];
   wallet: HomeWalletRow | null;
+  preservedWallets?: HomeWalletRow[];
   t: MiniT;
   onNavigate: (screen: HomeTargetScreen) => Promise<void>;
 }) {
   const walletUsdt = walletDisplayBalance(wallet);
   const walletTrx = Number(wallet?.onchain_trx_balance ?? 0);
+  const preservedUsdt = preservedWallets.reduce((sum, row) => sum + walletDisplayBalance(row), 0);
+  const preservedTrx = preservedWallets.reduce(
+    (sum, row) => sum + Number(row.onchain_trx_balance ?? 0),
+    0,
+  );
   if (vendorMode) {
     return (
       <V17Screen
@@ -314,6 +324,25 @@ export default function HomeScreen({
           <StatTile label="WTRON balance" value={`${v17Money(profile?.balance)} U`} />
           <StatTile label="Wallet balance" value={`${v17Money(walletUsdt)} U`} />
         </div>
+        {preservedWallets.length ? (
+          <V17Surface className="p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-semibold">Preserved wallet data</p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                  {preservedWallets.length} historical wallet
+                  {preservedWallets.length === 1 ? "" : "s"} visible read-only. These balances are
+                  not included in Mainnet portfolio totals.
+                </p>
+              </div>
+              <V17StatusPill label="READ ONLY" tone="warning" />
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <StatTile label="Historical USDT" value={`${v17Money(preservedUsdt)} U`} />
+              <StatTile label="Historical TRX" value={`${v17Money(preservedTrx, "TRX")} TRX`} />
+            </div>
+          </V17Surface>
+        ) : null}
       </section>
       <V17Section title="Active Orders" action="View all" onAction={() => onNavigate("orders")}>
         {orders.length ? (

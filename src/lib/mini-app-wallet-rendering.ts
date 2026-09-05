@@ -12,10 +12,16 @@ export interface MiniAppWalletRenderRow extends WalletBalanceLike {
   onchain_trx_balance?: number | string | null;
 }
 
+export function partitionMiniAppWallets<T extends MiniAppWalletRenderRow>(wallets: T[]) {
+  const activeWallets = wallets.filter((wallet) => wallet.is_archived !== true);
+  return {
+    operationalWallets: activeWallets.filter((wallet) => wallet.network === "trc20-mainnet"),
+    preservedWallets: activeWallets.filter((wallet) => wallet.network !== "trc20-mainnet"),
+  };
+}
+
 export function visibleMiniAppMainnetWallets<T extends MiniAppWalletRenderRow>(wallets: T[]): T[] {
-  return wallets.filter(
-    (wallet) => wallet.network === "trc20-mainnet" && wallet.is_archived !== true,
-  );
+  return partitionMiniAppWallets(wallets).operationalWallets;
 }
 
 export function selectVisibleMiniAppWallet<T extends MiniAppWalletRenderRow>(

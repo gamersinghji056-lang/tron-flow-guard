@@ -51,9 +51,10 @@ interface WalletRow {
   id: string;
   name: string;
   address: string;
-  network: ChainNetwork;
+  network: ChainNetwork | string | null;
   balance: number;
   onchain_balance?: number | null;
+  onchain_trx_balance?: number | null;
   is_default: boolean;
   created_at: string;
   wallet_type?: "standard" | "gasfree";
@@ -71,6 +72,7 @@ function WalletsPage() {
   const setPassword = useServerFn(setWalletTransactionPassword);
 
   const [wallets, setWallets] = useState<WalletRow[]>([]);
+  const [preservedWallets, setPreservedWallets] = useState<WalletRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -94,20 +96,22 @@ function WalletsPage() {
     const { data, error } = await supabase
       .from("user_wallets" as never)
       .select(
-        "id, name, address, network, balance, onchain_balance, is_default, created_at, wallet_type, custody, backup_status, gas_sponsorship_status",
+        "id, name, address, network, balance, onchain_balance, onchain_trx_balance, is_default, created_at, wallet_type, custody, backup_status, gas_sponsorship_status",
       )
       .eq("is_archived", false as never)
-      .eq("network", DEFAULT_NETWORK as never)
       .order("selected_at", { ascending: false, nullsFirst: false })
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true });
     if (error) toast.error("Unable to load wallet.");
-    setWallets(
-      ((data ?? []) as unknown as WalletRow[]).map((row) => ({
-        ...row,
-        balance: Number(row.balance ?? 0),
-      })),
-    );
+    const walletRows = ((data ?? []) as unknown as WalletRow[]).map((row) => ({
+      ...row,
+      balance: Number(row.balance ?? 0),
+      onchain_balance: row.onchain_balance == null ? null : Number(row.onchain_balance ?? 0),
+      onchain_trx_balance:
+        row.onchain_trx_balance == null ? null : Number(row.onchain_trx_balance ?? 0),
+    }));
+    setWallets(walletRows.filter((wallet) => wallet.network === DEFAULT_NETWORK));
+    setPreservedWallets(walletRows.filter((wallet) => wallet.network !== DEFAULT_NETWORK));
     setLoading(false);
   }, []);
 
@@ -382,9 +386,13 @@ function WalletsPage() {
         ) : wallets.length === 0 ? (
           <div className="grid place-items-center gap-3 p-12 text-center">
             <Wallet2 className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">No personal wallet yet</p>
+            <p className="font-medium">
+              {preservedWallets.length ? "No active Mainnet wallet yet" : "No personal wallet yet"}
+            </p>
             <p className="text-sm text-muted-foreground">
-              Create a standard wallet or import an existing recovery phrase.
+              {preservedWallets.length
+                ? "Your previous wallet data is preserved below. Create or import a Mainnet wallet to use current WTRON transfers."
+                : "Create a standard wallet or import an existing recovery phrase."}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => setCreateOpen(true)}>CREATE WALLET</Button>
@@ -396,7 +404,7 @@ function WalletsPage() {
         ) : (
           <div className="divide-y">
             {wallets.map((wallet) => {
-              const config = networkConfig(wallet.network);
+              const config = networkConfig(wallet.network as ChainNetwork);
               const active = wallet.id === activeWallet?.id;
               const walletBalance = walletDisplayBalance(wallet);
               return (
@@ -471,6 +479,24 @@ function WalletsPage() {
           </div>
         )}
       </section>
+
+      {preservedWallets.length ? (
+        <section className="panel overflow-hidden rounded-[17px]">
+          <div className="border-b border-[#222837] px-4 py-3">
+            <h2 className="text-[13px] font-semibold">Preserved / Historical Wallets</h2>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              These active legacy wallet records remain visible for your records. They are excluded
+              from Mainnet portfolio totals and cannot be used for current WTRON send, receive, P2P,
+              GasFree, or default wallet selection.
+            </p>
+          </div>
+          <div className="divide-y">
+            {preservedWallets.map((wallet) => (
+              <PreservedWalletRow key={wallet.id} wallet={wallet} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -658,5 +684,53 @@ function Badge({ children }: { children: React.ReactNode }) {
     <span className="inline-flex w-fit items-center rounded-md border px-2 py-1 text-xs text-muted-foreground">
       {children}
     </span>
+  );
+}
+
+function preservedNetworkLabel(wallet: WalletRow) {
+  if (!wallet.network) return "Legacy / Unclassified Network";
+  try {
+    return networkConfig(wallet.network as ChainNetwork).label;
+  } catch {
+    return String(wallet.network);
+  }
+}
+
+function formatWalletDate(value: string | null | undefined) {
+  if (!value) return "Unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function PreservedWalletRow({ wallet }: { wallet: WalletRow }) {
+  return (
+    <div className="grid gap-3 px-5 py-4 text-left md:grid-cols-[1.2fr_.8fr_.8fr_.8fr]">
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-medium">{wallet.name}</p>
+          <Badge>READ ONLY</Badge>
+        </div>
+        <p className="mono mt-1 break-all text-xs text-muted-foreground" title={wallet.address}>
+          {wallet.address}
+        </p>
+      </div>
+      <div className="text-sm">
+        <p>{preservedNetworkLabel(wallet)}</p>
+        <p className="text-xs text-muted-foreground">{wallet.custody ?? "personal"}</p>
+      </div>
+      <div className="text-sm">
+        <p className="mono">{formatUsdt(walletDisplayBalance(wallet))} USDT</p>
+        <p className="mono text-xs text-muted-foreground">
+          {formatUsdt(wallet.onchain_trx_balance)} TRX
+        </p>
+      </div>
+      <div className="text-sm">
+        <p>{wallet.wallet_type === "gasfree" ? "GASFREE" : "STANDARD"}</p>
+        <p className="text-xs text-muted-foreground">
+          Created {formatWalletDate(wallet.created_at)}
+        </p>
+      </div>
+    </div>
   );
 }

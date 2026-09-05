@@ -6,6 +6,7 @@ import {
   V17MetricGrid,
   V17Screen,
   V17Section,
+  V17StatusPill,
   V17Surface,
 } from "@/components/mini-app/shared/v17-primitives";
 import { v17Money } from "@/components/mini-app/shared/v17-format";
@@ -17,7 +18,7 @@ export interface MiniWalletRow {
   id: string;
   name?: string | null;
   address?: string | null;
-  network?: "trc20-mainnet" | "trc20-nile" | null;
+  network?: "trc20-mainnet" | "trc20-nile" | string | null;
   wallet_type?: string | null;
   onchain_balance?: number | string | null;
   onchain_usdt_balance?: number | string | null;
@@ -25,6 +26,7 @@ export interface MiniWalletRow {
   backup_status?: string | null;
   gas_sponsorship_status?: string | null;
   is_default?: boolean | null;
+  created_at?: string | null;
 }
 
 type WalletTargetScreen =
@@ -69,6 +71,52 @@ function NetworkBadge({ wallet, t }: { wallet: MiniWalletRow; t: MiniT }) {
       <TronIcon className="h-4 w-4" />
       {networkLabelForMini(wallet.network, t)} {(wallet.wallet_type ?? "standard").toUpperCase()}
     </span>
+  );
+}
+
+function preservedNetworkLabel(wallet: MiniWalletRow, t: MiniT) {
+  if (!wallet.network) return "Legacy / Unclassified Network";
+  return networkLabelForMini(wallet.network, t);
+}
+
+function formatWalletDate(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function PreservedWalletCard({ wallet, t }: { wallet: MiniWalletRow; t: MiniT }) {
+  const created = formatWalletDate(wallet.created_at);
+  return (
+    <div className="rounded-[17px] border border-[#222837] bg-[#0f1219] p-[14px]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-semibold text-slate-100">{wallet.name ?? "Wallet"}</p>
+          <p
+            className="mono mt-1 break-all text-[10px] leading-snug text-slate-500"
+            dir={technicalTextDirection()}
+            title={wallet.address ?? undefined}
+          >
+            {wallet.address ?? "Address unavailable"}
+          </p>
+        </div>
+        <V17StatusPill label="READ ONLY" tone="muted" />
+      </div>
+      <V17MetricGrid
+        items={[
+          ["Original network", preservedNetworkLabel(wallet, t)],
+          [t("walletType"), (wallet.wallet_type ?? "standard").toUpperCase()],
+          ["USDT balance", `${v17Money(walletDisplayBalance(wallet))} USDT`],
+          ["TRX balance", `${v17Money(Number(wallet.onchain_trx_balance ?? 0), "TRX")} TRX`],
+          ...(created ? ([["Created", created]] as [string, string][]) : []),
+        ]}
+      />
+      <p className="mt-3 text-[10.5px] leading-relaxed text-slate-500">
+        Preserved wallet data is visible for your records, but it is not eligible for Mainnet send,
+        receive, P2P, GasFree, or active-wallet selection.
+      </p>
+    </div>
   );
 }
 
@@ -184,12 +232,14 @@ function WalletSummary({
 
 export default function WalletScreen({
   wallets,
+  preservedWallets = [],
   selectedWallet,
   t,
   onNavigate,
   onSelect,
 }: {
   wallets: MiniWalletRow[];
+  preservedWallets?: MiniWalletRow[];
   selectedWallet: MiniWalletRow | null;
   t: MiniT;
   onNavigate: (screen: WalletTargetScreen) => Promise<void>;
@@ -219,6 +269,19 @@ export default function WalletScreen({
             </Button>
           </div>
         </div>
+        {preservedWallets.length ? (
+          <V17Section title="Preserved / Historical Wallets">
+            <div className="mb-3 rounded-[17px] border border-[#22304a] bg-[#101722] p-[14px] text-[11px] leading-relaxed text-slate-400">
+              Your previous wallet data is preserved below. Create/import a Mainnet wallet to use
+              current WTRON transfers.
+            </div>
+            <div className="space-y-3">
+              {preservedWallets.map((wallet) => (
+                <PreservedWalletCard key={wallet.id} wallet={wallet} t={t} />
+              ))}
+            </div>
+          </V17Section>
+        ) : null}
       </V17Screen>
     );
   }
@@ -274,6 +337,19 @@ export default function WalletScreen({
           onBackup={() => onNavigate("wallet-backup")}
         />
       </V17Section>
+      {preservedWallets.length ? (
+        <V17Section title="Preserved / Historical Wallets">
+          <div className="mb-3 rounded-[17px] border border-[#22304a] bg-[#101722] p-[14px] text-[11px] leading-relaxed text-slate-400">
+            These wallets remain visible for records only. They are excluded from Mainnet portfolio
+            totals and cannot be used for current WTRON transfers.
+          </div>
+          <div className="space-y-3">
+            {preservedWallets.map((wallet) => (
+              <PreservedWalletCard key={wallet.id} wallet={wallet} t={t} />
+            ))}
+          </div>
+        </V17Section>
+      ) : null}
     </V17Screen>
   );
 }

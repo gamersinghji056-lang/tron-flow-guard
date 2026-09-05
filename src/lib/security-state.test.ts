@@ -97,6 +97,7 @@ import {
 } from "./wallet-state.ts";
 import {
   miniAppPersonalWalletTotals,
+  partitionMiniAppWallets,
   selectVisibleMiniAppWallet,
   visibleMiniAppMainnetWallets,
 } from "./mini-app-wallet-rendering.ts";
@@ -3098,7 +3099,12 @@ describe("GasFree transfer service safety", () => {
       "utf8",
     );
 
-    assert.match(walletIndex, /\.eq\("network", DEFAULT_NETWORK as never\)/);
+    assert.match(walletIndex, /network: DEFAULT_NETWORK/);
+    assert.match(
+      walletIndex,
+      /walletRows\.filter\(\(wallet\) => wallet\.network === DEFAULT_NETWORK\)/,
+    );
+    assert.match(walletIndex, /preservedWallets/);
     assert.match(walletIndex, /network: DEFAULT_NETWORK/);
     assert.match(walletIndex, /walletType: "standard"/);
     assert.match(walletIndex, /networkConfirmed: true/);
@@ -3113,7 +3119,15 @@ describe("GasFree transfer service safety", () => {
     assert.match(miniApp, /networkConfirmed: true/);
     assert.match(miniApp, /visibleMiniAppMainnetWallets/);
     assert.doesNotMatch(miniApp, /Create Nile Test Wallet|NetworkPicker|TypeOption/);
-    assert.match(telegramServer, /\.eq\("network", "trc20-mainnet" as never\)/);
+    assert.match(telegramServer, /partitionTelegramWalletRows/);
+    assert.match(
+      telegramServer,
+      /wallets: wallets\.filter\(\(wallet\) => wallet\.network === "trc20-mainnet"\)/,
+    );
+    assert.match(
+      telegramServer,
+      /preservedWallets: wallets\.filter\(\(wallet\) => wallet\.network !== "trc20-mainnet"\)/,
+    );
   });
 
   it("soft-archives user wallets only after balance and pending-send safety checks", () => {
@@ -3539,7 +3553,7 @@ describe("GasFree transfer service safety", () => {
   it("renders visible Mainnet wallet fixtures consistently in the Mini App model", () => {
     const makeWallet = (
       id: string,
-      network: "trc20-mainnet" | "trc20-nile",
+      network: "trc20-mainnet" | "trc20-nile" | null,
       usdt: number,
       extra: Partial<Parameters<typeof visibleMiniAppMainnetWallets>[0][number]> = {},
     ) => ({
@@ -3563,18 +3577,80 @@ describe("GasFree transfer service safety", () => {
     ];
     const historicalOnly = [
       makeWallet("old-nile-0", "trc20-nile", 10),
-      makeWallet("old-nile-1", "trc20-nile", 20),
+      makeWallet("old-legacy-1", null, 20),
     ];
+    const sixMainnetPartitions = partitionMiniAppWallets(sixMainnet);
+    const mixedPartitions = partitionMiniAppWallets(mixed);
+    const historicalOnlyPartitions = partitionMiniAppWallets(historicalOnly);
 
     assert.equal(visibleMiniAppMainnetWallets(sixMainnet).length, 6);
     assert.equal(visibleMiniAppMainnetWallets(mixed).length, 4);
     assert.equal(visibleMiniAppMainnetWallets(historicalOnly).length, 0);
+    assert.equal(sixMainnetPartitions.operationalWallets.length, 6);
+    assert.equal(sixMainnetPartitions.preservedWallets.length, 0);
+    assert.equal(
+      sixMainnetPartitions.operationalWallets.length + sixMainnetPartitions.preservedWallets.length,
+      6,
+    );
+    assert.equal(mixedPartitions.operationalWallets.length, 4);
+    assert.equal(mixedPartitions.preservedWallets.length, 2);
+    assert.equal(
+      mixedPartitions.operationalWallets.length + mixedPartitions.preservedWallets.length,
+      6,
+    );
+    assert.equal(historicalOnlyPartitions.operationalWallets.length, 0);
+    assert.equal(historicalOnlyPartitions.preservedWallets.length, 2);
+    assert.equal(
+      historicalOnlyPartitions.operationalWallets.length +
+        historicalOnlyPartitions.preservedWallets.length,
+      2,
+    );
     assert.equal(selectVisibleMiniAppWallet(sixMainnet)?.id, "six-0");
     assert.equal(selectVisibleMiniAppWallet(mixed, "mixed-2")?.id, "mixed-2");
     assert.equal(selectVisibleMiniAppWallet(historicalOnly), null);
     assert.equal(miniAppPersonalWalletTotals(sixMainnet).visibleCount, 6);
     assert.equal(miniAppPersonalWalletTotals(mixed).visibleCount, 4);
     assert.equal(miniAppPersonalWalletTotals(historicalOnly).visibleCount, 0);
+    assert.equal(miniAppPersonalWalletTotals(historicalOnly).usdt, 0);
+  });
+
+  it("renders preserved wallets read-only without operational controls", () => {
+    const walletScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/wallet-screen.tsx"),
+      "utf8",
+    );
+    const homeScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/home-screen.tsx"),
+      "utf8",
+    );
+    const webWallet = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/wallet.index.tsx"),
+      "utf8",
+    );
+    const dashboard = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/dashboard.tsx"),
+      "utf8",
+    );
+    const preservedCard = walletScreen.slice(
+      walletScreen.indexOf("function PreservedWalletCard"),
+      walletScreen.indexOf("function WalletCard"),
+    );
+
+    assert.match(walletScreen, /preservedWallets\?: MiniWalletRow\[\]/);
+    assert.match(walletScreen, /Preserved \/ Historical Wallets/);
+    assert.match(walletScreen, /Legacy \/ Unclassified Network/);
+    assert.match(walletScreen, /READ ONLY/);
+    assert.doesNotMatch(preservedCard, /<Button/);
+    assert.doesNotMatch(preservedCard, /onClick/);
+    assert.match(homeScreen, /preservedWallets\?: HomeWalletRow\[\]/);
+    assert.match(homeScreen, /Preserved wallet data/);
+    assert.match(webWallet, /const \[preservedWallets, setPreservedWallets\]/);
+    assert.doesNotMatch(webWallet, /\.eq\("network", DEFAULT_NETWORK/);
+    assert.match(webWallet, /Preserved \/ Historical Wallets/);
+    assert.match(webWallet, /Legacy \/ Unclassified Network/);
+    assert.match(dashboard, /const \[preservedWallets, setPreservedWallets\]/);
+    assert.doesNotMatch(dashboard, /\.eq\("network", DEFAULT_NETWORK/);
+    assert.match(dashboard, /Preserved wallet data/);
   });
 
   it("wires V17 P2P filter chips as real controls", () => {
@@ -3629,7 +3705,7 @@ describe("GasFree transfer service safety", () => {
       "utf8",
     );
     assert.match(walletSubflows, /qrToDataUrl\(`wtron:\/\/\$\{revealedPhrase\}`\)/);
-    assert.match(mini, /scanRecoveryPhraseQr/);
+    assert.match(mini, /scanImportRecoveryPhrase/);
     assert.match(mini, /normalizeRecoveryPhrase/);
     assert.match(mini, /setImportPhrase\(phrase\)/);
     assert.match(mini, /visualViewport/);

@@ -341,6 +341,7 @@ interface Overview {
   transactions?: TransactionRow[];
   notifications?: NotificationRow[];
   wallets?: WalletRow[];
+  preservedWallets?: WalletRow[];
 }
 
 export interface OrderRow {
@@ -470,7 +471,7 @@ export interface WalletRow {
   id: string;
   name?: string | null;
   address?: string | null;
-  network?: ChainNetwork | null;
+  network?: ChainNetwork | string | null;
   balance?: number | string | null;
   onchain_balance?: number | string | null;
   onchain_trx_balance?: number | string | null;
@@ -486,6 +487,7 @@ export interface WalletRow {
   wallet_role?: string | null;
   parent_wallet_id?: string | null;
   wallet_group_id?: string | null;
+  created_at?: string | null;
 }
 
 export interface WalletResourceSnapshot {
@@ -1153,6 +1155,10 @@ function friendlyMiniError(error: unknown, fallback: string) {
   return message || fallback;
 }
 
+function supportedWalletNetwork(network: string | null | undefined): ChainNetwork {
+  return network === "trc20-nile" ? "trc20-nile" : "trc20-mainnet";
+}
+
 function screenTitle(screen: MiniScreen, t: MiniT) {
   const titles: Partial<Record<MiniScreen, string>> = {
     home: t("home"),
@@ -1391,6 +1397,7 @@ function TelegramMiniApp() {
 
   const profile = overview?.profile ?? null;
   const wallets = visibleMiniAppMainnetWallets(overview?.wallets ?? []);
+  const preservedWallets = overview?.preservedWallets ?? [];
   const selectedWallet = selectActiveWallet(wallets, selectedWalletId);
   const selectedGasfreeWallet =
     selectedWallet?.wallet_role === "gasfree"
@@ -2159,7 +2166,7 @@ function TelegramMiniApp() {
           provider: "gasfree_open_api",
           status: "PROVIDER_ERROR",
           reason: t("gasfreeCheckFailedMessage"),
-          network: selectedGasfreeWallet.network ?? "trc20-mainnet",
+          network: supportedWalletNetwork(selectedGasfreeWallet.network),
           asset: "USDT",
           configured: false,
           serviceProviderConfigured: false,
@@ -3192,6 +3199,7 @@ function TelegramMiniApp() {
               transactions={overview?.transactions ?? []}
               ads={ads}
               wallet={selectedWallet}
+              preservedWallets={preservedWallets}
               t={t}
               onNavigate={navigate}
             />
@@ -3199,6 +3207,7 @@ function TelegramMiniApp() {
           {screen === "wallet" ? (
             <WalletScreen
               wallets={wallets}
+              preservedWallets={preservedWallets}
               selectedWallet={selectedWallet}
               t={t}
               onNavigate={navigate}

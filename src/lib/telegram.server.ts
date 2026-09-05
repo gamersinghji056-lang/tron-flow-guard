@@ -1232,7 +1232,7 @@ export async function fetchTelegramOverview(initData: string) {
     { data: directSellPaymentItems },
     { data: transactions },
     { data: notifications },
-    { data: wallets },
+    { data: walletRows },
   ] = await Promise.all([
     supabaseAdmin
       .from("profiles")
@@ -1276,15 +1276,15 @@ export async function fetchTelegramOverview(initData: string) {
     supabaseAdmin
       .from("user_wallets" as never)
       .select(
-        "id, name, address, network, balance, onchain_balance, onchain_trx_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, gasfree_capability_checked_at, gasfree_capability_error, gasfree_capability_metadata, wallet_role, parent_wallet_id, wallet_group_id",
+        "id, name, address, network, balance, onchain_balance, onchain_trx_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, gasfree_capability_checked_at, gasfree_capability_error, gasfree_capability_metadata, wallet_role, parent_wallet_id, wallet_group_id, created_at",
       )
       .eq("user_id", userId as never)
       .eq("is_archived", false as never)
-      .eq("network", "trc20-mainnet" as never)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true })
-      .limit(20),
+      .limit(40),
   ]);
+  const { wallets, preservedWallets } = partitionTelegramWalletRows(walletRows ?? []);
 
   return {
     profile,
@@ -1304,7 +1304,8 @@ export async function fetchTelegramOverview(initData: string) {
     directSellPaymentItems: directSellPaymentItems ?? [],
     transactions: transactions ?? [],
     notifications: notifications ?? [],
-    wallets: wallets ?? [],
+    wallets,
+    preservedWallets,
   };
 }
 
@@ -1318,20 +1319,30 @@ async function fetchTelegramProfile(userId: string) {
   return data;
 }
 
-async function fetchTelegramMainnetWallets(userId: string, limit = 20) {
+function partitionTelegramWalletRows<T extends { network?: string | null }>(wallets: T[]) {
+  return {
+    wallets: wallets.filter((wallet) => wallet.network === "trc20-mainnet"),
+    preservedWallets: wallets.filter((wallet) => wallet.network !== "trc20-mainnet"),
+  };
+}
+
+async function fetchTelegramWalletRows(userId: string, limit = 40) {
   const { data, error } = await supabaseAdmin
     .from("user_wallets" as never)
     .select(
-      "id, name, address, network, balance, onchain_balance, onchain_trx_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, gasfree_capability_checked_at, gasfree_capability_error, gasfree_capability_metadata, wallet_role, parent_wallet_id, wallet_group_id",
+      "id, name, address, network, balance, onchain_balance, onchain_trx_balance, onchain_checked_at, is_default, wallet_type, custody, backup_status, gas_sponsorship_status, gasfree_capability_checked_at, gasfree_capability_error, gasfree_capability_metadata, wallet_role, parent_wallet_id, wallet_group_id, created_at",
     )
     .eq("user_id", userId as never)
     .eq("is_archived", false as never)
-    .eq("network", "trc20-mainnet" as never)
     .order("is_default", { ascending: false })
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
   return data ?? [];
+}
+
+async function fetchTelegramPartitionedWallets(userId: string, limit = 40) {
+  return partitionTelegramWalletRows(await fetchTelegramWalletRows(userId, limit));
 }
 
 async function fetchTelegramRecentP2pOrders(userId: string, limit = 8) {
@@ -1366,7 +1377,7 @@ export async function fetchTelegramHomeSummary(initData: string) {
     directSellOrders,
     { data: transactions, error: transactionsError },
     { data: notifications, error: notificationsError },
-    wallets,
+    walletPartitions,
   ] = await Promise.all([
     fetchTelegramProfile(userId),
     fetchTelegramRecentP2pOrders(userId, 6),
@@ -1383,7 +1394,7 @@ export async function fetchTelegramHomeSummary(initData: string) {
       .eq("user_id", userId as never)
       .order("created_at", { ascending: false })
       .limit(3),
-    fetchTelegramMainnetWallets(userId, 20),
+    fetchTelegramPartitionedWallets(userId, 40),
   ]);
   if (transactionsError) throw new Error(transactionsError.message);
   if (notificationsError) throw new Error(notificationsError.message);
@@ -1405,7 +1416,8 @@ export async function fetchTelegramHomeSummary(initData: string) {
     directSellPaymentItems: [],
     transactions: transactions ?? [],
     notifications: notifications ?? [],
-    wallets,
+    wallets: walletPartitions.wallets,
+    preservedWallets: walletPartitions.preservedWallets,
   };
 }
 
@@ -1413,12 +1425,12 @@ export async function fetchTelegramWalletSummary(input: TelegramContextInput) {
   const { userId } = await resolveLinkedTelegramContext(input);
   const [
     profile,
-    wallets,
+    walletPartitions,
     { data: transactions, error: transactionsError },
     { data: notifications, error: notificationsError },
   ] = await Promise.all([
     fetchTelegramProfile(userId),
-    fetchTelegramMainnetWallets(userId, 20),
+    fetchTelegramPartitionedWallets(userId, 40),
     supabaseAdmin
       .from("ledger_entries" as never)
       .select("id, entry_type, currency, amount, bucket, reference_id, memo, created_at")
@@ -1438,7 +1450,8 @@ export async function fetchTelegramWalletSummary(input: TelegramContextInput) {
     profile,
     transactions: transactions ?? [],
     notifications: notifications ?? [],
-    wallets,
+    wallets: walletPartitions.wallets,
+    preservedWallets: walletPartitions.preservedWallets,
   };
 }
 
