@@ -186,7 +186,7 @@ export function verifyTelegramLaunch(initData: string): VerifiedTelegramInitData
   });
 }
 
-export async function readTelegramAccount(initData: string) {
+export async function readTelegramAccount(initData: string, options?: { touchLastSeen?: boolean }) {
   const verified = verifyTelegramLaunch(initData);
   const { data } = await supabaseAdmin
     .from("telegram_accounts")
@@ -196,7 +196,7 @@ export async function readTelegramAccount(initData: string) {
     .eq("telegram_user_id", verified.telegramUser.id as never)
     .maybeSingle();
 
-  if (data) {
+  if (data && options?.touchLastSeen !== false) {
     await supabaseAdmin
       .from("telegram_accounts")
       .update({
@@ -219,16 +219,26 @@ export async function requireLinkedTelegramUser(initData: string) {
   if (account.status !== "active") {
     throw new TelegramAuthError("telegram_disabled", "Telegram access is disabled");
   }
-  const authorized = await hasActiveTelegramSession(account.telegram_user_id);
-  if (!authorized) {
+  const activeSession = await readLatestActiveTelegramSession(account.telegram_user_id);
+  if (!activeSession) {
     throw new TelegramAuthError("telegram_session_required", "Telegram login is required");
   }
-  const activeSession = await readLatestActiveTelegramSession(account.telegram_user_id);
   const userId = telegramLoginSessionUser({
     permanentOwnerUserId: account.user_id,
     activeSessionUserId: activeSession?.user_id ?? null,
   });
   return { verified, account, userId };
+}
+
+type LinkedTelegramContext = Awaited<ReturnType<typeof requireLinkedTelegramUser>>;
+type TelegramContextInput = string | LinkedTelegramContext;
+
+function isLinkedTelegramContext(input: TelegramContextInput): input is LinkedTelegramContext {
+  return typeof input !== "string";
+}
+
+async function resolveLinkedTelegramContext(input: TelegramContextInput) {
+  return isLinkedTelegramContext(input) ? input : requireLinkedTelegramUser(input);
 }
 
 export async function linkTelegramUser(input: { initData: string; userId: string }) {
@@ -243,15 +253,7 @@ export async function linkTelegramUser(input: { initData: string; userId: string
 }
 
 export async function hasActiveTelegramSession(telegramUserId: number) {
-  await supabaseAdmin.rpc("expire_telegram_app_sessions" as never);
-  const { data } = await supabaseAdmin
-    .from("telegram_app_sessions" as never)
-    .select("id")
-    .eq("telegram_user_id", telegramUserId as never)
-    .eq("status", "active" as never)
-    .gt("expires_at", new Date().toISOString() as never)
-    .limit(1);
-  return Boolean(data?.length);
+  return Boolean(await readLatestActiveTelegramSession(telegramUserId));
 }
 
 async function readLatestActiveTelegramSession(telegramUserId: number) {
@@ -1407,8 +1409,8 @@ export async function fetchTelegramHomeSummary(initData: string) {
   };
 }
 
-export async function fetchTelegramWalletSummary(initData: string) {
-  const { userId } = await requireLinkedTelegramUser(initData);
+export async function fetchTelegramWalletSummary(input: TelegramContextInput) {
+  const { userId } = await resolveLinkedTelegramContext(input);
   const [
     profile,
     wallets,
@@ -1440,14 +1442,14 @@ export async function fetchTelegramWalletSummary(initData: string) {
   };
 }
 
-export async function fetchTelegramP2pOrders(initData: string) {
-  const { userId } = await requireLinkedTelegramUser(initData);
+export async function fetchTelegramP2pOrders(input: TelegramContextInput) {
+  const { userId } = await resolveLinkedTelegramContext(input);
   const orders = await fetchTelegramRecentP2pOrders(userId, 12);
   return { orders };
 }
 
-export async function fetchTelegramMarketplace(initData: string) {
-  await requireLinkedTelegramUser(initData);
+export async function fetchTelegramMarketplace(input: TelegramContextInput) {
+  await resolveLinkedTelegramContext(input);
   const { data: adRows, error } = await supabaseAdmin
     .from("p2p_advertisements" as never)
     .select(
@@ -1525,8 +1527,8 @@ async function findTelegramCompanyWalletForPurpose(network: string, purpose: str
   return null;
 }
 
-export async function fetchTelegramDepositAddress(initData: string) {
-  await requireLinkedTelegramUser(initData);
+export async function fetchTelegramDepositAddress(input: TelegramContextInput) {
+  await resolveLinkedTelegramContext(input);
   const { data: settings, error } = await supabaseAdmin
     .from("system_settings")
     .select("key, value")
@@ -1576,8 +1578,8 @@ export async function createTelegramDepositRequest(input: { initData: string; am
   };
 }
 
-export async function fetchTelegramDeposits(initData: string) {
-  const { userId } = await requireLinkedTelegramUser(initData);
+export async function fetchTelegramDeposits(input: TelegramContextInput) {
+  const { userId } = await resolveLinkedTelegramContext(input);
   const { data, error } = await supabaseAdmin
     .from("deposit_requests")
     .select(
@@ -1588,6 +1590,25 @@ export async function fetchTelegramDeposits(initData: string) {
     .limit(12);
   if (error) throw new Error(error.message);
   return data ?? [];
+}
+
+export async function revokeTelegramMiniAppSession(initData: string) {
+  const { verified, account } = await readTelegramAccount(initData, { touchLastSeen: false });
+  if (account?.status === "active") {
+    await revokeTelegramLoginArtifacts(account.telegram_user_id);
+    await clearBotAuthState(account.telegram_user_id);
+    pendingRegistrationPasswords.delete(account.telegram_user_id);
+    await supabaseAdmin.from("telegram_link_audit").insert({
+      user_id: account.user_id,
+      telegram_account_id: account.id,
+      telegram_user_id: account.telegram_user_id,
+      action: "telegram.mini_app_logout",
+      actor_id: account.user_id,
+      actor_type: "telegram",
+      metadata: { query_id: verified.queryId ?? null } as never,
+    } as never);
+  }
+  return { ok: true };
 }
 
 function telegramMessage(title: string, body: string) {

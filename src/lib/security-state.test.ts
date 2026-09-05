@@ -3704,7 +3704,7 @@ describe("GasFree transfer service safety", () => {
     );
 
     assert.match(helper, /cancelQueries\(\)/);
-    assert.match(helper, /supabase\.auth\.signOut\(\)/);
+    assert.match(helper, /supabase\.auth\.signOut\(\{ scope: "global" \}\)/);
     assert.match(helper, /clearBrowserAuthState\(\)/);
     assert.match(helper, /queryClient\.clear\(\)/);
     assert.match(helper, /supabase\.auth\.getSession\(\)/);
@@ -3712,6 +3712,23 @@ describe("GasFree transfer service safety", () => {
     assert.match(helper, /key\.startsWith\("sb-"\) && key\.includes\("auth-token"\)/);
     assert.match(shell, /signOutAndReplace\(\{ supabase, queryClient, to: "\/trader\/login" \}\)/);
     assert.match(vendor, /signOutAndReplace\(\{ supabase, queryClient, to: "\/vendor\/login" \}\)/);
+  });
+
+  it("revokes Telegram Mini App sessions from the V17 logout row", () => {
+    const functions = readFileSync(resolve(process.cwd(), "src/lib/telegram.functions.ts"), "utf8");
+    const server = readFileSync(resolve(process.cwd(), "src/lib/telegram.server.ts"), "utf8");
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+
+    assert.match(functions, /export const logoutTelegramMiniApp/);
+    assert.match(server, /export async function revokeTelegramMiniAppSession/);
+    assert.match(server, /revokeTelegramLoginArtifacts\(account\.telegram_user_id\)/);
+    assert.match(server, /action: "telegram\.mini_app_logout"/);
+    assert.match(mini, /const logoutTelegram = useServerFn\(logoutTelegramMiniApp\)/);
+    assert.match(mini, /async function logoutMiniAppSession/);
+    assert.match(mini, /await logoutTelegram\(\{ data: \{ initData \} \}\)/);
+    assert.match(mini, /clearBrowserAuthState\(\)/);
+    assert.match(mini, /onLogout=\{logoutMiniAppSession\}/);
+    assert.match(mini, /onClick=\{\(\) => void onLogout\(\)\}/);
   });
 
   it("keeps Mini App heavy QR work lazy and coalesces screen data requests", () => {
@@ -3729,5 +3746,36 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /runDatasetLoader\("wallet"/);
     assert.match(mini, /runDatasetLoader\("p2p"/);
     assert.match(mini, /const blockingBootstrap = !launchChecked \|\| !hasSession/);
+  });
+
+  it("reuses one Telegram auth context inside composite Mini App loaders", () => {
+    const functions = readFileSync(resolve(process.cwd(), "src/lib/telegram.functions.ts"), "utf8");
+    const server = readFileSync(resolve(process.cwd(), "src/lib/telegram.server.ts"), "utf8");
+    const activity = readFileSync(
+      resolve(process.cwd(), "android/app/src/main/java/org/wtron/app/MainActivity.java"),
+      "utf8",
+    );
+
+    assert.match(
+      server,
+      /type LinkedTelegramContext = Awaited<ReturnType<typeof requireLinkedTelegramUser>>/,
+    );
+    assert.match(server, /async function resolveLinkedTelegramContext/);
+    assert.match(
+      server,
+      /export async function hasActiveTelegramSession[\s\S]*readLatestActiveTelegramSession/,
+    );
+    assert.doesNotMatch(
+      server.match(/export async function requireLinkedTelegramUser[\s\S]*?^}/m)?.[0] ?? "",
+      /hasActiveTelegramSession/,
+    );
+    assert.match(functions, /const context = await requireLinkedTelegramUser\(data\.initData\)/);
+    assert.match(functions, /fetchTelegramWalletSummary\(context\)/);
+    assert.match(functions, /fetchTelegramMarketplace\(context\)/);
+    assert.match(functions, /loadDeposits\(context\)/);
+    assert.match(activity, /private FrameLayout rootView/);
+    assert.match(activity, /rootView\.setBackgroundColor/);
+    assert.match(activity, /target\.setPadding\(0, top, 0, bottom\)/);
+    assert.match(activity, /injectAndroidAppEnvironment\(webView, 0, 0\)/);
   });
 });

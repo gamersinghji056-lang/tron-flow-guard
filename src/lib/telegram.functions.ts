@@ -136,12 +136,17 @@ export const fetchTelegramHome = createServerFn({ method: "POST" })
 export const fetchTelegramWallet = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => initDataInput.parse(input))
   .handler(async ({ data }) => {
-    const { fetchTelegramWalletSummary, fetchTelegramDepositAddress, fetchTelegramDeposits } =
-      await import("@/lib/telegram.server");
+    const {
+      requireLinkedTelegramUser,
+      fetchTelegramWalletSummary,
+      fetchTelegramDepositAddress,
+      fetchTelegramDeposits,
+    } = await import("@/lib/telegram.server");
+    const context = await requireLinkedTelegramUser(data.initData);
     const [overview, address, deposits] = await Promise.all([
-      fetchTelegramWalletSummary(data.initData),
-      fetchTelegramDepositAddress(data.initData),
-      fetchTelegramDeposits(data.initData),
+      fetchTelegramWalletSummary(context),
+      fetchTelegramDepositAddress(context),
+      fetchTelegramDeposits(context),
     ]);
     return { ...overview, depositAddress: address, deposits };
   });
@@ -149,11 +154,12 @@ export const fetchTelegramWallet = createServerFn({ method: "POST" })
 export const fetchTelegramP2p = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => initDataInput.parse(input))
   .handler(async ({ data }) => {
-    const { fetchTelegramMarketplace, fetchTelegramP2pOrders } =
+    const { requireLinkedTelegramUser, fetchTelegramMarketplace, fetchTelegramP2pOrders } =
       await import("@/lib/telegram.server");
+    const context = await requireLinkedTelegramUser(data.initData);
     const [marketplace, overview] = await Promise.all([
-      fetchTelegramMarketplace(data.initData),
-      fetchTelegramP2pOrders(data.initData),
+      fetchTelegramMarketplace(context),
+      fetchTelegramP2pOrders(context),
     ]);
     return { marketplace, orders: overview.orders };
   });
@@ -161,13 +167,24 @@ export const fetchTelegramP2p = createServerFn({ method: "POST" })
 export const fetchTelegramDeposits = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => initDataInput.parse(input))
   .handler(async ({ data }) => {
-    const { fetchTelegramDeposits: loadDeposits, fetchTelegramDepositAddress } =
-      await import("@/lib/telegram.server");
+    const {
+      requireLinkedTelegramUser,
+      fetchTelegramDeposits: loadDeposits,
+      fetchTelegramDepositAddress,
+    } = await import("@/lib/telegram.server");
+    const context = await requireLinkedTelegramUser(data.initData);
     const [deposits, depositAddress] = await Promise.all([
-      loadDeposits(data.initData),
-      fetchTelegramDepositAddress(data.initData),
+      loadDeposits(context),
+      fetchTelegramDepositAddress(context),
     ]);
     return { deposits, depositAddress };
+  });
+
+export const logoutTelegramMiniApp = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => initDataInput.parse(input))
+  .handler(async ({ data }) => {
+    const { revokeTelegramMiniAppSession } = await import("@/lib/telegram.server");
+    return revokeTelegramMiniAppSession(data.initData);
   });
 
 export const createTelegramDeposit = createServerFn({ method: "POST" })

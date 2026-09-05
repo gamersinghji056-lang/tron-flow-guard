@@ -46,6 +46,7 @@ import {
   fetchTelegramP2p,
   fetchTelegramWallet,
   loginTelegramMiniApp,
+  logoutTelegramMiniApp,
   registerTelegramMiniApp,
   verifyTelegramMiniApp,
 } from "@/lib/telegram.functions";
@@ -114,6 +115,7 @@ import {
 } from "@/lib/mini-i18n";
 import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
 import { qrToDataUrl } from "@/lib/mini-app-qr";
+import { clearBrowserAuthState } from "@/lib/auth-session";
 import {
   miniAppEntryState,
   type VendorApprovalStatus,
@@ -1106,6 +1108,7 @@ function TelegramMiniApp() {
   const loginTelegram = useServerFn(loginTelegramMiniApp);
   const registerTelegram = useServerFn(registerTelegramMiniApp);
   const createTelegramSession = useServerFn(createTelegramMiniAppSession);
+  const logoutTelegram = useServerFn(logoutTelegramMiniApp);
   const loadHome = useServerFn(fetchTelegramHome);
   const loadWallet = useServerFn(fetchTelegramWallet);
   const loadP2p = useServerFn(fetchTelegramP2p);
@@ -1873,6 +1876,58 @@ function TelegramMiniApp() {
     }
     await refresh("home", launch.initData, handoffToken || search.handoff);
     setScreen("home");
+  }
+
+  async function logoutMiniAppSession() {
+    if (!initData) {
+      toast.error("Open WTRON from Telegram to close this Mini App session.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await logoutTelegram({ data: { initData } });
+      await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+      clearBrowserAuthState();
+      setHasSession(false);
+      setLinked(false);
+      setLinkedAccountType(null);
+      setVendorStatus(null);
+      setOverview(null);
+      setAds([]);
+      setDeposits([]);
+      setDepositAddress(null);
+      setPaymentMethods([]);
+      setVendorListings([]);
+      setVendorPaymentAccounts([]);
+      setAnalytics(null);
+      setTradeHistory([]);
+      setReferral(null);
+      setWalletTransactions([]);
+      setWalletResources(null);
+      setGasfreeReadiness(null);
+      setSelectedWalletId("");
+      setSelectedDirectSellId("");
+      setCreatedDirectSell(null);
+      dataLoadedRef.current = {
+        home: false,
+        wallet: false,
+        deposits: false,
+        paymentMethods: false,
+        security: false,
+        p2p: false,
+        vendorListings: false,
+        vendorPortal: false,
+        analytics: false,
+        history: false,
+        referral: false,
+      };
+      setScreen("home");
+      toast.success("Logged out from Telegram Mini App.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not log out");
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -3392,6 +3447,7 @@ function TelegramMiniApp() {
             theme={theme}
             setTheme={setTheme}
             t={t}
+            onLogout={logoutMiniAppSession}
           />
         ) : null}
         {screen === "orders" ? (
@@ -6057,6 +6113,7 @@ function MoreScreen({
   theme,
   setTheme,
   t,
+  onLogout,
 }: {
   profile: ProfileSummary | null;
   avatarUrl: string;
@@ -6069,6 +6126,7 @@ function MoreScreen({
   theme: MiniThemePreference;
   setTheme: (theme: MiniThemePreference) => void;
   t: MiniT;
+  onLogout: () => void | Promise<void>;
 }) {
   const fileInputId = vendorMode ? "vendor-mini-profile-photo" : "trader-mini-profile-photo";
   const sections: Array<[string, Array<[MiniScreen, string, string, MiniIcon]>]> = [
@@ -6238,9 +6296,7 @@ function MoreScreen({
           icon={LogOut}
           title="Logout"
           body="Close your Mini App session"
-          onClick={() => {
-            toast.info("Use Telegram or web account controls to sign out.");
-          }}
+          onClick={() => void onLogout()}
         />
       </Section>
     </Screen>

@@ -13,6 +13,7 @@ import android.graphics.Insets;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.widget.FrameLayout;
 import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
@@ -29,6 +30,7 @@ public final class MainActivity extends Activity {
     private static final int CAMERA_PERMISSION_REQUEST_CODE = 1002;
 
     private WebView webView;
+    private FrameLayout rootView;
     private ValueCallback<Uri[]> filePathCallback;
     private PermissionRequest pendingCameraPermissionRequest;
     private int systemBarTopInsetPx = 0;
@@ -38,10 +40,13 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         configureSystemBars();
+        rootView = new FrameLayout(this);
+        rootView.setBackgroundColor(Color.rgb(5, 5, 5));
         webView = createWebView();
-        bindSystemInsets(webView);
-        setContentView(webView);
-        webView.requestApplyInsets();
+        rootView.addView(webView);
+        bindSystemInsets(rootView);
+        setContentView(rootView);
+        rootView.requestApplyInsets();
         webView.loadUrl(resolveLaunchUri().toString());
     }
 
@@ -100,7 +105,7 @@ public final class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                injectAndroidAppEnvironment(view, systemBarTopInsetPx, systemBarBottomInsetPx);
+                injectAndroidAppEnvironment(view, 0, 0);
             }
         });
         view.setWebChromeClient(new WebChromeClient() {
@@ -140,8 +145,8 @@ public final class MainActivity extends Activity {
         return view;
     }
 
-    private void bindSystemInsets(WebView view) {
-        view.setOnApplyWindowInsetsListener((target, insets) -> {
+    private void bindSystemInsets(FrameLayout root) {
+        root.setOnApplyWindowInsetsListener((target, insets) -> {
             int top = 0;
             int bottom = 0;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -154,7 +159,8 @@ public final class MainActivity extends Activity {
             }
             systemBarTopInsetPx = top;
             systemBarBottomInsetPx = bottom;
-            injectAndroidAppEnvironment(view, top, bottom);
+            target.setPadding(0, top, 0, bottom);
+            injectAndroidAppEnvironment(webView, 0, 0);
             return insets;
         });
     }

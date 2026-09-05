@@ -14,14 +14,14 @@ function clearMatchingStorage(storage: Storage | undefined, shouldClear: (key: s
 
 export function clearBrowserAuthState() {
   if (typeof window === "undefined") return;
-  clearMatchingStorage(window.sessionStorage, (key) => key === ADMIN_SESSION_BRIDGE_KEY);
-  clearMatchingStorage(
-    window.localStorage,
-    (key) =>
-      key === ADMIN_SESSION_BRIDGE_KEY ||
-      (key.startsWith("sb-") && key.includes("auth-token")) ||
-      key.startsWith("supabase.auth.token"),
-  );
+  const isAuthKey = (key: string) =>
+    key === ADMIN_SESSION_BRIDGE_KEY ||
+    (key.startsWith("sb-") && key.includes("auth-token")) ||
+    key.startsWith("supabase.auth.token") ||
+    key.startsWith("wtron.auth.") ||
+    key === "tanstack-router-scroll-positions";
+  clearMatchingStorage(window.sessionStorage, isAuthKey);
+  clearMatchingStorage(window.localStorage, isAuthKey);
 }
 
 export async function signOutAndReplace({
@@ -34,11 +34,22 @@ export async function signOutAndReplace({
   to: string;
 }) {
   await queryClient.cancelQueries();
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  clearBrowserAuthState();
+  const { error } = await supabase.auth.signOut({ scope: "global" });
   clearBrowserAuthState();
   queryClient.clear();
   const { data } = await supabase.auth.getSession();
-  if (data.session) throw new Error("WTRON could not clear the current session. Try again.");
+  if (data.session) {
+    clearBrowserAuthState();
+    throw new Error("WTRON could not clear the current session. Try again.");
+  }
+  if (error) {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("wtron.auth.lastSignOutError", error.message);
+      window.location.replace(to);
+      return;
+    }
+    throw error;
+  }
   if (typeof window !== "undefined") window.location.replace(to);
 }
