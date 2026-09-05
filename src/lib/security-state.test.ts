@@ -840,21 +840,28 @@ describe("server-side signer safety", () => {
 
   it("drives Mini App standard Mainnet send capability from server preview", () => {
     const mini = readFileSync(resolve("src/routes/mini-app.tsx"), "utf8");
+    const walletSubflows = readFileSync(
+      resolve("src/components/mini-app/screens/wallet-subflows-screen.tsx"),
+      "utf8",
+    );
     const signerServer = readFileSync(resolve("src/lib/signer.server.ts"), "utf8");
     assert.match(signerServer, /signingEnabled/);
     assert.match(signerServer, /mainnetSigningEnabled/);
     assert.match(signerServer, /energyRouteEnabled/);
     assert.match(signerServer, /signerReady/);
     assert.match(signerServer, /transactionPasswordConfigured/);
-    assert.match(mini, /standardPreview\?\.mainnetSigningEnabled/);
-    assert.match(mini, /\["Network Fee", standardFeeLabel\]/);
-    assert.match(mini, /standardFeeLabel/);
-    assert.match(mini, /standardTotalDebitLabel/);
+    assert.match(walletSubflows, /standardPreview\?\.mainnetSigningEnabled/);
+    assert.match(walletSubflows, /\["Network Fee", standardFeeLabel\]/);
+    assert.match(walletSubflows, /standardFeeLabel/);
+    assert.match(walletSubflows, /standardTotalDebitLabel/);
     assert.match(mini, /submitStandardTransfer/);
     assert.match(mini, /standardTransferPassword/);
-    assert.doesNotMatch(mini, /const mainnetDisabled = wallet\?\.network === "trc20-mainnet"/);
-    assert.doesNotMatch(mini, /\[t\("resources"\), t\("signerRequired"\)\]/);
-    assert.doesNotMatch(mini, /\[t\("fees"\), t\("signerRequired"\)\]/);
+    assert.doesNotMatch(
+      walletSubflows,
+      /const mainnetDisabled = wallet\?\.network === "trc20-mainnet"/,
+    );
+    assert.doesNotMatch(walletSubflows, /\[t\("resources"\), t\("signerRequired"\)\]/);
+    assert.doesNotMatch(walletSubflows, /\[t\("fees"\), t\("signerRequired"\)\]/);
   });
 
   it("protects watch-only company wallets from signing", () => {
@@ -2715,7 +2722,10 @@ describe("GasFree transfer service safety", () => {
   });
 
   it("keeps provider-approved GasFree activation eligible for Send", () => {
-    const source = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/wallet-subflows-screen.tsx"),
+      "utf8",
+    );
     assert.match(source, /gasfreeSendEnabled[\s\S]*transferStatus === "ACTIVATION_REQUIRED"/);
     assert.match(source, /disabled=\{!gasfreeSendEnabled\}/);
   });
@@ -2779,7 +2789,10 @@ describe("GasFree transfer service safety", () => {
   });
 
   it("renders precise GasFree Mini App and admin diagnostic states", () => {
-    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const mini = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/wallet-subflows-screen.tsx"),
+      "utf8",
+    );
     const admin = readFileSync(
       resolve(process.cwd(), "src/routes/_authenticated/admin/system-settings.tsx"),
       "utf8",
@@ -2880,33 +2893,44 @@ describe("GasFree transfer service safety", () => {
 
   it("wires Mini App GasFree Send to the real transfer flow without fake TXIDs", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const walletSubflows = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/wallet-subflows-screen.tsx"),
+      "utf8",
+    );
     assert.match(mini, /createGasFreeTransfer/);
     assert.match(mini, /openGasfreeSend/);
     assert.match(mini, /onSubmitGasfree=\{submitGasfreeSend\}/);
-    assert.match(mini, /GasFree wallet supports USDT transfers/);
-    assert.doesNotMatch(mini, /GasFree provider fee/);
+    assert.match(walletSubflows, /GasFree wallet supports USDT transfers/);
+    assert.doesNotMatch(walletSubflows, /GasFree provider fee/);
     assert.match(mini, /gasfreeSendIdempotencyKey/);
     assert.match(mini, /isConfirmedTransferStatus\(providerStatus\)/);
-    assert.doesNotMatch(mini, /fake.*txid|mock.*txid/i);
+    assert.doesNotMatch(walletSubflows, /fake.*txid|mock.*txid/i);
   });
 
   it("keeps GasFree USDT-only and renders professional send receipts", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const walletSubflows = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/wallet-subflows-screen.tsx"),
+      "utf8",
+    );
     const signerServer = readFileSync(resolve(process.cwd(), "src/lib/signer.server.ts"), "utf8");
     assert.match(signerServer, /Use GasFree Send for this USDT-only wallet/);
-    assert.match(mini, /isGasfreeWallet/);
-    assert.match(mini, /displayAsset = isGasfreeWallet \? "USDT" : asset/);
-    assert.match(mini, /TransferResultReceipt/);
-    assert.match(mini, /Transaction Successful|Transaction Submitted/);
-    assert.match(mini, /cleanTransferStatusLabel/);
-    assert.match(mini, /isConfirmedTransferStatus/);
-    assert.match(mini, /"broadcast", "broadcasting", "confirming", "pending", "submitted"/);
-    assert.match(mini, /Not broadcast/);
-    assert.match(mini, /\["Fee", fee\]/);
-    assert.doesNotMatch(mini, /\["Network\/resource fee", networkFee\]/);
-    assert.doesNotMatch(mini, /\["WTRON fee", wtronFee\]/);
-    assert.match(mini, /receiptShareText/);
-    assert.doesNotMatch(mini, /JSON\.stringify\(standardResult|JSON\.stringify\(result/);
+    assert.match(walletSubflows, /isGasfreeWallet/);
+    assert.match(walletSubflows, /displayAsset = isGasfreeWallet \? "USDT" : asset/);
+    assert.match(walletSubflows, /TransferResultReceipt/);
+    assert.match(walletSubflows, /Transaction Successful|Transaction Submitted/);
+    assert.match(walletSubflows, /cleanTransferStatusLabel/);
+    assert.match(walletSubflows, /isConfirmedTransferStatus/);
+    assert.match(
+      walletSubflows,
+      /"broadcast", "broadcasting", "confirming", "pending", "submitted"/,
+    );
+    assert.match(walletSubflows, /Not broadcast/);
+    assert.match(walletSubflows, /\["Fee", fee\]/);
+    assert.doesNotMatch(walletSubflows, /\["Network\/resource fee", networkFee\]/);
+    assert.doesNotMatch(walletSubflows, /\["WTRON fee", wtronFee\]/);
+    assert.match(walletSubflows, /receiptShareText/);
+    assert.doesNotMatch(walletSubflows, /JSON\.stringify\(standardResult|JSON\.stringify\(result/);
   });
 
   it("keeps created standard wallets importable and signer-safe", () => {
@@ -3600,7 +3624,11 @@ describe("GasFree transfer service safety", () => {
 
   it("adds local mnemonic QR backup/import and mobile keyboard safety", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
-    assert.match(mini, /qrToDataUrl\(`wtron:\/\/\$\{revealedPhrase\}`\)/);
+    const walletSubflows = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/wallet-subflows-screen.tsx"),
+      "utf8",
+    );
+    assert.match(walletSubflows, /qrToDataUrl\(`wtron:\/\/\$\{revealedPhrase\}`\)/);
     assert.match(mini, /scanRecoveryPhraseQr/);
     assert.match(mini, /normalizeRecoveryPhrase/);
     assert.match(mini, /setImportPhrase\(phrase\)/);
@@ -3831,6 +3859,7 @@ describe("GasFree transfer service safety", () => {
       "p2p-screen",
       "trade-screen",
       "wallet-screen",
+      "wallet-subflows-screen",
       "more-screen",
       "orders-screen",
       "analytics-screen",
@@ -3842,6 +3871,8 @@ describe("GasFree transfer service safety", () => {
       "bank-accounts-screen",
       "wallet-create-screen",
       "wallet-import-screen",
+      "auth-screen",
+      "pending-vendor-screen",
     ];
 
     assert.doesNotMatch(mini, /import QRCode from "qrcode"/);
@@ -3850,6 +3881,10 @@ describe("GasFree transfer service safety", () => {
     for (const screen of screens) {
       assert.match(mini, new RegExp(`import\\("@/components/mini-app/screens/${screen}"\\)`));
     }
+    assert.doesNotMatch(mini, /function WalletDetailScreen/);
+    assert.doesNotMatch(mini, /function WalletGasFreeScreen/);
+    assert.doesNotMatch(mini, /function SendScreen/);
+    assert.doesNotMatch(mini, /function DirectSellDetailScreen/);
     assert.match(mini, /<Suspense fallback=\{<V17LoadingState/);
     assert.match(mini, /const inFlightDataRef = useRef/);
     assert.match(mini, /function runDatasetLoader/);
