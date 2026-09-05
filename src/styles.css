@@ -226,20 +226,39 @@
 }
 
 @media (max-width: 767px) {
+  html {
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+  }
+
   .wtron-product-shell {
+    --product-bottom-nav: 4.75rem;
     background:
       radial-gradient(circle at 85% 0, rgb(79 124 255 / 0.18), transparent 18rem),
       var(--wtron-v17-bg);
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .wtron-product-shell h1 {
-    font-size: 1.35rem;
-    line-height: 1.2;
+    font-size: 27px;
+    line-height: 1.05;
+    letter-spacing: 0;
   }
 
   .wtron-product-shell h2 {
-    font-size: 1rem;
+    font-size: 13px;
     line-height: 1.3;
+  }
+
+  .wtron-product-shell header > div {
+    height: 66px;
+    padding-right: 17px;
+    padding-left: 17px;
+  }
+
+  .wtron-product-shell main {
+    padding: 18px 18px calc(var(--product-bottom-nav) + 22px + env(safe-area-inset-bottom));
   }
 
   .wtron-product-shell .panel {
@@ -249,22 +268,230 @@
       0 18px 44px -34px rgb(0 0 0 / 1);
   }
 
+  .wtron-product-shell .panel,
+  .wtron-product-shell .wtron-surface,
+  .wtron-product-shell .rounded-\[17px\] {
+    border-radius: 17px;
+  }
+
   .wtron-product-shell .panel.p-5,
-  .wtron-product-shell .panel .p-5 {
-    padding: 1rem;
+  .wtron-product-shell .panel.p-4,
+  .wtron-product-shell .panel .p-5,
+  .wtron-product-shell .panel .p-4 {
+    padding: 14px;
   }
 
-  .wtron-product-shell .space-y-6 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 1rem;
+  .wtron-product-shell .px-5 {
+    padding-right: 14px;
+    padding-left: 14px;
   }
 
-  .wtron-product-shell .grid {
-    gap: 0.75rem;
+  .wtron-product-shell .py-4 {
+    padding-top: 13px;
+    padding-bottom: 13px;
+  }
+
+  .wtron-product-shell .space-y-6,
+  .wtron-product-shell .space-y-\[23px\] {
+    --tw-space-y-reverse: 0;
+  }
+
+  .wtron-product-shell .space-y-6 > :not([hidden]) ~ :not([hidden]),
+  .wtron-product-shell .space-y-\[23px\] > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 23px;
+  }
+
+  .wtron-product-shell .space-y-5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 18px;
+  }
+
+  .wtron-product-shell .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 13px;
+  }
+
+  .wtron-product-shell .gap-6 {
+    gap: 23px;
+  }
+
+  .wtron-product-shell .gap-5 {
+    gap: 18px;
+  }
+
+  .wtron-product-shell .gap-4 {
+    gap: 13px;
+  }
+
+  .wtron-product-shell .gap-3 {
+    gap: 10px;
+  }
+
+  .wtron-product-shell .gap-2 {
+    gap: 8px;
+  }
+
+  .wtron-product-shell .text-sm {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .wtron-product-shell .text-xs {
+    font-size: 9.5px;
+    line-height: 1.45;
+  }
+
+  .wtron-product-shell .text-lg {
+    font-size: 17px;
+    line-height: 1.2;
+  }
+
+  .wtron-product-shell .text-base {
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .wtron-product-shell .title-v17 {
+    font-size: 27px;
+    line-height: 1.05;
+  }
+
+  .wtron-product-shell .body-v17 {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .wtron-product-shell .balance-v17 {
+    font-size: 38px;
+    line-height: 1;
+  }
+
+  .wtron-product-shell .v17-listrow {
+    gap: 11px;
+    padding-top: 13px;
+    padding-bottom: 13px;
+  }
+
+  .wtron-product-shell button,
+  .wtron-product-shell .inline-flex[role="button"],
+  .wtron-product-shell a.inline-flex {
+    min-height: 35px;
+    border-radius: 12px;
+    font-size: 10.5px;
+    font-weight: 750;
+  }
+
+  .wtron-product-shell button.h-12 {
+    min-height: 45px;
+  }
+
+  .wtron-product-shell button.h-10,
+  .wtron-product-shell button.h-9,
+  .wtron-product-shell button.h-8 {
+    height: 35px;
+    min-height: 35px;
+  }
+
+  .wtron-product-shell button.px-4,
+  .wtron-product-shell button.px-3 {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .wtron-product-shell button svg,
+  .wtron-product-shell a svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .wtron-product-shell input,
+  .wtron-product-shell textarea,
+  .wtron-product-shell select {
+    min-height: 42px;
+    border-radius: 12px;
+    padding: 11px 12px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .wtron-product-shell textarea {
+    min-height: 74px;
+  }
+
+  .wtron-product-shell label {
+    font-size: 10px;
+  }
+
+  .wtron-product-shell [role="tablist"] {
+    min-height: 42px;
+    border-radius: 13px;
+    padding: 4px;
+  }
+
+  .wtron-product-shell [role="tab"] {
+    min-height: 32px;
+    border-radius: 9px;
+    font-size: 10px;
+  }
+
+  .wtron-product-shell [data-radix-dialog-content] {
+    top: auto;
+    bottom: 0;
+    max-height: min(82dvh, 680px);
+    width: 100%;
+    max-width: none;
+    translate: -50% 0;
+    transform: translateX(-50%);
+    overflow-y: auto;
+    border-radius: 25px 25px 0 0;
+    padding: 17px 18px 24px;
+  }
+
+  .wtron-product-shell [data-radix-dialog-content] h2 {
+    font-size: 17px;
+  }
+
+  .wtron-product-shell [data-radix-dialog-content] p {
+    font-size: 10.5px;
+    line-height: 1.45;
+  }
+
+  .wtron-product-shell nav.fixed > div {
+    height: 68px;
+    max-width: 412px;
+    border-radius: 23px;
+    padding: 6px;
+  }
+
+  .wtron-product-shell nav.fixed a {
+    min-height: 0;
+    border-radius: 16px;
+    font-size: 8px;
+    font-weight: 700;
+  }
+
+  .wtron-product-shell nav.fixed svg {
+    width: 20.5px;
+    height: 20.5px;
+  }
+
+  .wtron-product-shell img[alt="Deposit wallet QR code"],
+  .wtron-product-shell img[alt="Wallet QR code"] {
+    width: 150px;
+    height: 150px;
   }
 
   .wtron-product-shell table {
     display: block;
-    min-width: 42rem;
+    min-width: 38rem;
+    font-size: 11px;
+  }
+
+  .wtron-product-shell th,
+  .wtron-product-shell td {
+    padding: 10px 12px;
+  }
+
+  .wtron-product-shell thead {
+    font-size: 9px;
   }
 
   .wtron-product-shell .overflow-x-auto,
@@ -273,8 +500,8 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .wtron-product-shell main {
-    padding-bottom: calc(var(--product-bottom-nav) + env(safe-area-inset-bottom));
+  .wtron-product-shell .min-h-56 {
+    min-height: 12rem;
   }
 }
 
