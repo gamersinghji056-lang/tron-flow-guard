@@ -132,10 +132,7 @@ function WalletsPage() {
   }, [user, load]);
 
   const total = useMemo(
-    () =>
-      wallets
-        .filter((wallet) => wallet.wallet_type !== "gasfree")
-        .reduce((sum, wallet) => sum + walletDisplayBalance(wallet), 0),
+    () => wallets.reduce((sum, wallet) => sum + walletDisplayBalance(wallet), 0),
     [wallets],
   );
   const activeWallet = selectActiveWallet(wallets);

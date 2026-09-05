@@ -142,11 +142,12 @@ function useDeposits(userId: string | undefined) {
             wallet.onchain_trx_balance == null ? null : Number(wallet.onchain_trx_balance ?? 0),
         }),
       );
-      const nonGasfreeRows = normalizedPersonalRows.filter(
-        (wallet) => wallet.wallet_type !== "gasfree" && wallet.wallet_role !== "gasfree",
+      setPersonalWallets(
+        normalizedPersonalRows.filter((wallet) => wallet.network === DEFAULT_NETWORK),
       );
-      setPersonalWallets(nonGasfreeRows.filter((wallet) => wallet.network === DEFAULT_NETWORK));
-      setPreservedWallets(nonGasfreeRows.filter((wallet) => wallet.network !== DEFAULT_NETWORK));
+      setPreservedWallets(
+        normalizedPersonalRows.filter((wallet) => wallet.network !== DEFAULT_NETWORK),
+      );
       setLoading(false);
     }
 

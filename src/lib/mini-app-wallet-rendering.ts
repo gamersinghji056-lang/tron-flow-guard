@@ -32,9 +32,13 @@ export function selectVisibleMiniAppWallet<T extends MiniAppWalletRenderRow>(
 }
 
 export function miniAppPersonalWalletTotals(wallets: MiniAppWalletRenderRow[]) {
-  const visibleWallets = visibleMiniAppMainnetWallets(wallets).filter(
-    (wallet) => wallet.wallet_role !== "gasfree" && wallet.wallet_type !== "gasfree",
-  );
+  const seen = new Set<string>();
+  const visibleWallets = visibleMiniAppMainnetWallets(wallets).filter((wallet) => {
+    const key = wallet.address ? `address:${wallet.address.toLowerCase()}` : `wallet:${wallet.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   return {
     visibleCount: visibleMiniAppMainnetWallets(wallets).length,
     usdt: visibleWallets.reduce((sum, wallet) => sum + walletDisplayBalance(wallet), 0),

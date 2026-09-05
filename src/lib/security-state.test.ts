@@ -3547,7 +3547,10 @@ describe("GasFree transfer service safety", () => {
     assert.match(webP2p, /Selected wallet does not have enough available USDT/);
     assert.match(dashboard, /walletDisplayBalance\(wallet\)/);
     assert.match(dashboard, /Personal Mainnet wallets/);
-    assert.match(wallet, /wallets\s*\.filter\(\(wallet\) => wallet\.wallet_type !== "gasfree"\)/);
+    assert.match(
+      wallet,
+      /wallets\.reduce\(\(sum, wallet\) => sum \+ walletDisplayBalance\(wallet\), 0\)/,
+    );
   });
 
   it("renders visible Mainnet wallet fixtures consistently in the Mini App model", () => {
@@ -3612,6 +3615,36 @@ describe("GasFree transfer service safety", () => {
     assert.equal(miniAppPersonalWalletTotals(mixed).visibleCount, 4);
     assert.equal(miniAppPersonalWalletTotals(historicalOnly).visibleCount, 0);
     assert.equal(miniAppPersonalWalletTotals(historicalOnly).usdt, 0);
+    assert.equal(
+      miniAppPersonalWalletTotals([
+        makeWallet("general-funded", "trc20-mainnet", 14, {
+          address: "TZAzdx1111111111111111111111111111",
+          wallet_role: "general",
+          wallet_type: "standard",
+        }),
+        makeWallet("gasfree-funded", "trc20-mainnet", 736.673716, {
+          address: "TApCJu1111111111111111111111111111",
+          wallet_role: "gasfree",
+          wallet_type: "gasfree",
+        }),
+      ]).usdt,
+      750.673716,
+    );
+  });
+
+  it("fixes personal wallet identity RLS to expose linked canonical wallet data", () => {
+    const sql = readFileSync(
+      resolve(
+        process.cwd(),
+        "supabase/migrations/20260905193000_fix_personal_wallet_identity_rls.sql",
+      ),
+      "utf8",
+    );
+    assert.match(sql, /DROP POLICY IF EXISTS personal_wallet_identities_select_linked/);
+    assert.match(sql, /link\.identity_id = personal_wallet_identities\.id/);
+    assert.match(sql, /link\.user_id = auth\.uid\(\)/);
+    assert.match(sql, /link\.status = 'active'/);
+    assert.doesNotMatch(sql, /link\.identity_id = link\.id/);
   });
 
   it("renders preserved wallets read-only without operational controls", () => {
