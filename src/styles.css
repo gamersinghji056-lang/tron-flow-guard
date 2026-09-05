@@ -197,6 +197,10 @@
 
 .wtron-product-shell {
   --product-bottom-nav: 5.25rem;
+  --wtron-android-safe-top: 0px;
+  --wtron-android-safe-bottom: 0px;
+  --wtron-native-safe-top: 0px;
+  --wtron-native-safe-bottom: 0px;
   --wtron-v17-bg: #080a0f;
   --wtron-v17-panel: #10131a;
   --wtron-v17-panel2: #151925;
@@ -204,6 +208,12 @@
   --wtron-v17-blue: #4f7cff;
   --wtron-v17-blue2: #7ba0ff;
   --wtron-v17-deep: #080a0f;
+}
+
+.wtron-android-webview .wtron-product-shell,
+.wtron-product-shell.wtron-android-webview {
+  --wtron-native-safe-top: var(--wtron-android-safe-top);
+  --wtron-native-safe-bottom: var(--wtron-android-safe-bottom);
 }
 
 .wtron-product-shell .panel,
@@ -259,6 +269,29 @@
 
   .wtron-product-shell main {
     padding: 18px 18px calc(var(--product-bottom-nav) + 22px + env(safe-area-inset-bottom));
+  }
+
+  .wtron-auth-shell {
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  .wtron-auth-shell > header {
+    position: fixed;
+    top: var(--wtron-native-safe-top);
+    right: 0;
+    left: 0;
+  }
+
+  .wtron-auth-shell > main {
+    width: 100%;
+    max-width: 430px;
+    padding-top: calc(var(--wtron-native-safe-top) + 84px);
+    padding-bottom: calc(var(--product-bottom-nav) + var(--wtron-native-safe-bottom) + 22px);
+  }
+
+  .wtron-auth-shell > nav {
+    bottom: var(--wtron-native-safe-bottom);
   }
 
   .wtron-product-shell .panel {

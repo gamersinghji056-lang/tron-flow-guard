@@ -7,9 +7,12 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.graphics.Insets;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
@@ -28,13 +31,17 @@ public final class MainActivity extends Activity {
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
     private PermissionRequest pendingCameraPermissionRequest;
+    private int systemBarTopInsetPx = 0;
+    private int systemBarBottomInsetPx = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         configureSystemBars();
         webView = createWebView();
+        bindSystemInsets(webView);
         setContentView(webView);
+        webView.requestApplyInsets();
         webView.loadUrl(resolveLaunchUri().toString());
     }
 
@@ -90,6 +97,11 @@ public final class MainActivity extends Activity {
                 openExternal(uri);
                 return true;
             }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                injectAndroidAppEnvironment(view, systemBarTopInsetPx, systemBarBottomInsetPx);
+            }
         });
         view.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -126,6 +138,36 @@ public final class MainActivity extends Activity {
             }
         });
         return view;
+    }
+
+    private void bindSystemInsets(WebView view) {
+        view.setOnApplyWindowInsetsListener((target, insets) -> {
+            int top = 0;
+            int bottom = 0;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets systemBars = insets.getInsets(WindowInsets.Type.systemBars());
+                top = systemBars.top;
+                bottom = systemBars.bottom;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            systemBarTopInsetPx = top;
+            systemBarBottomInsetPx = bottom;
+            injectAndroidAppEnvironment(view, top, bottom);
+            return insets;
+        });
+    }
+
+    private void injectAndroidAppEnvironment(WebView view, int topInsetPx, int bottomInsetPx) {
+        String script = "(function(){"
+                + "document.documentElement.classList.add('wtron-android-webview');"
+                + "document.body&&document.body.classList.add('wtron-android-webview');"
+                + "document.documentElement.style.setProperty('--wtron-android-safe-top','" + topInsetPx + "px');"
+                + "document.documentElement.style.setProperty('--wtron-android-safe-bottom','" + bottomInsetPx + "px');"
+                + "document.documentElement.style.setProperty('--wtron-app-platform','android');"
+                + "})();";
+        view.evaluateJavascript(script, null);
     }
 
     private boolean hasCameraResource(String[] resources) {

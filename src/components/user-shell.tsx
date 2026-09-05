@@ -1,4 +1,4 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -23,6 +23,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { formatUsdt } from "@/lib/chain";
+import { signOutAndReplace } from "@/lib/auth-session";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
@@ -114,20 +115,16 @@ function useProfileAvatarUrl(
 
 export function UserShell({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const avatarUrl = useProfileAvatarUrl(profile);
 
   async function signOut() {
-    await queryClient.cancelQueries();
-    queryClient.clear();
-    await supabase.auth.signOut();
-    navigate({ to: "/trader/login", replace: true });
+    await signOutAndReplace({ supabase, queryClient, to: "/trader/login" });
   }
 
   return (
-    <div className="wtron-product-shell min-h-screen bg-[#080a0f] pb-24 text-white md:pb-0">
+    <div className="wtron-product-shell wtron-auth-shell min-h-screen bg-[#080a0f] pb-24 text-white md:pb-0">
       <header className="sticky top-0 z-40 border-b border-[#222837] bg-[#080a0f]/90 shadow-[0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl">
         <div className="mx-auto flex h-[66px] max-w-7xl items-center gap-3 px-[17px] sm:px-5">
           <Link to="/dashboard" className="flex items-center gap-2">
@@ -214,12 +211,17 @@ export function UserShell({ children }: { children: React.ReactNode }) {
 
 export function VendorShell({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const location = useRouterState({ select: (state) => state.location });
   const activeTab = typeof location.search["tab"] === "string" ? location.search["tab"] : "home";
   const avatarUrl = useProfileAvatarUrl(profile);
 
+  async function signOut() {
+    await signOutAndReplace({ supabase, queryClient, to: "/vendor/login" });
+  }
+
   return (
-    <div className="wtron-product-shell min-h-screen bg-[#080a0f] pb-24 text-white md:pb-0">
+    <div className="wtron-product-shell wtron-auth-shell min-h-screen bg-[#080a0f] pb-24 text-white md:pb-0">
       <header className="sticky top-0 z-40 border-b border-[#222837] bg-[#080a0f]/90 backdrop-blur-xl">
         <div className="mx-auto flex h-[66px] max-w-7xl items-center gap-3 px-[17px] sm:px-5">
           <Link to="/vendor" className="flex items-center gap-2">
@@ -240,6 +242,9 @@ export function VendorShell({ children }: { children: React.ReactNode }) {
               size="sm"
             />
           </Link>
+          <Button variant="ghost" size="icon" aria-label="Sign out" onClick={() => void signOut()}>
+            <LogOut className="h-5 w-5" />
+          </Button>
         </div>
       </header>
 

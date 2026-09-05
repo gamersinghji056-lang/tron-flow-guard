@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
   Eye,
@@ -37,6 +38,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatUsdt, shortenHash } from "@/lib/chain";
+import { signOutAndReplace } from "@/lib/auth-session";
 import { walletDisplayBalance } from "@/lib/wallet-state";
 
 export const Route = createFileRoute("/_authenticated/vendor/")({
@@ -146,7 +148,7 @@ function inr(value: unknown) {
 }
 
 function VendorPortalPage() {
-  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const search = useRouterState({ select: (state) => state.location.search });
   const getApplication = useServerFn(fetchVendorApplication);
   const getPortal = useServerFn(fetchVendorPortal);
@@ -403,8 +405,7 @@ function VendorPortalPage() {
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
-    navigate({ to: "/vendor/login", replace: true });
+    await signOutAndReplace({ supabase, queryClient, to: "/vendor/login" });
   }
 
   if (pending) {

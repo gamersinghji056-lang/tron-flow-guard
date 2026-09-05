@@ -113,6 +113,7 @@ import {
   type MiniT,
 } from "@/lib/mini-i18n";
 import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
+import { qrToDataUrl } from "@/lib/mini-app-qr";
 import {
   miniAppEntryState,
   type VendorApprovalStatus,
@@ -132,11 +133,6 @@ import { V17Avatar } from "@/components/v17-avatar";
 const MINI_THEME_STORAGE_KEY = "wtron-mini-theme";
 const PROFILE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const PROFILE_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
-
-async function qrToDataUrl(payload: string) {
-  const qrcode = await import("qrcode");
-  return qrcode.default.toDataURL(payload, { width: 260, margin: 1 });
-}
 
 function validateProfilePhoto(file: File) {
   if (!PROFILE_PHOTO_TYPES.has(file.type)) {
@@ -1302,6 +1298,8 @@ function TelegramMiniApp() {
     history: false,
     referral: false,
   });
+  type MiniDataset = keyof typeof dataLoadedRef.current;
+  const inFlightDataRef = useRef<Partial<Record<MiniDataset, Promise<void>>>>({});
   const realtimeRefreshTimerRef = useRef<number | null>(null);
   const realtimeRefreshReasonsRef = useRef<Set<"deposit" | "ledger" | "p2p">>(new Set());
 
@@ -1566,30 +1564,48 @@ function TelegramMiniApp() {
     setDepositAddress(result.depositAddress ?? null);
   }
 
+  function runDatasetLoader(key: MiniDataset, load: () => Promise<void>) {
+    const pending = inFlightDataRef.current[key];
+    if (pending) return pending;
+    const request = load().finally(() => {
+      delete inFlightDataRef.current[key];
+    });
+    inFlightDataRef.current[key] = request;
+    return request;
+  }
+
   async function loadHomeData(launch = initData, force = false) {
     if (!launch || (dataLoadedRef.current.home && !force)) return;
-    const home = (await loadHome({ data: { initData: launch } })) as unknown as Overview;
-    setOverview(home);
-    dataLoadedRef.current.home = true;
+    await runDatasetLoader("home", async () => {
+      const home = (await loadHome({ data: { initData: launch } })) as unknown as Overview;
+      setOverview(home);
+      dataLoadedRef.current.home = true;
+    });
   }
 
   async function loadWalletData(launch = initData, force = false) {
     if (!launch || (dataLoadedRef.current.wallet && !force)) return;
-    const wallet = (await loadWallet({ data: { initData: launch } })) as unknown as Overview & {
-      deposits?: DepositRow[];
-      depositAddress?: { address?: string; network?: string } | null;
-    };
-    applyWalletResult(wallet);
-    dataLoadedRef.current.wallet = true;
-    dataLoadedRef.current.deposits = true;
+    await runDatasetLoader("wallet", async () => {
+      const wallet = (await loadWallet({ data: { initData: launch } })) as unknown as Overview & {
+        deposits?: DepositRow[];
+        depositAddress?: { address?: string; network?: string } | null;
+      };
+      applyWalletResult(wallet);
+      dataLoadedRef.current.wallet = true;
+      dataLoadedRef.current.deposits = true;
+    });
   }
 
   async function loadDepositsData(launch = initData, force = false) {
     if (!launch || (dataLoadedRef.current.deposits && !force)) return;
-    const depositData = await loadDeposits({ data: { initData: launch } });
-    setDeposits((depositData.deposits ?? []) as DepositRow[]);
-    setDepositAddress(depositData.depositAddress as { address?: string; network?: string } | null);
-    dataLoadedRef.current.deposits = true;
+    await runDatasetLoader("deposits", async () => {
+      const depositData = await loadDeposits({ data: { initData: launch } });
+      setDeposits((depositData.deposits ?? []) as DepositRow[]);
+      setDepositAddress(
+        depositData.depositAddress as { address?: string; network?: string } | null,
+      );
+      dataLoadedRef.current.deposits = true;
+    });
   }
 
   async function loadDirectSellPaymentItemsData(force = false, orderId = selectedDirectSellId) {
@@ -1614,35 +1630,43 @@ function TelegramMiniApp() {
 
   async function loadPaymentMethodsData(force = false) {
     if (dataLoadedRef.current.paymentMethods && !force) return;
-    const rows = ((await loadPaymentMethods()) ?? []) as PaymentMethodRow[];
-    setPaymentMethods(rows);
-    setSelectedPaymentMethodId(
-      (current) => current || rows.find((row) => row.is_default)?.id || rows[0]?.id || "",
-    );
-    dataLoadedRef.current.paymentMethods = true;
+    await runDatasetLoader("paymentMethods", async () => {
+      const rows = ((await loadPaymentMethods()) ?? []) as PaymentMethodRow[];
+      setPaymentMethods(rows);
+      setSelectedPaymentMethodId(
+        (current) => current || rows.find((row) => row.is_default)?.id || rows[0]?.id || "",
+      );
+      dataLoadedRef.current.paymentMethods = true;
+    });
   }
 
   async function loadSecurityData(force = false) {
     if (dataLoadedRef.current.security && !force) return;
-    const status = await loadWalletSecurityStatus();
-    setTransactionPasswordEnabled(Boolean(status.transactionPasswordEnabled));
-    setTransactionPasswordChangeOpen(false);
-    dataLoadedRef.current.security = true;
+    await runDatasetLoader("security", async () => {
+      const status = await loadWalletSecurityStatus();
+      setTransactionPasswordEnabled(Boolean(status.transactionPasswordEnabled));
+      setTransactionPasswordChangeOpen(false);
+      dataLoadedRef.current.security = true;
+    });
   }
 
   async function loadP2pData(launch = initData, force = false) {
     if (!launch || (dataLoadedRef.current.p2p && !force)) return;
-    const p2p = await loadP2p({ data: { initData: launch } });
-    setAds((p2p.marketplace ?? []) as AdRow[]);
-    setOverview((current) => ({ ...(current ?? {}), orders: (p2p.orders ?? []) as OrderRow[] }));
-    dataLoadedRef.current.p2p = true;
+    await runDatasetLoader("p2p", async () => {
+      const p2p = await loadP2p({ data: { initData: launch } });
+      setAds((p2p.marketplace ?? []) as AdRow[]);
+      setOverview((current) => ({ ...(current ?? {}), orders: (p2p.orders ?? []) as OrderRow[] }));
+      dataLoadedRef.current.p2p = true;
+    });
   }
 
   async function loadVendorListingsData(force = false) {
     if (dataLoadedRef.current.vendorListings && !force) return;
-    const vendorsResult = await loadVendors();
-    setVendorListings((vendorsResult ?? []) as VendorListingRow[]);
-    dataLoadedRef.current.vendorListings = true;
+    await runDatasetLoader("vendorListings", async () => {
+      const vendorsResult = await loadVendors();
+      setVendorListings((vendorsResult ?? []) as VendorListingRow[]);
+      dataLoadedRef.current.vendorListings = true;
+    });
   }
 
   async function loadVendorPortalData(force = false) {
@@ -1654,46 +1678,56 @@ function TelegramMiniApp() {
       return;
     }
     if (dataLoadedRef.current.vendorPortal && !force) return;
-    const portal = (await loadVendorPortal()) as unknown as {
-      accounts?: VendorPaymentAccountRow[];
-    };
-    const vendorAccounts = portal.accounts ?? [];
-    const activeVendorAccounts = vendorAccounts.filter(
-      (account) =>
-        account.status === "active" &&
-        account.enabled !== false &&
-        account.frozen !== true &&
-        !account.archived_at,
-    );
-    setVendorPaymentAccounts(vendorAccounts);
-    setSelectedVendorPaymentAccountId((current) => {
-      if (current && activeVendorAccounts.some((row) => row.id === current)) return current;
-      return (
-        activeVendorAccounts.find((row) => row.is_default)?.id || activeVendorAccounts[0]?.id || ""
+    await runDatasetLoader("vendorPortal", async () => {
+      const portal = (await loadVendorPortal()) as unknown as {
+        accounts?: VendorPaymentAccountRow[];
+      };
+      const vendorAccounts = portal.accounts ?? [];
+      const activeVendorAccounts = vendorAccounts.filter(
+        (account) =>
+          account.status === "active" &&
+          account.enabled !== false &&
+          account.frozen !== true &&
+          !account.archived_at,
       );
+      setVendorPaymentAccounts(vendorAccounts);
+      setSelectedVendorPaymentAccountId((current) => {
+        if (current && activeVendorAccounts.some((row) => row.id === current)) return current;
+        return (
+          activeVendorAccounts.find((row) => row.is_default)?.id ||
+          activeVendorAccounts[0]?.id ||
+          ""
+        );
+      });
+      dataLoadedRef.current.vendorPortal = true;
     });
-    dataLoadedRef.current.vendorPortal = true;
   }
 
   async function loadAnalyticsData(force = false) {
     if (dataLoadedRef.current.analytics && !force) return;
-    const analyticsResult = await loadAnalytics({ data: { range: "30d" } });
-    setAnalytics(analyticsResult as AnalyticsSummary);
-    dataLoadedRef.current.analytics = true;
+    await runDatasetLoader("analytics", async () => {
+      const analyticsResult = await loadAnalytics({ data: { range: "30d" } });
+      setAnalytics(analyticsResult as AnalyticsSummary);
+      dataLoadedRef.current.analytics = true;
+    });
   }
 
   async function loadHistoryData(force = false) {
     if (dataLoadedRef.current.history && !force) return;
-    const historyResult = await loadTradeHistory();
-    setTradeHistory(historyResult as unknown[]);
-    dataLoadedRef.current.history = true;
+    await runDatasetLoader("history", async () => {
+      const historyResult = await loadTradeHistory();
+      setTradeHistory(historyResult as unknown[]);
+      dataLoadedRef.current.history = true;
+    });
   }
 
   async function loadReferralData(force = false) {
     if (dataLoadedRef.current.referral && !force) return;
-    const referralResult = await loadReferral();
-    setReferral(referralResult as ReferralSummary);
-    dataLoadedRef.current.referral = true;
+    await runDatasetLoader("referral", async () => {
+      const referralResult = await loadReferral();
+      setReferral(referralResult as ReferralSummary);
+      dataLoadedRef.current.referral = true;
+    });
   }
 
   async function loadScreenData(nextScreen: MiniScreen, launch = initData, force = false) {
@@ -1759,7 +1793,8 @@ function TelegramMiniApp() {
     handoff = handoffToken,
   ) {
     if (!launch) return;
-    setLoading(true);
+    const blockingBootstrap = !launchChecked || !hasSession;
+    if (blockingBootstrap) setLoading(true);
     try {
       const verified = await verifyLaunch({ data: { initData: launch } });
       setBootstrapError("");
@@ -1822,7 +1857,7 @@ function TelegramMiniApp() {
         toast.error(message);
       }
     } finally {
-      setLoading(false);
+      if (blockingBootstrap) setLoading(false);
     }
   }
 

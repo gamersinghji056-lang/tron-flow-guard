@@ -3671,4 +3671,63 @@ describe("GasFree transfer service safety", () => {
     assert.match(webP2p, /sourceWalletId: side === "sell" \? selectedSourceWalletId : undefined/);
     assert.match(webP2p, /SourceWalletSelect/);
   });
+
+  it("uses a native Android safe-area bridge for the authenticated mobile shell", () => {
+    const activity = readFileSync(
+      resolve(process.cwd(), "android/app/src/main/java/org/wtron/app/MainActivity.java"),
+      "utf8",
+    );
+    const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+    const shell = readFileSync(resolve(process.cwd(), "src/components/user-shell.tsx"), "utf8");
+
+    assert.match(activity, /setOnApplyWindowInsetsListener/);
+    assert.match(activity, /requestApplyInsets\(\)/);
+    assert.match(activity, /WindowInsets\.Type\.systemBars\(\)/);
+    assert.match(activity, /wtron-android-webview/);
+    assert.match(activity, /--wtron-android-safe-top/);
+    assert.match(activity, /--wtron-android-safe-bottom/);
+    assert.match(styles, /--wtron-native-safe-top: var\(--wtron-android-safe-top\)/);
+    assert.match(styles, /\.wtron-auth-shell > header[\s\S]*top: var\(--wtron-native-safe-top\)/);
+    assert.match(
+      styles,
+      /\.wtron-auth-shell > nav[\s\S]*bottom: var\(--wtron-native-safe-bottom\)/,
+    );
+    assert.match(shell, /wtron-auth-shell/);
+  });
+
+  it("performs browser and Android logout as a full session teardown", () => {
+    const helper = readFileSync(resolve(process.cwd(), "src/lib/auth-session.ts"), "utf8");
+    const shell = readFileSync(resolve(process.cwd(), "src/components/user-shell.tsx"), "utf8");
+    const vendor = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/vendor.index.tsx"),
+      "utf8",
+    );
+
+    assert.match(helper, /cancelQueries\(\)/);
+    assert.match(helper, /supabase\.auth\.signOut\(\)/);
+    assert.match(helper, /clearBrowserAuthState\(\)/);
+    assert.match(helper, /queryClient\.clear\(\)/);
+    assert.match(helper, /supabase\.auth\.getSession\(\)/);
+    assert.match(helper, /window\.location\.replace\(to\)/);
+    assert.match(helper, /key\.startsWith\("sb-"\) && key\.includes\("auth-token"\)/);
+    assert.match(shell, /signOutAndReplace\(\{ supabase, queryClient, to: "\/trader\/login" \}\)/);
+    assert.match(vendor, /signOutAndReplace\(\{ supabase, queryClient, to: "\/vendor\/login" \}\)/);
+  });
+
+  it("keeps Mini App heavy QR work lazy and coalesces screen data requests", () => {
+    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const qr = readFileSync(resolve(process.cwd(), "src/lib/mini-app-qr.ts"), "utf8");
+
+    assert.doesNotMatch(mini, /import QRCode from "qrcode"/);
+    assert.match(mini, /import \{ qrToDataUrl \} from "@\/lib\/mini-app-qr"/);
+    assert.match(qr, /await import\("qrcode"\)/);
+    assert.match(mini, /const inFlightDataRef = useRef/);
+    assert.match(mini, /function runDatasetLoader/);
+    assert.match(mini, /const pending = inFlightDataRef\.current\[key\]/);
+    assert.match(mini, /if \(pending\) return pending/);
+    assert.match(mini, /runDatasetLoader\("home"/);
+    assert.match(mini, /runDatasetLoader\("wallet"/);
+    assert.match(mini, /runDatasetLoader\("p2p"/);
+    assert.match(mini, /const blockingBootstrap = !launchChecked \|\| !hasSession/);
+  });
 });
