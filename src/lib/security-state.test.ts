@@ -3519,6 +3519,10 @@ describe("GasFree transfer service safety", () => {
       resolve(process.cwd(), "src/routes/_authenticated/dashboard.tsx"),
       "utf8",
     );
+    const assets = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/assets.tsx"),
+      "utf8",
+    );
     const wallet = readFileSync(
       resolve(process.cwd(), "src/routes/_authenticated/wallet.index.tsx"),
       "utf8",
@@ -3664,6 +3668,10 @@ describe("GasFree transfer service safety", () => {
       resolve(process.cwd(), "src/routes/_authenticated/dashboard.tsx"),
       "utf8",
     );
+    const assets = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/assets.tsx"),
+      "utf8",
+    );
     const preservedCard = walletScreen.slice(
       walletScreen.indexOf("function PreservedWalletCard"),
       walletScreen.indexOf("function WalletCard"),
@@ -3684,6 +3692,12 @@ describe("GasFree transfer service safety", () => {
     assert.match(dashboard, /const \[preservedWallets, setPreservedWallets\]/);
     assert.doesNotMatch(dashboard, /\.eq\("network", DEFAULT_NETWORK/);
     assert.match(dashboard, /Preserved wallet data/);
+    assert.match(assets, /const \[preservedWallets, setPreservedWallets\]/);
+    assert.match(assets, /wallet\.network === DEFAULT_NETWORK/);
+    assert.match(assets, /Preserved \/ Historical Wallets/);
+    assert.match(assets, /READ\s+ONLY/);
+    assert.match(assets, /value=\{`\$\{formatUsdt\(walletTotal\)\} USDT`\}/);
+    assert.doesNotMatch(assets, /value=\{`\$\{formatUsdt\(available \+ locked\)\} USDT`\}/);
   });
 
   it("wires V17 P2P filter chips as real controls", () => {
