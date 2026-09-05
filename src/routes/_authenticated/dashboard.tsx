@@ -19,7 +19,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { createDepositRequest } from "@/lib/deposits.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useListenerHeartbeat } from "@/hooks/use-listener-heartbeat";
-import { formatUsdt, networkConfig, shortenHash, type DepositStatus } from "@/lib/chain";
+import {
+  DEFAULT_NETWORK,
+  formatUsdt,
+  networkConfig,
+  shortenHash,
+  type DepositStatus,
+} from "@/lib/chain";
+import type { ChainNetwork } from "@/lib/chain";
+import { walletDisplayBalance } from "@/lib/wallet-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,9 +79,23 @@ interface WalletRow {
   address: string;
 }
 
+interface PersonalWalletRow {
+  id: string;
+  name: string;
+  address: string;
+  network: ChainNetwork;
+  balance: number;
+  onchain_balance?: number | null;
+  onchain_trx_balance?: number | null;
+  custody?: string | null;
+  wallet_type?: string | null;
+  wallet_role?: string | null;
+}
+
 function useDeposits(userId: string | undefined) {
   const [deposits, setDeposits] = useState<DepositRow[]>([]);
   const [wallets, setWallets] = useState<Record<string, WalletRow>>({});
+  const [personalWallets, setPersonalWallets] = useState<PersonalWalletRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -81,16 +103,24 @@ function useDeposits(userId: string | undefined) {
     let active = true;
 
     async function load() {
-      const [{ data: rows }, { data: walletRows }] = await Promise.all([
-        supabase
-          .from("deposit_requests")
-          .select(
-            "id, order_ref, status, network, expected_amount, received_amount, confirmations, required_confirmations, txid, sender_address, failure_reason, expires_at, created_at, wallet_id",
-          )
-          .order("created_at", { ascending: false })
-          .limit(50),
-        supabase.from("wallets").select("id, name, address"),
-      ]);
+      const [{ data: rows }, { data: walletRows }, { data: personalRows, error: personalError }] =
+        await Promise.all([
+          supabase
+            .from("deposit_requests")
+            .select(
+              "id, order_ref, status, network, expected_amount, received_amount, confirmations, required_confirmations, txid, sender_address, failure_reason, expires_at, created_at, wallet_id",
+            )
+            .order("created_at", { ascending: false })
+            .limit(50),
+          supabase.from("wallets").select("id, name, address"),
+          supabase
+            .from("user_wallets" as never)
+            .select(
+              "id, name, address, network, balance, onchain_balance, onchain_trx_balance, custody, wallet_type, wallet_role",
+            )
+            .eq("is_archived", false as never)
+            .eq("network", DEFAULT_NETWORK as never),
+        ]);
       if (!active) return;
       setDeposits(
         (rows ?? []).map((row) => ({
@@ -100,6 +130,19 @@ function useDeposits(userId: string | undefined) {
         })) as DepositRow[],
       );
       setWallets(Object.fromEntries((walletRows ?? []).map((w) => [w.id, w as WalletRow])));
+      if (personalError) toast.error("Unable to load personal wallet balance.");
+      setPersonalWallets(
+        ((personalRows ?? []) as unknown as PersonalWalletRow[])
+          .filter((wallet) => wallet.wallet_type !== "gasfree" && wallet.wallet_role !== "gasfree")
+          .map((wallet) => ({
+            ...wallet,
+            balance: Number(wallet.balance ?? 0),
+            onchain_balance:
+              wallet.onchain_balance == null ? null : Number(wallet.onchain_balance ?? 0),
+            onchain_trx_balance:
+              wallet.onchain_trx_balance == null ? null : Number(wallet.onchain_trx_balance ?? 0),
+          })),
+      );
       setLoading(false);
     }
 
@@ -120,7 +163,7 @@ function useDeposits(userId: string | undefined) {
     };
   }, [userId]);
 
-  return { deposits, wallets, loading, reload: () => void 0 };
+  return { deposits, wallets, personalWallets, loading, reload: () => void 0 };
 }
 
 function HomeAction({
@@ -160,7 +203,7 @@ function Countdown({ expiresAt }: { expiresAt: string }) {
 
 function DashboardPage() {
   const { user, profile } = useAuth();
-  const { deposits, wallets, loading } = useDeposits(user?.id);
+  const { deposits, wallets, personalWallets, loading } = useDeposits(user?.id);
   const createDeposit = useServerFn(createDepositRequest);
   const [amount, setAmount] = useState("25");
   const [pending, setPending] = useState(false);
@@ -215,6 +258,14 @@ function DashboardPage() {
 
   const confirmed = deposits.filter((row) => row.status === "confirmed");
   const totalCredited = confirmed.reduce((sum, row) => sum + (row.received_amount ?? 0), 0);
+  const personalUsdt = personalWallets.reduce(
+    (sum, wallet) => sum + walletDisplayBalance(wallet),
+    0,
+  );
+  const personalTrx = personalWallets.reduce(
+    (sum, wallet) => sum + Number(wallet.onchain_trx_balance ?? 0),
+    0,
+  );
 
   return (
     <div className="mx-auto max-w-[430px] space-y-[23px] md:max-w-7xl">
@@ -228,8 +279,10 @@ function DashboardPage() {
         </div>
         <div className="mt-5">
           <p className="text-[9px] text-slate-500">Total portfolio</p>
-          <p className="balance-v17">{formatUsdt(profile?.balance)} USDT</p>
-          <p className="text-[10px] text-slate-500">Available platform balance</p>
+          <p className="balance-v17">{formatUsdt(personalUsdt)} USDT</p>
+          <p className="text-[10px] text-slate-500">
+            Personal Mainnet wallets. {formatUsdt(personalTrx)} TRX
+          </p>
         </div>
         <div className="mt-[18px] grid grid-cols-4 gap-[10px]">
           <HomeAction to="/deposits" icon={ArrowDownLeft} label="Deposit" />
@@ -239,17 +292,17 @@ function DashboardPage() {
         </div>
         <div className="mt-[18px] grid grid-cols-2 gap-[10px]">
           <StatCard label="WTRON balance" value={`${formatUsdt(profile?.balance)} USDT`} />
-          <StatCard label="Wallet balance" value="Open Wallet" hint="Loaded from wallet page" />
+          <StatCard label="Wallet balance" value={`${formatUsdt(personalUsdt)} USDT`} />
         </div>
       </section>
 
       <div className="grid gap-[10px] sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Available balance"
-          value={`${formatUsdt(profile?.balance)} USDT`}
+          value={`${formatUsdt(personalUsdt)} USDT`}
           icon={<Wallet2 className="h-4 w-4" />}
           tone="success"
-          hint="Credited automatically on confirmation"
+          hint="Personal wallet funds"
         />
         <StatCard
           label="Confirmed deposits"

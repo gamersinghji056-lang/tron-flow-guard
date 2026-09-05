@@ -3445,6 +3445,18 @@ describe("GasFree transfer service safety", () => {
   it("uses personal wallet balances for Mini App Home and P2P sell-source selection", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
     const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
+    const webP2p = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
+      "utf8",
+    );
+    const dashboard = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/dashboard.tsx"),
+      "utf8",
+    );
+    const wallet = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/wallet.index.tsx"),
+      "utf8",
+    );
 
     assert.match(mini, /function personalWalletTotals/);
     assert.match(mini, /const totalAssets = personalTotals\.usdt/);
@@ -3453,10 +3465,21 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /sourceWalletId: selectedSellAdWallet\.id/);
     assert.match(p2p, /sourceWalletId: z\.string\(\)\.uuid\(\)\.optional\(\)/);
     assert.match(p2p, /_source_wallet_id: data\.sourceWalletId \?\? null/);
+    assert.match(webP2p, /personal_wallet_available_usdt_for_wallet/);
+    assert.match(webP2p, /sourceWalletId: side === "sell" \? selectedSourceWalletId : undefined/);
+    assert.match(webP2p, /Select a funded personal Mainnet wallet before selling USDT/);
+    assert.match(webP2p, /Selected wallet does not have enough available USDT/);
+    assert.match(dashboard, /walletDisplayBalance\(wallet\)/);
+    assert.match(dashboard, /Personal Mainnet wallets/);
+    assert.match(wallet, /wallets\s*\.filter\(\(wallet\) => wallet\.wallet_type !== "gasfree"\)/);
   });
 
   it("wires V17 P2P filter chips as real controls", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const webP2p = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
+      "utf8",
+    );
     assert.match(mini, /type P2pFilters/);
     assert.match(mini, /function applyP2pFilters/);
     assert.match(mini, /filters\.verified/);
@@ -3464,6 +3487,12 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /filters\.highCompletion/);
     assert.match(mini, /filters\.bestRate/);
     assert.match(mini, /onClick=\{\(\) => toggleFilter\(key\)\}/);
+    assert.match(webP2p, /interface P2pFilters/);
+    assert.match(webP2p, /function sortedAndFilteredAds/);
+    assert.match(webP2p, /filters\.verified/);
+    assert.match(webP2p, /filters\.upi/);
+    assert.match(webP2p, /filters\.highCompletion/);
+    assert.match(webP2p, /filters\.bestRate/);
   });
 
   it("keeps avatar upload validation human-readable and sends sizeBytes", () => {
@@ -3472,12 +3501,18 @@ describe("GasFree transfer service safety", () => {
       resolve(process.cwd(), "src/routes/_authenticated/profile-security.tsx"),
       "utf8",
     );
+    const webP2p = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
+      "utf8",
+    );
     assert.match(mini, /validateProfilePhoto\(file\)/);
     assert.match(mini, /sizeBytes: file\.size/);
     assert.match(profile, /PROFILE_PHOTO_MAX_BYTES/);
     assert.match(profile, /sizeBytes: file\.size/);
     assert.match(mini, /Array\.isArray\(parsed\)/);
     assert.match(profile, /profileUploadError/);
+    assert.match(webP2p, /sizeBytes: avatarFile\.size/);
+    assert.match(webP2p, /Choose an image up to 2 MB/);
   });
 
   it("adds local mnemonic QR backup/import and mobile keyboard safety", () => {
@@ -3588,6 +3623,10 @@ describe("GasFree transfer service safety", () => {
     );
     const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const webP2p = readFileSync(
+      resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
+      "utf8",
+    );
 
     assert.match(p2p, /sourceWalletId: z\.string\(\)\.uuid\(\)\.optional\(\)/);
     assert.match(p2p, /_source_wallet_id: data\.sourceWalletId \?\? null/);
@@ -3629,5 +3668,7 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /sourceWalletId: sellingToBuyAd \? selectedSellAdWallet\?\.id : undefined/);
     assert.match(mini, /Sell into buyer ads/);
     assert.match(mini, /personal_wallet_available_usdt_for_wallet/);
+    assert.match(webP2p, /sourceWalletId: side === "sell" \? selectedSourceWalletId : undefined/);
+    assert.match(webP2p, /SourceWalletSelect/);
   });
 });

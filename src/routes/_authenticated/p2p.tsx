@@ -16,7 +16,9 @@ import {
   getP2pRiskAcknowledgement,
   registerP2pAvatar,
 } from "@/lib/p2p.functions";
-import { formatUsdt } from "@/lib/chain";
+import { DEFAULT_NETWORK, formatUsdt } from "@/lib/chain";
+import type { ChainNetwork } from "@/lib/chain";
+import { walletDisplayBalance } from "@/lib/wallet-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/stat-card";
@@ -72,6 +74,86 @@ type RawAdRow = Omit<AdRow, "price_inr" | "available_usdt" | "min_order_inr" | "
   max_order_inr: unknown;
 };
 
+interface PersonalWalletRow {
+  id: string;
+  name: string | null;
+  address: string;
+  network: ChainNetwork;
+  balance: number | string | null;
+  onchain_balance?: number | string | null;
+  wallet_type?: string | null;
+  wallet_role?: string | null;
+}
+
+interface P2pFilters {
+  bestRate: boolean;
+  verified: boolean;
+  upi: boolean;
+  highCompletion: boolean;
+}
+
+const avatarMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const maxAvatarBytes = 2 * 1024 * 1024;
+
+function friendlyP2pError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : "";
+  const lower = message.toLowerCase();
+  if (lower.includes("sizebytes") || lower.includes("too_big") || lower.includes("2 mb")) {
+    return "Choose an image up to 2 MB.";
+  }
+  if (lower.includes("contenttype") || lower.includes("invalid_enum")) {
+    return "Choose a JPG, PNG, WebP or GIF image.";
+  }
+  if (message.trim().startsWith("[") || lower.includes("invalid_type")) return fallback;
+  return message || fallback;
+}
+
+function completionRate(ad: AdRow, profile?: P2pProfile | null) {
+  if (typeof profile?.completionRate === "number") return profile.completionRate;
+  const total = Number(ad.merchants?.total_orders ?? 0);
+  const completed = Number(ad.merchants?.completed_orders ?? 0);
+  return total > 0 ? Math.round((completed / total) * 100) : 0;
+}
+
+function isVerifiedAd(ad: AdRow, profile?: P2pProfile | null) {
+  const merchantStatus = String(ad.merchants?.status ?? "").toLowerCase();
+  const tier = String(profile?.rankingTier ?? "").toLowerCase();
+  return ["active", "verified", "approved"].includes(merchantStatus) || tier.includes("verified");
+}
+
+function sortedAndFilteredAds(
+  ads: AdRow[],
+  side: "buy" | "sell",
+  amount: string,
+  filters: P2pFilters,
+  profiles: Record<string, P2pProfile>,
+) {
+  const value = Number(amount);
+  const marketplaceAdSide = side === "buy" ? "sell" : "buy";
+  const filtered = ads
+    .filter((row) => row.side === marketplaceAdSide)
+    .filter((row) => {
+      if (
+        filters.upi &&
+        !(row.payment_methods ?? []).some((method) => method.toLowerCase() === "upi")
+      ) {
+        return false;
+      }
+      const profile = row.merchants?.user_id ? profiles[row.merchants.user_id] : null;
+      if (filters.verified && !isVerifiedAd(row, profile)) return false;
+      if (filters.highCompletion && completionRate(row, profile) < 95) return false;
+      if (!Number.isFinite(value) || value <= 0) return true;
+      const total = value * row.price_inr;
+      return (
+        value <= row.available_usdt && total >= row.min_order_inr && total <= row.max_order_inr
+      );
+    });
+  if (!filters.bestRate) return filtered;
+  return [...filtered].sort((a, b) =>
+    side === "buy" ? a.price_inr - b.price_inr : b.price_inr - a.price_inr,
+  );
+}
+
 function P2pPage() {
   const createDirectSell = useServerFn(createDirectSellOrder);
   const createAd = useServerFn(createP2pAd);
@@ -99,6 +181,15 @@ function P2pPage() {
   const [pendingDirect, setPendingDirect] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{ id: string; upi_id: string }[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
+  const [sellWallets, setSellWallets] = useState<PersonalWalletRow[]>([]);
+  const [walletAvailability, setWalletAvailability] = useState<Record<string, number>>({});
+  const [selectedSourceWalletId, setSelectedSourceWalletId] = useState("");
+  const [filters, setFilters] = useState<P2pFilters>({
+    bestRate: true,
+    verified: false,
+    upi: false,
+    highCompletion: false,
+  });
   const [adForm, setAdForm] = useState({
     side: "sell" as "buy" | "sell",
     price: "",
@@ -114,11 +205,16 @@ function P2pPage() {
     setLoadingAds(true);
     setMarketplaceError("");
     try {
-      const [marketplace, methodsResult] = await Promise.all([
+      const [marketplace, methodsResult, walletsResult] = await Promise.all([
         loadMarketplace(),
         supabase.from("payment_methods").select("id, upi_id").order("is_default", {
           ascending: false,
         }),
+        supabase
+          .from("user_wallets" as never)
+          .select("id, name, address, network, balance, onchain_balance, wallet_type, wallet_role")
+          .eq("is_archived", false as never)
+          .eq("network", DEFAULT_NETWORK as never),
       ]);
       setAds(
         ((marketplace ?? []) as RawAdRow[]).map((row) => ({
@@ -132,6 +228,26 @@ function P2pPage() {
       setPaymentMethods((methodsResult.data ?? []) as { id: string; upi_id: string }[]);
       setSelectedPaymentMethod((current) => current || methodsResult.data?.[0]?.id || "");
       if (methodsResult.error) toast.error(methodsResult.error.message);
+      if (walletsResult.error) toast.error("Unable to load source wallets.");
+      const eligibleWallets = ((walletsResult.data ?? []) as unknown as PersonalWalletRow[]).filter(
+        (wallet) => wallet.wallet_type !== "gasfree" && wallet.wallet_role !== "gasfree",
+      );
+      setSellWallets(eligibleWallets);
+      setSelectedSourceWalletId((current) =>
+        current && eligibleWallets.some((wallet) => wallet.id === current)
+          ? current
+          : (eligibleWallets[0]?.id ?? ""),
+      );
+      const availabilityPairs = await Promise.all(
+        eligibleWallets.map(async (wallet) => {
+          const { data, error } = await supabase.rpc(
+            "personal_wallet_available_usdt_for_wallet" as never,
+            { _wallet_id: wallet.id } as never,
+          );
+          return [wallet.id, error ? walletDisplayBalance(wallet) : Number(data ?? 0)] as const;
+        }),
+      );
+      setWalletAvailability(Object.fromEntries(availabilityPairs));
       const ack = (await getRiskAck()) as { acknowledged?: boolean };
       setRiskAcknowledged(Boolean(ack.acknowledged));
     } catch (error) {
@@ -175,18 +291,14 @@ function P2pPage() {
     }
   }, [ads, avatarUrls, loadAvatarUrl, loadParticipantProfile, profiles]);
 
-  const filtered = useMemo(() => {
-    const value = Number(amount);
-    const marketplaceAdSide = side === "buy" ? "sell" : "buy";
-    const bySide = ads.filter((row) => row.side === marketplaceAdSide);
-    if (!Number.isFinite(value) || value <= 0) return bySide;
-    return bySide.filter((row) => {
-      const total = value * row.price_inr;
-      return (
-        value <= row.available_usdt && total >= row.min_order_inr && total <= row.max_order_inr
-      );
-    });
-  }, [ads, amount, side]);
+  const filtered = useMemo(
+    () => sortedAndFilteredAds(ads, side, amount, filters, profiles),
+    [ads, amount, filters, profiles, side],
+  );
+  const selectedSourceWallet = sellWallets.find((wallet) => wallet.id === selectedSourceWalletId);
+  const selectedSourceAvailable = selectedSourceWalletId
+    ? (walletAvailability[selectedSourceWalletId] ?? 0)
+    : 0;
 
   async function submitDirectSell(event: React.FormEvent) {
     event.preventDefault();
@@ -219,6 +331,14 @@ function P2pPage() {
       toast.error("Select a saved UPI payment method for your sell ad");
       return;
     }
+    if (adForm.side === "sell" && !selectedSourceWalletId) {
+      toast.error("Select a funded personal Mainnet wallet for your sell ad");
+      return;
+    }
+    if (adForm.side === "sell" && Number(adForm.availableUsdt) > selectedSourceAvailable) {
+      toast.error("Selected wallet does not have enough available USDT");
+      return;
+    }
     const payload = {
       side: adForm.side,
       price: Number(adForm.price),
@@ -227,6 +347,7 @@ function P2pPage() {
       maxOrderInr: Number(adForm.maxOrderInr),
       paymentMethods: ["upi"],
       paymentMethodId: adForm.side === "sell" ? selectedPaymentMethod : undefined,
+      sourceWalletId: adForm.side === "sell" ? selectedSourceWalletId : undefined,
       terms: adForm.terms || undefined,
       isActive: true,
     };
@@ -260,6 +381,14 @@ function P2pPage() {
       toast.error("Add a UPI payment method before selling into a buy ad");
       return;
     }
+    if (side === "sell" && !selectedSourceWalletId) {
+      toast.error("Select a funded personal Mainnet wallet before selling USDT");
+      return;
+    }
+    if (side === "sell" && value > selectedSourceAvailable) {
+      toast.error("Selected wallet does not have enough available USDT");
+      return;
+    }
     if (!skipRiskCheck && !riskAcknowledged) {
       setPendingRiskAd(ad);
       return;
@@ -271,6 +400,7 @@ function P2pPage() {
           adId: ad.id,
           amountUsdt: value,
           paymentMethodId: side === "sell" ? selectedPaymentMethod : undefined,
+          sourceWalletId: side === "sell" ? selectedSourceWalletId : undefined,
         },
       });
       const row = order as { order_ref?: unknown } | null;
@@ -279,7 +409,7 @@ function P2pPage() {
       setAmount("");
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create order");
+      toast.error(friendlyP2pError(error, "Could not create order"));
     } finally {
       setTakingAdId(null);
     }
@@ -302,6 +432,14 @@ function P2pPage() {
 
   async function uploadAvatar() {
     if (!avatarFile) return;
+    if (!avatarMimeTypes.includes(avatarFile.type)) {
+      toast.error("Choose a JPG, PNG, WebP or GIF image.");
+      return;
+    }
+    if (avatarFile.size > maxAvatarBytes) {
+      toast.error("Choose an image up to 2 MB.");
+      return;
+    }
     setAvatarPending(true);
     try {
       const upload = await createAvatarUpload({
@@ -326,7 +464,7 @@ function P2pPage() {
       setAvatarFile(null);
       toast.success("P2P profile photo updated");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update profile photo");
+      toast.error(friendlyP2pError(error, "Could not update profile photo"));
     } finally {
       setAvatarPending(false);
     }
@@ -383,7 +521,7 @@ function P2pPage() {
             </div>
           </div>
           {side === "sell" && (
-            <div className="mt-3 max-w-md">
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
               <select
                 value={selectedPaymentMethod}
                 onChange={(event) => setSelectedPaymentMethod(event.target.value)}
@@ -396,6 +534,22 @@ function P2pPage() {
                   </option>
                 ))}
               </select>
+              <SourceWalletSelect
+                wallets={sellWallets}
+                availability={walletAvailability}
+                value={selectedSourceWalletId}
+                onChange={setSelectedSourceWalletId}
+              />
+              {selectedSourceWallet ? (
+                <p className="md:col-span-2 text-xs text-muted-foreground">
+                  Available for P2P reservation: {formatUsdt(selectedSourceAvailable)} USDT from{" "}
+                  {selectedSourceWallet.name ?? "selected wallet"}.
+                </p>
+              ) : (
+                <p className="md:col-span-2 text-xs text-warning">
+                  Create or import a funded TRON Mainnet wallet before selling USDT.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -512,18 +666,26 @@ function P2pPage() {
           </Button>
         </div>
         {adForm.side === "sell" && (
-          <select
-            value={selectedPaymentMethod}
-            onChange={(event) => setSelectedPaymentMethod(event.target.value)}
-            className="mt-3 h-10 w-full rounded-md border bg-background px-3 text-sm md:max-w-md"
-          >
-            <option value="">Select seller UPI method</option>
-            {paymentMethods.map((method) => (
-              <option key={method.id} value={method.id}>
-                {method.upi_id}
-              </option>
-            ))}
-          </select>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <select
+              value={selectedPaymentMethod}
+              onChange={(event) => setSelectedPaymentMethod(event.target.value)}
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="">Select seller UPI method</option>
+              {paymentMethods.map((method) => (
+                <option key={method.id} value={method.id}>
+                  {method.upi_id}
+                </option>
+              ))}
+            </select>
+            <SourceWalletSelect
+              wallets={sellWallets}
+              availability={walletAvailability}
+              value={selectedSourceWalletId}
+              onChange={setSelectedSourceWalletId}
+            />
+          </div>
         )}
         <Input
           className="mt-3"
@@ -534,6 +696,29 @@ function P2pPage() {
       </form>
 
       <div className="panel overflow-hidden">
+        <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
+          {[
+            ["bestRate", "Best rate"],
+            ["verified", "Verified"],
+            ["upi", "UPI"],
+            ["highCompletion", "High completion"],
+          ].map(([key, label]) => {
+            const filterKey = key as keyof P2pFilters;
+            return (
+              <Button
+                key={key}
+                type="button"
+                size="sm"
+                variant={filters[filterKey] ? "default" : "secondary"}
+                onClick={() =>
+                  setFilters((current) => ({ ...current, [filterKey]: !current[filterKey] }))
+                }
+              >
+                {label}
+              </Button>
+            );
+          })}
+        </div>
         {marketplaceError ? (
           <div className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">
             <p>Unable to load P2P marketplace. Please try again.</p>
@@ -648,5 +833,32 @@ function P2pPage() {
         </table>
       </div>
     </div>
+  );
+}
+
+function SourceWalletSelect({
+  wallets,
+  availability,
+  value,
+  onChange,
+}: {
+  wallets: PersonalWalletRow[];
+  availability: Record<string, number>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+    >
+      <option value="">Select source wallet</option>
+      {wallets.map((wallet) => (
+        <option key={wallet.id} value={wallet.id}>
+          {wallet.name ?? "Wallet"} - {formatUsdt(availability[wallet.id] ?? 0)} USDT available
+        </option>
+      ))}
+    </select>
   );
 }

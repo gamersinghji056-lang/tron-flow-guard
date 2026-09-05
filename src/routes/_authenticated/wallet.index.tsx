@@ -129,10 +129,10 @@ function WalletsPage() {
 
   const total = useMemo(
     () =>
-      Number(profile?.balance ?? 0) +
-      Number(profile?.locked_balance ?? 0) +
-      Number((profile as { pending_balance?: number } | null)?.pending_balance ?? 0),
-    [profile],
+      wallets
+        .filter((wallet) => wallet.wallet_type !== "gasfree")
+        .reduce((sum, wallet) => sum + walletDisplayBalance(wallet), 0),
+    [wallets],
   );
   const activeWallet = selectActiveWallet(wallets);
 
@@ -294,10 +294,13 @@ function WalletsPage() {
           <p className="text-[9px] text-muted-foreground">Portfolio balance</p>
           <p className="balance-v17 mt-1">{formatUsdt(total)} USDT</p>
           <div className="mt-5 grid grid-cols-3 gap-2">
-            <Metric label="Available" value={`${formatUsdt(profile?.balance)} USDT`} />
+            <Metric label="Wallet USDT" value={`${formatUsdt(total)} USDT`} />
+            <Metric label="WTRON balance" value={`${formatUsdt(profile?.balance)} USDT`} />
             <Metric label="Locked" value={`${formatUsdt(profile?.locked_balance)} USDT`} />
+          </div>
+          <div className="mt-2 grid grid-cols-1 gap-2">
             <Metric
-              label="Pending"
+              label="Pending platform credit"
               value={`${formatUsdt((profile as { pending_balance?: number } | null)?.pending_balance)} USDT`}
             />
           </div>
