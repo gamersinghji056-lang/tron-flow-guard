@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -27,6 +36,7 @@ import { toast } from "sonner";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import HomeScreen from "@/components/mini-app/screens/home-screen";
 import {
   GasFreeIcon,
   MiniIcons,
@@ -114,6 +124,10 @@ import {
   type MiniT,
 } from "@/lib/mini-i18n";
 import { createMiniAppClientId, isMiniAppSessionError } from "@/lib/mini-app-runtime";
+import {
+  miniAppPersonalWalletTotals,
+  visibleMiniAppMainnetWallets,
+} from "@/lib/mini-app-wallet-rendering";
 import { qrToDataUrl } from "@/lib/mini-app-qr";
 import { clearBrowserAuthState } from "@/lib/auth-session";
 import {
@@ -131,6 +145,24 @@ import {
 } from "@/lib/mini-wallet-ui";
 import { onChainSendEnabled, selectActiveWallet, walletDisplayBalance } from "@/lib/wallet-state";
 import { V17Avatar } from "@/components/v17-avatar";
+import { V17LoadingState } from "@/components/mini-app/shared/v17-primitives";
+
+const AnalyticsScreen = lazy(() => import("@/components/mini-app/screens/analytics-screen"));
+const BankAccountsScreen = lazy(() => import("@/components/mini-app/screens/bank-accounts-screen"));
+const HistoryScreen = lazy(() => import("@/components/mini-app/screens/history-screen"));
+const MoreScreen = lazy(() => import("@/components/mini-app/screens/more-screen"));
+const NotificationsScreen = lazy(
+  () => import("@/components/mini-app/screens/notifications-screen"),
+);
+const OrdersScreen = lazy(() => import("@/components/mini-app/screens/orders-screen"));
+const P2pScreen = lazy(() => import("@/components/mini-app/screens/p2p-screen"));
+const ProfileScreen = lazy(() => import("@/components/mini-app/screens/profile-screen"));
+const ReferralScreen = lazy(() => import("@/components/mini-app/screens/referral-screen"));
+const SecurityScreen = lazy(() => import("@/components/mini-app/screens/security-screen"));
+const TradeScreen = lazy(() => import("@/components/mini-app/screens/trade-screen"));
+const WalletScreen = lazy(() => import("@/components/mini-app/screens/wallet-screen"));
+const WalletCreateScreen = lazy(() => import("@/components/mini-app/screens/wallet-create-screen"));
+const WalletImportScreen = lazy(() => import("@/components/mini-app/screens/wallet-import-screen"));
 
 const MINI_THEME_STORAGE_KEY = "wtron-mini-theme";
 const PROFILE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -708,14 +740,6 @@ function personalSpendWallets(wallets: WalletRow[]) {
   return wallets.filter(
     (wallet) => wallet.wallet_role !== "gasfree" && wallet.wallet_type !== "gasfree",
   );
-}
-
-function personalWalletTotals(wallets: WalletRow[]) {
-  const spendableWallets = personalSpendWallets(wallets);
-  return {
-    usdt: spendableWallets.reduce((sum, wallet) => sum + walletDisplayBalance(wallet), 0),
-    trx: spendableWallets.reduce((sum, wallet) => sum + Number(wallet.onchain_trx_balance ?? 0), 0),
-  };
 }
 
 function safeAddress(address?: string | null) {
@@ -1307,7 +1331,7 @@ function TelegramMiniApp() {
   const realtimeRefreshReasonsRef = useRef<Set<"deposit" | "ledger" | "p2p">>(new Set());
 
   const profile = overview?.profile ?? null;
-  const wallets = (overview?.wallets ?? []).filter((wallet) => wallet.network === "trc20-mainnet");
+  const wallets = visibleMiniAppMainnetWallets(overview?.wallets ?? []);
   const selectedWallet = selectActiveWallet(wallets, selectedWalletId);
   const selectedGasfreeWallet =
     selectedWallet?.wallet_role === "gasfree"
@@ -1449,7 +1473,7 @@ function TelegramMiniApp() {
   const platformBalance = Number(profile?.balance ?? 0);
   const lockedBalance = Number(profile?.locked_balance ?? 0);
   const pendingBalance = Number(profile?.pending_balance ?? 0);
-  const personalTotals = personalWalletTotals(wallets);
+  const personalTotals = miniAppPersonalWalletTotals(wallets);
   const totalAssets = personalTotals.usdt;
   const latestDeposit = deposits[0];
   const directSellOrders = overview?.directSellOrders ?? [];
@@ -3099,443 +3123,447 @@ function TelegramMiniApp() {
           onNotifications={() => void navigate("notifications")}
           onProfile={() => void navigate("profile")}
         />
-        {screen === "home" ? (
-          <HomeScreen
-            vendorMode={entryState === "vendor_app"}
-            total={totalAssets}
-            profile={profile}
-            orders={overview?.activeOrders ?? []}
-            transactions={overview?.transactions ?? []}
-            ads={ads}
-            wallet={selectedWallet}
-            t={t}
-            onNavigate={navigate}
-          />
-        ) : null}
-        {screen === "wallet" && !wallets.length ? (
-          <WalletScreen
-            wallets={wallets}
-            selectedWallet={selectedWallet}
-            t={t}
-            onNavigate={navigate}
-            onSelect={(wallet) => void activateWallet(wallet)}
-          />
-        ) : null}
-        {screen === "wallet-create" ? (
-          <WalletCreateScreen
-            name={createWalletName}
-            setName={setCreateWalletName}
-            password={walletPassword}
-            setPassword={setWalletPassword}
-            confirm={walletPasswordConfirm}
-            setConfirm={setWalletPasswordConfirm}
-            busy={busy}
-            t={t}
-            onSubmit={submitCreateWallet}
-          />
-        ) : null}
-        {screen === "wallet-import" ? (
-          <WalletImportScreen
-            name={createWalletName}
-            setName={setCreateWalletName}
-            phrase={importPhrase}
-            setPhrase={setImportPhrase}
-            password={walletPassword}
-            setPassword={setWalletPassword}
-            busy={busy}
-            t={t}
-            onSubmit={submitImportWallet}
-            onScanPhrase={() => void scanImportRecoveryPhrase()}
-          />
-        ) : null}
-        {screen === "wallet" && wallets.length ? (
-          <WalletDetailScreen
-            vendorMode={entryState === "vendor_app"}
-            wallet={selectedWallet}
-            gasfreeWallet={selectedGasfreeWallet ?? null}
-            wallets={wallets}
-            transactions={walletTransactions}
-            resources={walletResources}
-            resourcesCheckedAt={walletResourcesCheckedAt}
-            busy={busy}
-            t={t}
-            onNavigate={navigate}
-            onSelectWallet={(wallet) => void activateWallet(wallet)}
-            onCreateWallet={() => void navigate("wallet-create")}
-            onImportWallet={() => void navigate("wallet-import")}
-            onManageWallets={() => void navigate("wallet-more")}
-            onSelectAsset={(asset) => {
-              setSelectedWalletAsset(asset);
-              void navigate("wallet-asset-detail");
-            }}
-            onSelectTransaction={(transaction, backTo = "wallet") => {
-              setSelectedWalletTransactionId(transaction.id);
-              setTransactionBackScreen(backTo);
-              void navigate("wallet-transaction-detail");
-            }}
-            onRefresh={() => void refreshSelectedWalletBalance()}
-            onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
-          />
-        ) : null}
-        {screen === "wallet-detail" ? (
-          <WalletDetailScreen
-            vendorMode={entryState === "vendor_app"}
-            wallet={selectedWallet}
-            gasfreeWallet={selectedGasfreeWallet ?? null}
-            wallets={wallets}
-            transactions={walletTransactions}
-            resources={walletResources}
-            resourcesCheckedAt={walletResourcesCheckedAt}
-            busy={busy}
-            t={t}
-            onNavigate={navigate}
-            onSelectWallet={(wallet) => void activateWallet(wallet)}
-            onCreateWallet={() => void navigate("wallet-create")}
-            onImportWallet={() => void navigate("wallet-import")}
-            onManageWallets={() => void navigate("wallet-more")}
-            onSelectAsset={(asset) => {
-              setSelectedWalletAsset(asset);
-              void navigate("wallet-asset-detail");
-            }}
-            onSelectTransaction={(transaction, backTo = "wallet-detail") => {
-              setSelectedWalletTransactionId(transaction.id);
-              setTransactionBackScreen(backTo);
-              void navigate("wallet-transaction-detail");
-            }}
-            onRefresh={() => void refreshSelectedWalletBalance()}
-            onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
-          />
-        ) : null}
-        {screen === "wallet-history" ? (
-          <WalletHistoryScreen
-            wallet={selectedWallet}
-            rows={walletTransactions}
-            assetFilter={walletHistoryAsset}
-            setAssetFilter={setWalletHistoryAsset}
-            directionFilter={walletHistoryDirection}
-            setDirectionFilter={setWalletHistoryDirection}
-            hasMore={walletTransactionHasMore}
-            busy={busy}
-            t={t}
-            onLoadMore={() =>
-              selectedWallet?.id && void loadSelectedWalletTransactions(selectedWallet.id)
-            }
-            onSelectTransaction={(transaction) => {
-              setSelectedWalletTransactionId(transaction.id);
-              setTransactionBackScreen("wallet-history");
-              void navigate("wallet-transaction-detail");
-            }}
-          />
-        ) : null}
-        {screen === "wallet-asset-detail" ? (
-          <WalletAssetDetailScreen
-            wallet={selectedWallet}
-            asset={selectedWalletAsset}
-            rows={walletTransactions}
-            t={t}
-            onSend={() => {
-              setSendMode("standard");
-              setSendAsset(selectedWalletAsset);
-              setStandardTransferPassword("");
-              setStandardTransferPreview(null);
-              setStandardTransferPreviewError("");
-              setStandardTransferResult(null);
-              setStandardTransferSubmitState("idle");
-              setStandardTransferIdempotencyKey(createMiniAppClientId("standard-send"));
-              void navigate("send");
-            }}
-            onReceive={() => {
-              setReceiveAsset(selectedWalletAsset);
-              void navigate("wallet-receive");
-            }}
-            onSelectTransaction={(transaction) => {
-              setSelectedWalletTransactionId(transaction.id);
-              setTransactionBackScreen("wallet-asset-detail");
-              void navigate("wallet-transaction-detail");
-            }}
-          />
-        ) : null}
-        {screen === "wallet-transaction-detail" ? (
-          <WalletTransactionDetailScreen
-            wallet={selectedWallet}
-            transaction={selectedWalletTransaction}
-            t={t}
-          />
-        ) : null}
-        {screen === "wallet-receive" ? (
-          <ReceiveScreen
-            wallet={selectedWallet}
-            asset={receiveAsset}
-            setAsset={setReceiveAsset}
-            qr={walletQr}
-            t={t}
-          />
-        ) : null}
-        {screen === "wallet-more" ? (
-          <WalletMoreScreen
-            wallet={selectedWallet}
-            onNavigate={navigate}
-            onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
-            t={t}
-          />
-        ) : null}
-        {screen === "wallet-gasfree" ? (
-          <WalletGasFreeScreen
-            wallet={selectedWallet}
-            gasfreeWallet={selectedGasfreeWallet ?? null}
-            transactions={walletTransactions}
-            readiness={gasfreeReadiness}
-            busy={busy}
-            t={t}
-            onCheck={() => void checkSelectedWalletGasfree()}
-            onDiscover={() => void discoverSelectedWalletGasfree()}
-            onReceive={() => {
-              if (selectedGasfreeWallet?.id) setSelectedWalletId(selectedGasfreeWallet.id);
-              setReceiveAsset("USDT");
-              void navigate("wallet-receive");
-            }}
-            onSend={() => void openGasfreeSend()}
-            onSelectTransaction={(transaction) => {
-              setSelectedWalletTransactionId(transaction.id);
-              setTransactionBackScreen("wallet-gasfree");
-              void navigate("wallet-transaction-detail");
-            }}
-          />
-        ) : null}
-        {screen === "wallet-backup" ? (
-          <BackupScreen
-            wallet={selectedWallet}
-            password={backupPassword}
-            setPassword={setBackupPassword}
-            revealedPhrase={revealedPhrase}
-            busy={busy}
-            t={t}
-            onSubmit={revealBackupPhrase}
-          />
-        ) : null}
-        {screen === "platform-deposit" ? (
-          <PlatformDepositScreen
-            amount={depositAmount}
-            setAmount={setDepositAmount}
-            address={depositAddress}
-            deposits={deposits}
-            qr={depositQr}
-            busy={busy}
-            onSubmit={submitDeposit}
-          />
-        ) : null}
-        {screen === "direct-sell-detail" ? (
-          <DirectSellDetailScreen
-            order={selectedDirectSell}
-            items={directSellPaymentItems.filter(
-              (item) => item.direct_sell_order_id === selectedDirectSell?.id,
-            )}
-            qr={directSellQr}
-            busy={busy}
-            onCopy={(value, label) => copyText(value, label ?? "Address copied")}
-            onConfirm={(itemId) => void confirmDirectSellPayment(itemId)}
-            onDispute={(itemId) => void disputeDirectSellPayment(itemId)}
-            paymentMethod={
-              (selectedDirectSell?.payout_account_source ??
-                directSellAssignmentValue(selectedDirectSell, "payout_account_source")) ===
-              "vendor_payment_accounts"
-                ? (vendorPayoutMethods.find(
-                    (method) =>
-                      method.id ===
-                      (selectedDirectSell?.vendor_payment_account_id ??
-                        directSellAssignmentValue(selectedDirectSell, "payout_account_id")),
-                  ) ?? selectedVendorPayoutDisplay)
-                : (paymentMethods.find(
-                    (method) => method.id === selectedDirectSell?.payment_method_id,
-                  ) ?? selectedActivePayout)
-            }
-          />
-        ) : null}
-        {screen === "send" ? (
-          <SendScreen
-            wallet={
-              sendMode === "gasfree" ? (selectedGasfreeWallet ?? selectedWallet) : selectedWallet
-            }
-            mode={sendMode}
-            readiness={sendMode === "gasfree" ? gasfreeReadiness : null}
-            asset={sendAsset}
-            setAsset={setSendAsset}
-            address={sendAddress}
-            setAddress={setSendAddress}
-            amount={sendAmount}
-            setAmount={setSendAmount}
-            transactionPassword={gasfreeSendPassword}
-            setTransactionPassword={setGasfreeSendPassword}
-            standardTransactionPassword={standardTransferPassword}
-            setStandardTransactionPassword={setStandardTransferPassword}
-            standardPreview={standardTransferPreview}
-            standardPreviewError={standardTransferPreviewError}
-            standardSubmitState={standardTransferSubmitState}
-            standardResult={standardTransferResult}
-            submitState={gasfreeSubmitState}
-            result={gasfreeTransferResult}
-            busy={busy}
-            t={t}
-            onSubmitStandard={submitStandardSend}
-            onSubmitGasfree={submitGasfreeSend}
-          />
-        ) : null}
-        {screen === "p2p" ? (
-          <P2pScreen
-            vendorMode={entryState === "vendor_app"}
-            tab={p2pTab}
-            setTab={setP2pTab}
-            ads={ads}
-            orders={overview?.orders ?? []}
-            p2pAmount={p2pAmount}
-            setP2pAmount={setP2pAmount}
-            sellAd={sellAd}
-            setSellAd={setSellAd}
-            paymentMethods={activeUpiMethods}
-            selectedPaymentMethodId={selectedPaymentMethodId}
-            setSelectedPaymentMethodId={setSelectedPaymentMethodId}
-            sourceWallets={activeSellWallets}
-            selectedSourceWalletId={selectedSellAdWallet?.id ?? ""}
-            setSelectedSourceWalletId={setSellAdSourceWalletId}
-            walletAvailability={p2pWalletAvailability}
-            filters={p2pFilters}
-            setFilters={setP2pFilters}
-            busy={busy}
-            onTakeAd={takeAd}
-            onCreateAd={submitSellAd}
-          />
-        ) : null}
-        {screen === "trade" ? (
-          <TradeScreen
-            vendorMode={entryState === "vendor_app"}
-            tab={tradeTab}
-            setTab={setTradeTab}
-            amount={directSellAmount}
-            setAmount={setDirectSellAmount}
-            paymentMethods={
-              entryState === "vendor_app" ? activeVendorPayoutMethods : activePayoutMethods
-            }
-            selectedPaymentMethodId={
-              entryState === "vendor_app" ? selectedVendorPaymentAccountId : selectedPaymentMethodId
-            }
-            setSelectedPaymentMethodId={
-              entryState === "vendor_app"
-                ? setSelectedVendorPaymentAccountId
-                : setSelectedPaymentMethodId
-            }
-            vendors={vendorListings}
-            vendorAmount={vendorAmount}
-            setVendorAmount={setVendorAmount}
-            rail={vendorRail}
-            setRail={setVendorRail}
-            busy={busy}
-            onSell={submitDirectSell}
-            onBuy={submitVendorBuy}
-            onAddPayment={() => void navigate("bank-accounts")}
-          />
-        ) : null}
-        {screen === "more" ? (
-          <MoreScreen
-            profile={profile}
-            avatarUrl={avatarUrl}
-            avatarUploading={avatarUploading}
-            onUploadPhoto={(file) => void uploadProfilePhoto(file)}
-            vendorMode={entryState === "vendor_app"}
-            onNavigate={navigate}
-            locale={locale}
-            setLocale={setLocale}
-            theme={theme}
-            setTheme={setTheme}
-            t={t}
-            onLogout={logoutMiniAppSession}
-          />
-        ) : null}
-        {screen === "orders" ? (
-          <OrdersScreen
-            orders={overview?.orders ?? []}
-            directSellOrders={directSellOrders}
-            onDirectSell={(order) => {
-              setSelectedDirectSellId(order.id);
-              setCreatedDirectSell(null);
-              setScreen("direct-sell-detail");
-            }}
-          />
-        ) : null}
-        {screen === "analytics" ? <AnalyticsScreen data={analytics} /> : null}
-        {screen === "bank-accounts" ? (
-          <BankAccountsScreen
-            vendorMode={entryState === "vendor_app"}
-            methods={entryState === "vendor_app" ? vendorPayoutMethods : paymentMethods}
-            upi={upiForm}
-            setUpi={setUpiForm}
-            bank={bankForm}
-            setBank={setBankForm}
-            vendorBankRail={vendorBankRail}
-            setVendorBankRail={setVendorBankRail}
-            vendorLimits={vendorAccountLimits}
-            setVendorLimits={setVendorAccountLimits}
-            busy={busy}
-            onSaveUpi={submitUpi}
-            onSaveBank={submitBank}
-            onDefault={(id) =>
-              entryState === "vendor_app"
-                ? void updateVendorPayoutState({ data: { accountId: id, action: "default" } }).then(
-                    () => refresh("bank-accounts"),
-                  )
-                : void makePaymentDefault({ data: { id } }).then(() => refresh("bank-accounts"))
-            }
-            onDelete={(id) =>
-              entryState === "vendor_app"
-                ? void updateVendorPayoutState({ data: { accountId: id, action: "archive" } }).then(
-                    () => refresh("bank-accounts"),
-                  )
-                : void removePaymentMethod({ data: { id } }).then(() => refresh("bank-accounts"))
-            }
-            onVendorAction={(id, action) =>
-              void updateVendorPayoutState({ data: { accountId: id, action } }).then(() =>
-                refresh("bank-accounts"),
-              )
-            }
-          />
-        ) : null}
-        {screen === "history" ? <HistoryScreen rows={tradeHistory} /> : null}
-        {screen === "profile" ? (
-          <ProfileScreen
-            profile={profile}
-            avatarUrl={avatarUrl}
-            avatarUploading={avatarUploading}
-            hasSession={hasSession}
-            onNavigate={navigate}
-            onUploadPhoto={(file) => void uploadProfilePhoto(file)}
-          />
-        ) : null}
-        {screen === "notifications" ? (
-          <NotificationsScreen
-            rows={overview?.notifications ?? []}
-            onMarkRead={markNotificationRead}
-          />
-        ) : null}
-        {screen === "security" ? (
-          <SecurityScreen
-            wallets={wallets}
-            enabled={transactionPasswordEnabled}
-            changing={transactionPasswordChangeOpen}
-            setChanging={setTransactionPasswordChangeOpen}
-            currentPassword={walletCurrentPassword}
-            setCurrentPassword={setWalletCurrentPassword}
-            password={walletPassword}
-            setPassword={setWalletPassword}
-            confirm={walletPasswordConfirm}
-            setConfirm={setWalletPasswordConfirm}
-            busy={busy}
-            onSubmit={saveTransactionPassword}
-            onWalletBackup={(wallet) => {
-              setSelectedWalletId(wallet.id);
-              setScreen("wallet-backup");
-            }}
-          />
-        ) : null}
-        {screen === "referral" ? <ReferralScreen summary={referral} /> : null}
+        <Suspense fallback={<V17LoadingState />}>
+          {screen === "home" ? (
+            <HomeScreen
+              vendorMode={entryState === "vendor_app"}
+              total={totalAssets}
+              profile={profile}
+              orders={overview?.activeOrders ?? []}
+              transactions={overview?.transactions ?? []}
+              ads={ads}
+              wallet={selectedWallet}
+              t={t}
+              onNavigate={navigate}
+            />
+          ) : null}
+          {screen === "wallet" ? (
+            <WalletScreen
+              wallets={wallets}
+              selectedWallet={selectedWallet}
+              t={t}
+              onNavigate={navigate}
+              onSelect={(wallet) => void activateWallet(wallet)}
+            />
+          ) : null}
+          {screen === "wallet-create" ? (
+            <WalletCreateScreen
+              name={createWalletName}
+              setName={setCreateWalletName}
+              password={walletPassword}
+              setPassword={setWalletPassword}
+              confirm={walletPasswordConfirm}
+              setConfirm={setWalletPasswordConfirm}
+              busy={busy}
+              t={t}
+              onSubmit={submitCreateWallet}
+            />
+          ) : null}
+          {screen === "wallet-import" ? (
+            <WalletImportScreen
+              name={createWalletName}
+              setName={setCreateWalletName}
+              phrase={importPhrase}
+              setPhrase={setImportPhrase}
+              password={walletPassword}
+              setPassword={setWalletPassword}
+              busy={busy}
+              t={t}
+              onSubmit={submitImportWallet}
+              onScanPhrase={() => void scanImportRecoveryPhrase()}
+            />
+          ) : null}
+          {screen === "wallet" && wallets.length ? (
+            <WalletDetailScreen
+              vendorMode={entryState === "vendor_app"}
+              wallet={selectedWallet}
+              gasfreeWallet={selectedGasfreeWallet ?? null}
+              wallets={wallets}
+              transactions={walletTransactions}
+              resources={walletResources}
+              resourcesCheckedAt={walletResourcesCheckedAt}
+              busy={busy}
+              t={t}
+              onNavigate={navigate}
+              onSelectWallet={(wallet) => void activateWallet(wallet)}
+              onCreateWallet={() => void navigate("wallet-create")}
+              onImportWallet={() => void navigate("wallet-import")}
+              onManageWallets={() => void navigate("wallet-more")}
+              onSelectAsset={(asset) => {
+                setSelectedWalletAsset(asset);
+                void navigate("wallet-asset-detail");
+              }}
+              onSelectTransaction={(transaction, backTo = "wallet") => {
+                setSelectedWalletTransactionId(transaction.id);
+                setTransactionBackScreen(backTo);
+                void navigate("wallet-transaction-detail");
+              }}
+              onRefresh={() => void refreshSelectedWalletBalance()}
+              onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
+            />
+          ) : null}
+          {screen === "wallet-detail" ? (
+            <WalletDetailScreen
+              vendorMode={entryState === "vendor_app"}
+              wallet={selectedWallet}
+              gasfreeWallet={selectedGasfreeWallet ?? null}
+              wallets={wallets}
+              transactions={walletTransactions}
+              resources={walletResources}
+              resourcesCheckedAt={walletResourcesCheckedAt}
+              busy={busy}
+              t={t}
+              onNavigate={navigate}
+              onSelectWallet={(wallet) => void activateWallet(wallet)}
+              onCreateWallet={() => void navigate("wallet-create")}
+              onImportWallet={() => void navigate("wallet-import")}
+              onManageWallets={() => void navigate("wallet-more")}
+              onSelectAsset={(asset) => {
+                setSelectedWalletAsset(asset);
+                void navigate("wallet-asset-detail");
+              }}
+              onSelectTransaction={(transaction, backTo = "wallet-detail") => {
+                setSelectedWalletTransactionId(transaction.id);
+                setTransactionBackScreen(backTo);
+                void navigate("wallet-transaction-detail");
+              }}
+              onRefresh={() => void refreshSelectedWalletBalance()}
+              onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
+            />
+          ) : null}
+          {screen === "wallet-history" ? (
+            <WalletHistoryScreen
+              wallet={selectedWallet}
+              rows={walletTransactions}
+              assetFilter={walletHistoryAsset}
+              setAssetFilter={setWalletHistoryAsset}
+              directionFilter={walletHistoryDirection}
+              setDirectionFilter={setWalletHistoryDirection}
+              hasMore={walletTransactionHasMore}
+              busy={busy}
+              t={t}
+              onLoadMore={() =>
+                selectedWallet?.id && void loadSelectedWalletTransactions(selectedWallet.id)
+              }
+              onSelectTransaction={(transaction) => {
+                setSelectedWalletTransactionId(transaction.id);
+                setTransactionBackScreen("wallet-history");
+                void navigate("wallet-transaction-detail");
+              }}
+            />
+          ) : null}
+          {screen === "wallet-asset-detail" ? (
+            <WalletAssetDetailScreen
+              wallet={selectedWallet}
+              asset={selectedWalletAsset}
+              rows={walletTransactions}
+              t={t}
+              onSend={() => {
+                setSendMode("standard");
+                setSendAsset(selectedWalletAsset);
+                setStandardTransferPassword("");
+                setStandardTransferPreview(null);
+                setStandardTransferPreviewError("");
+                setStandardTransferResult(null);
+                setStandardTransferSubmitState("idle");
+                setStandardTransferIdempotencyKey(createMiniAppClientId("standard-send"));
+                void navigate("send");
+              }}
+              onReceive={() => {
+                setReceiveAsset(selectedWalletAsset);
+                void navigate("wallet-receive");
+              }}
+              onSelectTransaction={(transaction) => {
+                setSelectedWalletTransactionId(transaction.id);
+                setTransactionBackScreen("wallet-asset-detail");
+                void navigate("wallet-transaction-detail");
+              }}
+            />
+          ) : null}
+          {screen === "wallet-transaction-detail" ? (
+            <WalletTransactionDetailScreen
+              wallet={selectedWallet}
+              transaction={selectedWalletTransaction}
+              t={t}
+            />
+          ) : null}
+          {screen === "wallet-receive" ? (
+            <ReceiveScreen
+              wallet={selectedWallet}
+              asset={receiveAsset}
+              setAsset={setReceiveAsset}
+              qr={walletQr}
+              t={t}
+            />
+          ) : null}
+          {screen === "wallet-more" ? (
+            <WalletMoreScreen
+              wallet={selectedWallet}
+              onNavigate={navigate}
+              onSetDefault={() => selectedWallet && void activateWallet(selectedWallet)}
+              t={t}
+            />
+          ) : null}
+          {screen === "wallet-gasfree" ? (
+            <WalletGasFreeScreen
+              wallet={selectedWallet}
+              gasfreeWallet={selectedGasfreeWallet ?? null}
+              transactions={walletTransactions}
+              readiness={gasfreeReadiness}
+              busy={busy}
+              t={t}
+              onCheck={() => void checkSelectedWalletGasfree()}
+              onDiscover={() => void discoverSelectedWalletGasfree()}
+              onReceive={() => {
+                if (selectedGasfreeWallet?.id) setSelectedWalletId(selectedGasfreeWallet.id);
+                setReceiveAsset("USDT");
+                void navigate("wallet-receive");
+              }}
+              onSend={() => void openGasfreeSend()}
+              onSelectTransaction={(transaction) => {
+                setSelectedWalletTransactionId(transaction.id);
+                setTransactionBackScreen("wallet-gasfree");
+                void navigate("wallet-transaction-detail");
+              }}
+            />
+          ) : null}
+          {screen === "wallet-backup" ? (
+            <BackupScreen
+              wallet={selectedWallet}
+              password={backupPassword}
+              setPassword={setBackupPassword}
+              revealedPhrase={revealedPhrase}
+              busy={busy}
+              t={t}
+              onSubmit={revealBackupPhrase}
+            />
+          ) : null}
+          {screen === "platform-deposit" ? (
+            <PlatformDepositScreen
+              amount={depositAmount}
+              setAmount={setDepositAmount}
+              address={depositAddress}
+              deposits={deposits}
+              qr={depositQr}
+              busy={busy}
+              onSubmit={submitDeposit}
+            />
+          ) : null}
+          {screen === "direct-sell-detail" ? (
+            <DirectSellDetailScreen
+              order={selectedDirectSell}
+              items={directSellPaymentItems.filter(
+                (item) => item.direct_sell_order_id === selectedDirectSell?.id,
+              )}
+              qr={directSellQr}
+              busy={busy}
+              onCopy={(value, label) => copyText(value, label ?? "Address copied")}
+              onConfirm={(itemId) => void confirmDirectSellPayment(itemId)}
+              onDispute={(itemId) => void disputeDirectSellPayment(itemId)}
+              paymentMethod={
+                (selectedDirectSell?.payout_account_source ??
+                  directSellAssignmentValue(selectedDirectSell, "payout_account_source")) ===
+                "vendor_payment_accounts"
+                  ? (vendorPayoutMethods.find(
+                      (method) =>
+                        method.id ===
+                        (selectedDirectSell?.vendor_payment_account_id ??
+                          directSellAssignmentValue(selectedDirectSell, "payout_account_id")),
+                    ) ?? selectedVendorPayoutDisplay)
+                  : (paymentMethods.find(
+                      (method) => method.id === selectedDirectSell?.payment_method_id,
+                    ) ?? selectedActivePayout)
+              }
+            />
+          ) : null}
+          {screen === "send" ? (
+            <SendScreen
+              wallet={
+                sendMode === "gasfree" ? (selectedGasfreeWallet ?? selectedWallet) : selectedWallet
+              }
+              mode={sendMode}
+              readiness={sendMode === "gasfree" ? gasfreeReadiness : null}
+              asset={sendAsset}
+              setAsset={setSendAsset}
+              address={sendAddress}
+              setAddress={setSendAddress}
+              amount={sendAmount}
+              setAmount={setSendAmount}
+              transactionPassword={gasfreeSendPassword}
+              setTransactionPassword={setGasfreeSendPassword}
+              standardTransactionPassword={standardTransferPassword}
+              setStandardTransactionPassword={setStandardTransferPassword}
+              standardPreview={standardTransferPreview}
+              standardPreviewError={standardTransferPreviewError}
+              standardSubmitState={standardTransferSubmitState}
+              standardResult={standardTransferResult}
+              submitState={gasfreeSubmitState}
+              result={gasfreeTransferResult}
+              busy={busy}
+              t={t}
+              onSubmitStandard={submitStandardSend}
+              onSubmitGasfree={submitGasfreeSend}
+            />
+          ) : null}
+          {screen === "p2p" ? (
+            <P2pScreen
+              vendorMode={entryState === "vendor_app"}
+              tab={p2pTab}
+              setTab={setP2pTab}
+              ads={ads}
+              orders={overview?.orders ?? []}
+              p2pAmount={p2pAmount}
+              setP2pAmount={setP2pAmount}
+              sellAd={sellAd}
+              setSellAd={setSellAd}
+              paymentMethods={activeUpiMethods}
+              selectedPaymentMethodId={selectedPaymentMethodId}
+              setSelectedPaymentMethodId={setSelectedPaymentMethodId}
+              sourceWallets={activeSellWallets}
+              selectedSourceWalletId={selectedSellAdWallet?.id ?? ""}
+              setSelectedSourceWalletId={setSellAdSourceWalletId}
+              walletAvailability={p2pWalletAvailability}
+              filters={p2pFilters}
+              setFilters={setP2pFilters}
+              busy={busy}
+              onTakeAd={takeAd}
+              onCreateAd={submitSellAd}
+            />
+          ) : null}
+          {screen === "trade" ? (
+            <TradeScreen
+              vendorMode={entryState === "vendor_app"}
+              tab={tradeTab}
+              setTab={setTradeTab}
+              amount={directSellAmount}
+              setAmount={setDirectSellAmount}
+              paymentMethods={
+                entryState === "vendor_app" ? activeVendorPayoutMethods : activePayoutMethods
+              }
+              selectedPaymentMethodId={
+                entryState === "vendor_app"
+                  ? selectedVendorPaymentAccountId
+                  : selectedPaymentMethodId
+              }
+              setSelectedPaymentMethodId={
+                entryState === "vendor_app"
+                  ? setSelectedVendorPaymentAccountId
+                  : setSelectedPaymentMethodId
+              }
+              vendors={vendorListings}
+              vendorAmount={vendorAmount}
+              setVendorAmount={setVendorAmount}
+              rail={vendorRail}
+              setRail={setVendorRail}
+              busy={busy}
+              onSell={submitDirectSell}
+              onBuy={submitVendorBuy}
+              onAddPayment={() => void navigate("bank-accounts")}
+            />
+          ) : null}
+          {screen === "more" ? (
+            <MoreScreen
+              profile={profile}
+              avatarUrl={avatarUrl}
+              avatarUploading={avatarUploading}
+              onUploadPhoto={(file) => void uploadProfilePhoto(file)}
+              vendorMode={entryState === "vendor_app"}
+              onNavigate={navigate}
+              locale={locale}
+              setLocale={setLocale}
+              theme={theme}
+              setTheme={setTheme}
+              t={t}
+              onLogout={logoutMiniAppSession}
+            />
+          ) : null}
+          {screen === "orders" ? (
+            <OrdersScreen
+              orders={overview?.orders ?? []}
+              directSellOrders={directSellOrders}
+              onDirectSell={(order) => {
+                setSelectedDirectSellId(order.id);
+                setCreatedDirectSell(null);
+                setScreen("direct-sell-detail");
+              }}
+            />
+          ) : null}
+          {screen === "analytics" ? <AnalyticsScreen data={analytics} /> : null}
+          {screen === "bank-accounts" ? (
+            <BankAccountsScreen
+              vendorMode={entryState === "vendor_app"}
+              methods={entryState === "vendor_app" ? vendorPayoutMethods : paymentMethods}
+              upi={upiForm}
+              setUpi={setUpiForm}
+              bank={bankForm}
+              setBank={setBankForm}
+              vendorBankRail={vendorBankRail}
+              setVendorBankRail={setVendorBankRail}
+              vendorLimits={vendorAccountLimits}
+              setVendorLimits={setVendorAccountLimits}
+              busy={busy}
+              onSaveUpi={submitUpi}
+              onSaveBank={submitBank}
+              onDefault={(id) =>
+                entryState === "vendor_app"
+                  ? void updateVendorPayoutState({
+                      data: { accountId: id, action: "default" },
+                    }).then(() => refresh("bank-accounts"))
+                  : void makePaymentDefault({ data: { id } }).then(() => refresh("bank-accounts"))
+              }
+              onDelete={(id) =>
+                entryState === "vendor_app"
+                  ? void updateVendorPayoutState({
+                      data: { accountId: id, action: "archive" },
+                    }).then(() => refresh("bank-accounts"))
+                  : void removePaymentMethod({ data: { id } }).then(() => refresh("bank-accounts"))
+              }
+              onVendorAction={(id, action) =>
+                void updateVendorPayoutState({ data: { accountId: id, action } }).then(() =>
+                  refresh("bank-accounts"),
+                )
+              }
+            />
+          ) : null}
+          {screen === "history" ? <HistoryScreen rows={tradeHistory} /> : null}
+          {screen === "profile" ? (
+            <ProfileScreen
+              profile={profile}
+              avatarUrl={avatarUrl}
+              avatarUploading={avatarUploading}
+              hasSession={hasSession}
+              onNavigate={navigate}
+              onUploadPhoto={(file) => void uploadProfilePhoto(file)}
+            />
+          ) : null}
+          {screen === "notifications" ? (
+            <NotificationsScreen
+              rows={overview?.notifications ?? []}
+              onMarkRead={markNotificationRead}
+            />
+          ) : null}
+          {screen === "security" ? (
+            <SecurityScreen
+              wallets={wallets}
+              enabled={transactionPasswordEnabled}
+              changing={transactionPasswordChangeOpen}
+              setChanging={setTransactionPasswordChangeOpen}
+              currentPassword={walletCurrentPassword}
+              setCurrentPassword={setWalletCurrentPassword}
+              password={walletPassword}
+              setPassword={setWalletPassword}
+              confirm={walletPasswordConfirm}
+              setConfirm={setWalletPasswordConfirm}
+              busy={busy}
+              onSubmit={saveTransactionPassword}
+              onWalletBackup={(wallet) => {
+                setSelectedWalletId(wallet.id);
+                setScreen("wallet-backup");
+              }}
+            />
+          ) : null}
+          {screen === "referral" ? <ReferralScreen summary={referral} /> : null}
+        </Suspense>
       </div>
       {entryState === "vendor_app" ? (
         <VendorBottomNav
@@ -3775,357 +3803,6 @@ function AuthScreen(props: {
         </p>
       ) : null}
     </div>
-  );
-}
-
-function HomeScreen({
-  vendorMode,
-  total,
-  profile,
-  orders,
-  transactions,
-  ads,
-  wallet,
-  t,
-  onNavigate,
-}: {
-  vendorMode?: boolean;
-  total: number;
-  profile: ProfileSummary | null;
-  orders: OrderRow[];
-  transactions: TransactionRow[];
-  ads: AdRow[];
-  wallet: WalletRow | null;
-  t: MiniT;
-  onNavigate: (screen: MiniScreen) => Promise<void>;
-}) {
-  const walletUsdt = walletDisplayBalance(wallet);
-  const walletTrx = Number(wallet?.onchain_trx_balance ?? 0);
-  if (vendorMode) {
-    return (
-      <Screen
-        title="Vendor Workspace"
-        subtitle="Liquidity, listings and vendor order operations"
-        compact
-      >
-        <section className="space-y-4 pt-1">
-          <div>
-            <p className="kicker-v17">APPROVED VENDOR</p>
-            <h1 className="title-v17">Vendor Workspace</h1>
-            <p className="body-v17">
-              Liquidity, listings, payout capacity and vendor order operations.
-            </p>
-          </div>
-          <Surface className="border-primary/20 bg-[linear-gradient(130deg,rgba(79,124,255,.12),#10131a)] p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[9px] text-slate-500">Available liquidity</p>
-                <p className="balance-v17 mt-1 text-[31px]">{money(walletUsdt)} U</p>
-              </div>
-              <StatusPill label="APPROVED" tone="success" />
-            </div>
-          </Surface>
-          <div className="grid grid-cols-2 gap-[10px]">
-            <StatTile label="Today sold" value={money(profile?.locked_balance)} />
-            <StatTile label="Completion" value="Live after orders" />
-            <StatTile label="Active listings" value={String(ads.length)} />
-            <StatTile label="Vendor orders" value={String(orders.length)} />
-          </div>
-        </section>
-        <Section
-          title="Payout capacity"
-          action="Manage"
-          onAction={() => onNavigate("bank-accounts")}
-        >
-          <ListRow
-            icon={MiniIcons.bank}
-            title="Vendor payout accounts"
-            body="Limits, capacity and default rails"
-            onClick={() => onNavigate("bank-accounts")}
-          />
-        </Section>
-        <Section title="Vendor orders" action="View all" onAction={() => onNavigate("orders")}>
-          {orders.length ? (
-            orders.slice(0, 3).map((order) => <OrderCard key={order.id} order={order} />)
-          ) : (
-            <EmptyLine>No active vendor orders.</EmptyLine>
-          )}
-        </Section>
-      </Screen>
-    );
-  }
-  return (
-    <Screen title="Home" subtitle="Wallet, P2P and WTRON trading overview" compact>
-      <section className="space-y-5 pt-1">
-        <div>
-          <p className="kicker-v17">TRADER ACCOUNT</p>
-          <h1 className="title-v17 truncate">{profile?.full_name || "WTRON Trader"}</h1>
-          <p className="body-v17">Your personal WTRON wallet, P2P and direct trading overview.</p>
-        </div>
-        <div>
-          <p className="text-[9px] text-slate-500">Total portfolio</p>
-          <p className="balance-v17">{money(total)} USDT</p>
-          <p className="text-[10px] text-slate-500">
-            Personal Mainnet wallets. Active wallet TRX: {money(walletTrx, "TRX")} TRX
-          </p>
-        </div>
-        <div className="grid grid-cols-4 gap-3">
-          <QuickAction
-            icon={MiniIcons.deposit}
-            label="Deposit"
-            onClick={() => onNavigate("platform-deposit")}
-          />
-          <QuickAction icon={MiniIcons.send} label="Send" onClick={() => onNavigate("send")} />
-          <QuickAction
-            icon={MiniIcons.receive}
-            label="Receive"
-            onClick={() => onNavigate("wallet-receive")}
-          />
-          <QuickAction icon={MiniIcons.trade} label="Trade" onClick={() => onNavigate("trade")} />
-        </div>
-        <div className="grid grid-cols-2 gap-[10px]">
-          <StatTile label="WTRON balance" value={`${money(profile?.balance)} U`} />
-          <StatTile label="Wallet balance" value={`${money(walletUsdt)} U`} />
-        </div>
-      </section>
-      <Section title="Active Orders" action="View all" onAction={() => onNavigate("orders")}>
-        {orders.length ? (
-          orders.slice(0, 3).map((order) => <OrderCard key={order.id} order={order} />)
-        ) : (
-          <EmptyLine>No active orders. Browse P2P or WTRON Trade.</EmptyLine>
-        )}
-      </Section>
-      {!vendorMode ? (
-        <Section title="Current P2P Orders" action="Market" onAction={() => onNavigate("p2p")}>
-          {ads.length ? (
-            ads
-              .slice(0, 2)
-              .map((ad) => <AdCard key={ad.id} ad={ad} onTake={() => onNavigate("p2p")} />)
-          ) : (
-            <EmptyLine>No live marketplace cards loaded yet.</EmptyLine>
-          )}
-        </Section>
-      ) : null}
-      <TransactionList
-        title="Recent Activity"
-        rows={transactions}
-        empty="No ledger activity yet."
-      />
-    </Screen>
-  );
-}
-
-function WalletScreen({
-  wallets,
-  selectedWallet,
-  t,
-  onNavigate,
-  onSelect,
-}: {
-  wallets: WalletRow[];
-  selectedWallet: WalletRow | null;
-  t: MiniT;
-  onNavigate: (screen: MiniScreen) => Promise<void>;
-  onSelect: (wallet: WalletRow) => void;
-}) {
-  const total = wallets.reduce((sum, wallet) => sum + walletDisplayBalance(wallet), 0);
-  const totalTrx = wallets.reduce(
-    (sum, wallet) => sum + Number(wallet.onchain_trx_balance ?? 0),
-    0,
-  );
-  if (!wallets.length) {
-    return (
-      <Screen title={t("walletSelector")} subtitle={t("selfCustodyWallet")}>
-        <div className="rounded-2xl border border-primary/25 bg-primary/10 p-4 text-center">
-          <Wallet className="mx-auto h-10 w-10 text-primary" />
-          <h2 className="mt-4 text-xl font-semibold tracking-normal">{t("createWallet")}</h2>
-          <p className="mt-2 text-sm text-slate-400">{t("selfCustodyWallet")}</p>
-          <div className="mt-5 grid gap-2">
-            <Button
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-              onClick={() => onNavigate("wallet-create")}
-            >
-              {t("createWallet")}
-            </Button>
-            <Button variant="secondary" onClick={() => onNavigate("wallet-import")}>
-              {t("importExistingWallet")}
-            </Button>
-          </div>
-        </div>
-      </Screen>
-    );
-  }
-  return (
-    <Screen title={t("walletSelector")} subtitle={t("selfCustodyWallet")}>
-      <Surface className="p-3">
-        <p className="text-xs font-semibold uppercase text-slate-500">{t("portfolioBalance")}</p>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <TokenMetric icon={<UsdtIcon />} label="USDT" value={money(total)} sub="TRC20 on TRON" />
-          <TokenMetric
-            icon={<TronIcon />}
-            label="TRX"
-            value={money(totalTrx, "TRX")}
-            sub="TRON native"
-          />
-        </div>
-      </Surface>
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-          onClick={() => onNavigate("wallet-create")}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          {t("createWallet")}
-        </Button>
-        <Button variant="secondary" onClick={() => onNavigate("wallet-import")}>
-          {t("importWallet")}
-        </Button>
-      </div>
-      <div className="flex snap-x gap-3 overflow-x-auto pb-2">
-        {wallets.map((wallet) => (
-          <WalletCard
-            key={wallet.id}
-            wallet={wallet}
-            active={wallet.id === selectedWallet?.id}
-            t={t}
-            onSelect={() => onSelect(wallet)}
-            onOpen={() => onNavigate("wallet-detail")}
-          />
-        ))}
-      </div>
-      <Section title={t("selectedWallet")}>
-        <WalletSummary
-          wallet={selectedWallet}
-          t={t}
-          onReceive={() => onNavigate("wallet-receive")}
-          onSend={() => onNavigate("send")}
-          onBackup={() => onNavigate("wallet-backup")}
-        />
-      </Section>
-    </Screen>
-  );
-}
-
-function WalletCreateScreen(props: {
-  name: string;
-  setName: (value: string) => void;
-  password: string;
-  setPassword: (value: string) => void;
-  confirm: string;
-  setConfirm: (value: string) => void;
-  busy: boolean;
-  t: MiniT;
-  onSubmit: (event: FormEvent) => void;
-}) {
-  return (
-    <Screen title={props.t("createWallet")} subtitle={props.t("createWalletSubtitle")}>
-      <form className="space-y-4" onSubmit={props.onSubmit}>
-        <FormCard title={`1. ${props.t("walletName")}`}>
-          <Input
-            value={props.name}
-            onChange={(event) => props.setName(event.target.value)}
-            placeholder={props.t("mainWallet")}
-          />
-        </FormCard>
-        <FormCard title={`2. TRON Mainnet`}>
-          <div className="space-y-2">
-            <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary-foreground">
-              WTRON creates a standard TRON Mainnet wallet for Send and Receive.
-            </div>
-          </div>
-        </FormCard>
-        <FormCard title={`3. ${props.t("transactionPassword")}`}>
-          <div className="space-y-2">
-            <Input
-              type="password"
-              value={props.password}
-              onChange={(event) => props.setPassword(event.target.value)}
-              placeholder={props.t("password")}
-            />
-            <Input
-              type="password"
-              value={props.confirm}
-              onChange={(event) => props.setConfirm(event.target.value)}
-              placeholder={props.t("confirmPassword")}
-            />
-          </div>
-        </FormCard>
-        <Button
-          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-          disabled={props.busy}
-        >
-          {props.busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          {props.t("createWallet")}
-        </Button>
-      </form>
-    </Screen>
-  );
-}
-
-function WalletImportScreen(props: {
-  name: string;
-  setName: (value: string) => void;
-  phrase: string;
-  setPhrase: (value: string) => void;
-  password: string;
-  setPassword: (value: string) => void;
-  busy: boolean;
-  t: MiniT;
-  onSubmit: (event: FormEvent) => void;
-  onScanPhrase: () => void | Promise<void>;
-}) {
-  return (
-    <Screen title={props.t("importWallet")} subtitle={props.t("importWalletSubtitle")}>
-      <form className="space-y-4" onSubmit={props.onSubmit}>
-        <FormCard title={props.t("walletName")}>
-          <Input
-            value={props.name}
-            onChange={(event) => props.setName(event.target.value)}
-            placeholder={props.t("tradingWallet")}
-          />
-        </FormCard>
-        <FormCard title="TRON Mainnet">
-          <div className="rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary-foreground">
-            Imports are added as standard TRON Mainnet wallets.
-          </div>
-        </FormCard>
-        <FormCard title={props.t("recoveryPhrase")}>
-          <textarea
-            className="min-h-28 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-primary"
-            value={props.phrase}
-            onChange={(event) => props.setPhrase(event.target.value)}
-            placeholder={props.t("enterRecoveryPhrase")}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-2 w-full"
-            onClick={props.onScanPhrase}
-          >
-            <ScanLine className="mr-2 h-4 w-4" />
-            Scan recovery QR
-          </Button>
-          <p className="mt-2 text-xs text-slate-500">
-            QR scanning only fills this local form. Anyone with the phrase or QR can control the
-            wallet.
-          </p>
-        </FormCard>
-        <FormCard title={props.t("transactionPassword")}>
-          <Input
-            type="password"
-            value={props.password}
-            onChange={(event) => props.setPassword(event.target.value)}
-            placeholder={props.t("password")}
-          />
-        </FormCard>
-        <Button
-          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-          disabled={props.busy}
-        >
-          {props.t("importWallet")}
-        </Button>
-      </form>
-    </Screen>
   );
 }
 
@@ -5748,1181 +5425,6 @@ function TransferResultReceipt({
   );
 }
 
-function P2pScreen(props: {
-  vendorMode?: boolean;
-  tab: P2pTab;
-  setTab: (tab: P2pTab) => void;
-  ads: AdRow[];
-  orders: OrderRow[];
-  p2pAmount: string;
-  setP2pAmount: (value: string) => void;
-  sellAd: { amount: string; rate: string; min: string; max: string; terms: string };
-  setSellAd: (value: {
-    amount: string;
-    rate: string;
-    min: string;
-    max: string;
-    terms: string;
-  }) => void;
-  paymentMethods: PaymentMethodRow[];
-  selectedPaymentMethodId: string;
-  setSelectedPaymentMethodId: (id: string) => void;
-  sourceWallets: WalletRow[];
-  selectedSourceWalletId: string;
-  setSelectedSourceWalletId: (id: string) => void;
-  walletAvailability: Record<string, number>;
-  filters: P2pFilters;
-  setFilters: (filters: P2pFilters) => void;
-  busy: boolean;
-  onTakeAd: (ad: AdRow) => void;
-  onCreateAd: (event: FormEvent) => void;
-}) {
-  const filteredAds = applyP2pFilters(props.ads, props.filters);
-  const buyAds = props.ads.filter((ad) => ad.side === "buy");
-  const toggleFilter = (key: keyof P2pFilters) =>
-    props.setFilters({ ...props.filters, [key]: !props.filters[key] });
-  const filterItems: Array<[keyof P2pFilters, string]> = [
-    ["bestRate", "Best rate"],
-    ["verified", "Verified"],
-    ["upi", "UPI"],
-    ["highCompletion", "High completion"],
-  ];
-  return (
-    <Screen
-      title={props.vendorMode ? "P2P Sell" : "P2P Market"}
-      subtitle={props.vendorMode ? "Vendor seller tools only" : "User-to-user USDT trading only"}
-    >
-      <Tabs
-        value={props.vendorMode && props.tab === "buy" ? "sell" : props.tab}
-        setValue={(value) => props.setTab(value as P2pTab)}
-        items={
-          props.vendorMode
-            ? [
-                ["sell", "Sell"],
-                ["myAds", "My Ads"],
-                ["myOrders", "My Orders"],
-              ]
-            : [
-                ["buy", "Buy"],
-                ["sell", "Sell"],
-                ["myAds", "My Ads"],
-                ["myOrders", "My Orders"],
-              ]
-        }
-      />
-      {!props.vendorMode && props.tab === "buy" ? (
-        <div className="space-y-3">
-          <div className="flex gap-[7px] overflow-x-auto pb-1">
-            {filterItems.map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                className={`shrink-0 rounded-full border px-[9px] py-[7px] text-[9px] ${
-                  props.filters[key]
-                    ? "border-white bg-white text-[#080a0f]"
-                    : "border-[#222837] bg-[#10131a] text-slate-500"
-                }`}
-                onClick={() => toggleFilter(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <FormField label="USDT amount">
-            <Input
-              value={props.p2pAmount}
-              onChange={(event) => props.setP2pAmount(event.target.value)}
-              placeholder="USDT amount"
-            />
-          </FormField>
-          {filteredAds.length ? (
-            filteredAds.map((ad) => (
-              <AdCard key={ad.id} ad={ad} onTake={() => props.onTakeAd(ad)} />
-            ))
-          ) : (
-            <CompactEmpty
-              title="No seller ads"
-              body="Create a sell ad from the Sell tab or check again later."
-            />
-          )}
-        </div>
-      ) : null}
-      {props.tab === "sell" ? (
-        <div className="space-y-3">
-          {!props.vendorMode ? (
-            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/6 p-3">
-              <div>
-                <p className="text-[11px] font-semibold text-white">Sell into buyer ads</p>
-                <p className="mt-1 text-[10px] text-slate-500">
-                  Select a funded Mainnet wallet before accepting a buyer request.
-                </p>
-              </div>
-              <FormField label="USDT amount">
-                <Input
-                  value={props.p2pAmount}
-                  onChange={(event) => props.setP2pAmount(event.target.value)}
-                  placeholder="USDT amount"
-                />
-              </FormField>
-              {props.paymentMethods.length ? (
-                <FormField label="Payout UPI">
-                  <PaymentMethodPicker
-                    methods={props.paymentMethods}
-                    selectedId={props.selectedPaymentMethodId}
-                    setSelectedId={props.setSelectedPaymentMethodId}
-                  />
-                </FormField>
-              ) : (
-                <CompactEmpty
-                  title="Add UPI ID first"
-                  body="A saved active UPI account is required when you sell into buyer ads."
-                />
-              )}
-              <SourceWalletPicker
-                wallets={props.sourceWallets}
-                selectedId={props.selectedSourceWalletId}
-                setSelectedId={props.setSelectedSourceWalletId}
-                availability={props.walletAvailability}
-              />
-              {buyAds.length ? (
-                buyAds.map((ad) => <AdCard key={ad.id} ad={ad} onTake={() => props.onTakeAd(ad)} />)
-              ) : (
-                <CompactEmpty
-                  title="No buyer ads"
-                  body="Create your own sell ad below or check buyer requests later."
-                />
-              )}
-            </div>
-          ) : null}
-          <form
-            className="space-y-3 rounded-2xl border border-white/10 bg-white/6 p-3"
-            onSubmit={props.onCreateAd}
-          >
-            {(["amount", "rate", "min", "max"] as const).map((field) => {
-              const label =
-                field === "amount"
-                  ? "USDT Amount"
-                  : field === "rate"
-                    ? "Selling Rate"
-                    : field === "min"
-                      ? "Min INR"
-                      : "Max INR";
-              return (
-                <FormField key={field} label={label}>
-                  <Input
-                    value={props.sellAd[field]}
-                    onChange={(event) =>
-                      props.setSellAd({ ...props.sellAd, [field]: event.target.value })
-                    }
-                    placeholder={label}
-                  />
-                </FormField>
-              );
-            })}
-            {props.paymentMethods.length ? (
-              <FormField label="Saved UPI">
-                <PaymentMethodPicker
-                  methods={props.paymentMethods}
-                  selectedId={props.selectedPaymentMethodId}
-                  setSelectedId={props.setSelectedPaymentMethodId}
-                />
-              </FormField>
-            ) : (
-              <CompactEmpty
-                title="Add UPI ID first"
-                body="A saved active UPI account is required for sell ads."
-              />
-            )}
-            <SourceWalletPicker
-              wallets={props.sourceWallets}
-              selectedId={props.selectedSourceWalletId}
-              setSelectedId={props.setSelectedSourceWalletId}
-              availability={props.walletAvailability}
-            />
-            <textarea
-              className="min-h-20 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-primary"
-              value={props.sellAd.terms}
-              onChange={(event) => props.setSellAd({ ...props.sellAd, terms: event.target.value })}
-              placeholder="Terms"
-            />
-            <Button
-              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-              disabled={
-                props.busy ||
-                !props.paymentMethods.length ||
-                !props.selectedPaymentMethodId ||
-                !props.sourceWallets.length ||
-                !props.selectedSourceWalletId
-              }
-            >
-              Create Sell Ad
-            </Button>
-          </form>
-        </div>
-      ) : null}
-      {props.tab === "myAds" ? (
-        <CompactEmpty title="No ads yet" body="Your sell ads will appear here after creation." />
-      ) : null}
-      {props.tab === "myOrders" ? (
-        <OrderList orders={props.orders} empty="No P2P orders yet." />
-      ) : null}
-    </Screen>
-  );
-}
-
-function TradeScreen(props: {
-  vendorMode?: boolean;
-  tab: TradeTab;
-  setTab: (tab: TradeTab) => void;
-  amount: string;
-  setAmount: (value: string) => void;
-  paymentMethods: PaymentMethodRow[];
-  selectedPaymentMethodId: string;
-  setSelectedPaymentMethodId: (id: string) => void;
-  vendors: VendorListingRow[];
-  vendorAmount: string;
-  setVendorAmount: (value: string) => void;
-  rail: "upi" | "imps" | "neft" | "rtgs";
-  setRail: (rail: "upi" | "imps" | "neft" | "rtgs") => void;
-  busy: boolean;
-  onSell: (event: FormEvent) => void;
-  onBuy: (listing: VendorListingRow) => void;
-  onAddPayment: () => void;
-}) {
-  return (
-    <Screen
-      title={props.vendorMode ? "Vendor Trade" : "WTRON Trade"}
-      subtitle={
-        props.vendorMode
-          ? "Approved vendors can sell USDT to WTRON. Buy-side trader actions are hidden."
-          : "Company and verified-vendor trading"
-      }
-    >
-      {props.vendorMode ? null : (
-        <SegmentedControl
-          value={props.tab}
-          setValue={(value) => props.setTab(value as TradeTab)}
-          items={[
-            ["sell", "Sell to WTRON"],
-            ["buy", "Buy from Vendors"],
-          ]}
-        />
-      )}
-      {props.tab === "sell" ? (
-        <form className="space-y-4" onSubmit={props.onSell}>
-          <Surface className="p-4">
-            <SectionHeader
-              title={props.vendorMode ? "Create Vendor Sell Order" : "Sell USDT to WTRON"}
-            />
-            <MetricGrid
-              items={[
-                ["WTRON Buy Rate", "Configured by admin"],
-                ["Payout", "Saved UPI or bank"],
-              ]}
-            />
-            <div className="mt-4 space-y-3">
-              <FormField label="USDT amount">
-                <Input
-                  value={props.amount}
-                  onChange={(event) => props.setAmount(event.target.value)}
-                  placeholder="USDT amount"
-                />
-              </FormField>
-              {props.paymentMethods.length ? (
-                <FormField label="Payout account">
-                  <PaymentMethodPicker
-                    methods={props.paymentMethods}
-                    selectedId={props.selectedPaymentMethodId}
-                    setSelectedId={props.setSelectedPaymentMethodId}
-                  />
-                </FormField>
-              ) : (
-                <CompactEmpty
-                  title={props.vendorMode ? "Add payout account first" : "Add payout method first"}
-                  body={
-                    props.vendorMode
-                      ? "Vendor Direct Sell requires an active vendor payout account."
-                      : "Direct sell payouts require a saved payment account."
-                  }
-                />
-              )}
-            </div>
-          </Surface>
-          {!props.paymentMethods.length ? (
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full"
-              onClick={props.onAddPayment}
-            >
-              {props.vendorMode ? "Add payout account" : "Add payout method"}
-            </Button>
-          ) : null}
-          <Button
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-            disabled={props.busy || !props.paymentMethods.length || !props.selectedPaymentMethodId}
-          >
-            {props.vendorMode ? "Create Vendor Sell Order" : "Create Sell Order"}
-          </Button>
-        </form>
-      ) : null}
-      {!props.vendorMode && props.tab === "buy" ? (
-        <div className="space-y-3">
-          <FormField label="USDT amount">
-            <Input
-              value={props.vendorAmount}
-              onChange={(event) => props.setVendorAmount(event.target.value)}
-              placeholder="USDT amount"
-            />
-          </FormField>
-          <SegmentedControl
-            value={props.rail}
-            setValue={(value) => props.setRail(value as "upi" | "imps" | "neft" | "rtgs")}
-            items={[
-              ["upi", "UPI"],
-              ["imps", "IMPS"],
-              ["neft", "NEFT"],
-              ["rtgs", "RTGS"],
-            ]}
-          />
-          {props.vendors.length ? (
-            props.vendors.map((listing) => (
-              <VendorCard key={listing.id} listing={listing} onBuy={() => props.onBuy(listing)} />
-            ))
-          ) : (
-            <CompactEmpty
-              title="No offers"
-              body="No verified vendor offers are active for this rail."
-            />
-          )}
-        </div>
-      ) : null}
-    </Screen>
-  );
-}
-
-function MoreScreen({
-  profile,
-  avatarUrl,
-  avatarUploading,
-  onUploadPhoto,
-  vendorMode,
-  onNavigate,
-  locale,
-  setLocale,
-  theme,
-  setTheme,
-  t,
-  onLogout,
-}: {
-  profile: ProfileSummary | null;
-  avatarUrl: string;
-  avatarUploading: boolean;
-  onUploadPhoto: (file: File) => void;
-  vendorMode: boolean;
-  onNavigate: (screen: MiniScreen) => Promise<void>;
-  locale: MiniLocale;
-  setLocale: (locale: MiniLocale) => void;
-  theme: MiniThemePreference;
-  setTheme: (theme: MiniThemePreference) => void;
-  t: MiniT;
-  onLogout: () => void | Promise<void>;
-}) {
-  const fileInputId = vendorMode ? "vendor-mini-profile-photo" : "trader-mini-profile-photo";
-  const sections: Array<[string, Array<[MiniScreen, string, string, MiniIcon]>]> = [
-    [
-      "Account",
-      [
-        ["profile", t("profile"), "Name, Telegram and account ID", MiniIcons.profile],
-        ["notifications", t("notifications"), "Wallet and order alerts", MiniIcons.notifications],
-        ["security", t("security"), "Transaction password and backup", MiniIcons.security],
-      ],
-    ],
-    [
-      vendorMode ? "Business & Orders" : "Payments & Orders",
-      [
-        [
-          "bank-accounts",
-          vendorMode ? "Vendor Payout Accounts" : "Bank & UPI",
-          vendorMode
-            ? "Limits, capacity, default and freeze state"
-            : "Saved personal payout methods",
-          MiniIcons.bank,
-        ],
-        ["orders", t("orders"), "P2P and WTRON order status", MiniIcons.orders],
-        ["history", t("history"), "Company and vendor trade history", MiniIcons.history],
-        ...(vendorMode
-          ? ([
-              ["trade", "Vendor Listings", "Liquidity, rates, limits and rails", MiniIcons.trade],
-            ] as Array<[MiniScreen, string, string, MiniIcon]>)
-          : []),
-      ],
-    ],
-    [
-      "Wallet",
-      [
-        ["wallet", "Manage Wallets", "Create, import and switch wallets", MiniIcons.wallet],
-        ["wallet-backup", "Backup", "Recovery phrase tools", MiniIcons.backup],
-        ["wallet-gasfree", "GasFree", "Capability and sponsorship status", Zap],
-      ],
-    ],
-    [
-      "Insights & Growth",
-      [
-        ["analytics", "Analytics", "Real trading metrics", MiniIcons.analytics],
-        ["referral", "Referral", "Invite and rewards", MiniIcons.referral],
-      ],
-    ],
-  ];
-  return (
-    <Screen title="More" subtitle="Account, trading and security tools" compact>
-      <div className="flex items-center gap-3 pt-1">
-        <V17Avatar
-          src={avatarUrl}
-          initials={profile?.full_name || profile?.email || (vendorMode ? "WV" : "WT")}
-          size="lg"
-          editable
-          uploading={avatarUploading}
-          onEdit={() => document.getElementById(fileInputId)?.click()}
-        />
-        <input
-          id={fileInputId}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
-            if (file) onUploadPhoto(file);
-          }}
-        />
-        <div className="min-w-0">
-          <h1 className="truncate text-[17px] font-semibold leading-tight">
-            {profile?.full_name || profile?.email || (vendorMode ? "WTRON Vendor" : "WTRON Trader")}
-          </h1>
-          <p className="mt-1 text-[9.5px] text-slate-500">
-            {vendorMode ? "Approved Vendor" : "Trader account"}
-          </p>
-          <div className="mt-2 flex gap-1.5">
-            <StatusPill label={vendorMode ? "VENDOR" : "TRADER"} tone="info" />
-            <StatusPill label="VERIFIED" tone="success" />
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-[9px]">
-        <MiniMetric label="Security" value="Protected" />
-        <MiniMetric label="Wallets" value="Mainnet" />
-      </div>
-      {sections.map(([title, items]) => (
-        <Section key={title} title={title}>
-          {items.map(([screen, label, body, Icon]) => (
-            <ListRow
-              key={screen}
-              icon={Icon}
-              title={label}
-              body={body}
-              onClick={() => onNavigate(screen)}
-            />
-          ))}
-        </Section>
-      ))}
-      <Section title="Preferences">
-        <Surface className="space-y-4 p-4">
-          <div>
-            <p className="text-sm font-semibold">{t("appearance")}</p>
-            <SegmentedControl
-              value={theme}
-              setValue={(value) => setTheme(value as MiniThemePreference)}
-              items={[
-                ["system", t("system")],
-                ["light", t("light")],
-                ["dark", t("dark")],
-              ]}
-            />
-          </div>
-          <div>
-            <p className="text-sm font-semibold">Language</p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {Object.entries(MINI_LOCALE_LABELS).map(([key, label]) => (
-                <Button
-                  key={key}
-                  type="button"
-                  variant={locale === key ? "default" : "secondary"}
-                  onClick={() => setLocale(key as MiniLocale)}
-                >
-                  {label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </Surface>
-      </Section>
-      <Section title="Legal & Help">
-        <ListRow
-          icon={FileText}
-          title="Privacy Policy"
-          body="Public legal page"
-          onClick={() => {
-            window.open("/privacy", "_blank", "noopener,noreferrer");
-          }}
-        />
-        <ListRow
-          icon={FileText}
-          title="Terms"
-          body="Public legal page"
-          onClick={() => {
-            window.open("/terms", "_blank", "noopener,noreferrer");
-          }}
-        />
-        <ListRow
-          icon={ShieldCheck}
-          title="Risk Disclosure"
-          body="Public legal page"
-          onClick={() => {
-            window.open("/risk-disclosure", "_blank", "noopener,noreferrer");
-          }}
-        />
-        <ListRow
-          icon={MiniIcons.notifications}
-          title="Support"
-          body="Order, account and wallet help"
-          onClick={() => {
-            window.open("https://t.me/laura_luxee", "_blank", "noopener,noreferrer");
-          }}
-        />
-      </Section>
-      <Section title="Session">
-        <ListRow
-          icon={LogOut}
-          title="Logout"
-          body="Close your Mini App session"
-          onClick={() => void onLogout()}
-        />
-      </Section>
-    </Screen>
-  );
-}
-
-function OrdersScreen({
-  orders,
-  directSellOrders,
-  onDirectSell,
-}: {
-  orders: OrderRow[];
-  directSellOrders: DirectSellOrderRow[];
-  onDirectSell: (order: DirectSellOrderRow) => void;
-}) {
-  return (
-    <Screen title="Orders" subtitle="P2P, WTRON and vendor order activity">
-      <Section title="WTRON Direct Sell">
-        {directSellOrders.length ? (
-          directSellOrders.map((order) => (
-            <button
-              key={order.id}
-              type="button"
-              className="w-full rounded-xl border border-white/10 bg-white/6 p-3 text-left"
-              onClick={() => onDirectSell(order)}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="mono text-sm">{order.order_ref ?? shortenHash(order.id)}</p>
-                <StatusBadge status={String(order.status ?? "waiting")} />
-              </div>
-              <MetricGrid
-                items={[
-                  ["USDT", money(order.expected_usdt)],
-                  ["Expected INR", money(order.expected_inr, "INR")],
-                  [
-                    "Confirmations",
-                    `${order.confirmations ?? 0}/${order.required_confirmations ?? 0}`,
-                  ],
-                  ["Address", order.assigned_company_address ? "Assigned" : "Pending"],
-                ]}
-              />
-            </button>
-          ))
-        ) : (
-          <CompactEmpty
-            title="No direct sell orders"
-            body="Sell USDT to WTRON from the Trade tab."
-          />
-        )}
-      </Section>
-      <Section title="P2P Orders">
-        <OrderList orders={orders} empty="No P2P orders yet." />
-      </Section>
-    </Screen>
-  );
-}
-
-function AnalyticsScreen({ data }: { data: AnalyticsSummary | null }) {
-  return (
-    <Screen title="Analytics" subtitle="Real WTRON trading metrics">
-      <Tabs
-        value="30d"
-        setValue={() => undefined}
-        items={[
-          ["today", "Today"],
-          ["7d", "7 Days"],
-          ["30d", "30 Days"],
-        ]}
-      />
-      {data ? (
-        <>
-          <MetricGrid
-            items={[
-              ["Total Volume", `${money(data.totalUsdtVolume)} USDT`],
-              ["P2P Buy", money(data.p2pBuyVolume)],
-              ["P2P Sell", money(data.p2pSellVolume)],
-              ["WTRON Trade", money(data.companyTradeVolume)],
-              ["Fees", money(data.feesPaid)],
-              ["Completed", String(data.completedOrders)],
-              ["Disputes", String(data.disputes)],
-            ]}
-          />
-          <MiniChart rows={data.chart} />
-        </>
-      ) : (
-        <EmptyLine>No analytics data yet.</EmptyLine>
-      )}
-    </Screen>
-  );
-}
-
-function HistoryScreen({ rows }: { rows: unknown[] }) {
-  return (
-    <Screen title="History" subtitle="Company and vendor trade history">
-      {rows.length ? (
-        rows.map((row, index) => <GenericRow key={index} row={row as Record<string, unknown>} />)
-      ) : (
-        <EmptyLine>No trades yet.</EmptyLine>
-      )}
-    </Screen>
-  );
-}
-
-function ProfileScreen({
-  profile,
-  avatarUrl,
-  avatarUploading,
-  hasSession,
-  onNavigate,
-  onUploadPhoto,
-}: {
-  profile: ProfileSummary | null;
-  avatarUrl: string;
-  avatarUploading: boolean;
-  hasSession: boolean;
-  onNavigate: (screen: MiniScreen) => Promise<void>;
-  onUploadPhoto: (file: File) => void;
-}) {
-  const fileInputId = "mini-profile-photo";
-  return (
-    <Screen title="Profile" subtitle="WTRON trader profile">
-      <Surface className="p-4">
-        <div className="flex items-center gap-3">
-          <V17Avatar
-            src={avatarUrl}
-            initials={profile?.full_name || profile?.email || "WT"}
-            size="lg"
-            editable
-            uploading={avatarUploading}
-            onEdit={() => document.getElementById(fileInputId)?.click()}
-          />
-          <input
-            id={fileInputId}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = "";
-              if (file) onUploadPhoto(file);
-            }}
-          />
-          <div className="min-w-0">
-            <h2 className="truncate text-xl font-semibold tracking-normal">
-              {profile?.full_name || "WTRON Trader"}
-            </h2>
-            <p className="truncate text-sm text-slate-400">
-              {profile?.email || "Telegram linked account"}
-            </p>
-            <div className="mt-2 flex gap-1.5">
-              <StatusPill label="TRADER" tone="info" />
-              <StatusPill label={hasSession ? "LINKED" : "TELEGRAM"} tone="success" />
-            </div>
-          </div>
-        </div>
-        <p className="mono mt-2 text-[11px] text-slate-500" dir={technicalTextDirection()}>
-          {profile?.id ? shortenHash(profile.id, 8) : "Account pending"}
-        </p>
-      </Surface>
-      <Section title="Sections">
-        <ListRow
-          icon={MiniIcons.wallet}
-          title="Manage Wallets"
-          body="Personal wallet management"
-          onClick={() => onNavigate("wallet")}
-        />
-        <ListRow
-          icon={MiniIcons.bank}
-          title="Payments"
-          body="Bank accounts and UPI"
-          onClick={() => onNavigate("bank-accounts")}
-        />
-        <ListRow
-          icon={MiniIcons.security}
-          title="Security"
-          body={hasSession ? "Authenticated session" : "Telegram verified"}
-          onClick={() => onNavigate("security")}
-        />
-        <ListRow
-          icon={MiniIcons.referral}
-          title="Refer & Earn"
-          body="Referral rewards"
-          onClick={() => onNavigate("referral")}
-        />
-      </Section>
-    </Screen>
-  );
-}
-
-function NotificationsScreen({
-  rows,
-  onMarkRead,
-}: {
-  rows: NotificationRow[];
-  onMarkRead: (id?: string) => void;
-}) {
-  return (
-    <Screen title="Notifications" subtitle="Wallet, deposit, P2P and referral alerts">
-      <Button variant="secondary" onClick={() => onMarkRead()}>
-        Mark All Read
-      </Button>
-      {rows.length ? (
-        rows.map((row) => (
-          <div key={row.id} className="rounded-xl border border-white/10 bg-white/6 p-3">
-            <div className="flex justify-between gap-3">
-              <div>
-                <p className="font-semibold">{row.title}</p>
-                <p className="mt-1 text-sm text-slate-400">{row.body}</p>
-              </div>
-              <Button size="sm" variant="secondary" onClick={() => onMarkRead(row.id)}>
-                Read
-              </Button>
-            </div>
-          </div>
-        ))
-      ) : (
-        <EmptyLine>You are all caught up.</EmptyLine>
-      )}
-    </Screen>
-  );
-}
-
-function SecurityScreen({
-  wallets,
-  enabled,
-  changing,
-  setChanging,
-  currentPassword,
-  setCurrentPassword,
-  password,
-  setPassword,
-  confirm,
-  setConfirm,
-  busy,
-  onSubmit,
-  onWalletBackup,
-}: {
-  wallets: WalletRow[];
-  enabled: boolean;
-  changing: boolean;
-  setChanging: (value: boolean) => void;
-  currentPassword: string;
-  setCurrentPassword: (value: string) => void;
-  password: string;
-  setPassword: (value: string) => void;
-  confirm: string;
-  setConfirm: (value: string) => void;
-  busy: boolean;
-  onSubmit: (event: FormEvent) => void;
-  onWalletBackup: (wallet: WalletRow) => void;
-}) {
-  const showForm = !enabled || changing;
-  return (
-    <Screen title="Security" subtitle="Login, transaction password and wallet backup">
-      <Surface className="space-y-3 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Transaction Password</h2>
-            <p className="text-sm text-slate-400">{enabled ? "Enabled" : "Not set"}</p>
-          </div>
-          {enabled && !changing ? (
-            <Button type="button" variant="secondary" onClick={() => setChanging(true)}>
-              Change Password
-            </Button>
-          ) : null}
-        </div>
-        {showForm ? (
-          <form className="space-y-3" onSubmit={onSubmit}>
-            {enabled ? (
-              <Input
-                type="password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-                placeholder="Current transaction password"
-              />
-            ) : null}
-            <Input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="New transaction password"
-            />
-            <Input
-              type="password"
-              value={confirm}
-              onChange={(event) => setConfirm(event.target.value)}
-              placeholder="Confirm new transaction password"
-            />
-            <div className="grid grid-cols-2 gap-2">
-              {enabled ? (
-                <Button type="button" variant="secondary" onClick={() => setChanging(false)}>
-                  Cancel
-                </Button>
-              ) : null}
-              <Button
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-                disabled={busy}
-              >
-                {enabled ? "Update Password" : "Set Password"}
-              </Button>
-            </div>
-          </form>
-        ) : null}
-      </Surface>
-      <Section title="Wallet Backup Status">
-        {wallets.length ? (
-          wallets.map((wallet) => (
-            <SettingRow
-              key={wallet.id}
-              icon={MiniIcons.backup}
-              title={wallet.name ?? "Wallet"}
-              body={wallet.backup_status ?? "not_backed_up"}
-              onClick={() => onWalletBackup(wallet)}
-            />
-          ))
-        ) : (
-          <EmptyLine>No personal wallets yet.</EmptyLine>
-        )}
-      </Section>
-      <EmptyLine>
-        Private-key export is unavailable in the Mini App until secure export architecture is
-        configured.
-      </EmptyLine>
-    </Screen>
-  );
-}
-
-function referralRatePercent(summary: ReferralSummary | null) {
-  const setting = summary?.settings?.find((row) => row.key === "referral_direct_rate_percent");
-  const value = Number(setting?.value ?? 0.2);
-  return Number.isFinite(value) ? value : 0.2;
-}
-
-function ReferralScreen({ summary }: { summary: ReferralSummary | null }) {
-  const rate = referralRatePercent(summary);
-  return (
-    <Screen title="Refer & Earn" subtitle="Earn from users you directly invite">
-      <div className="rounded-2xl border border-white/10 bg-white/6 p-3">
-        <p className="text-xs uppercase text-slate-400">Referral Code</p>
-        <p className="mono mt-2 text-2xl font-semibold">{summary?.referralCode ?? "Loading"}</p>
-        <p className="mono mt-2 break-all text-sm text-slate-400">{summary?.referralLink ?? ""}</p>
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <Button
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={() =>
-              summary?.referralLink && copyText(summary.referralLink, "Referral link copied")
-            }
-          >
-            Copy
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() =>
-              summary?.referralLink &&
-              navigator.share?.({ text: summary.referralLink }).catch(() => undefined)
-            }
-          >
-            Share
-          </Button>
-        </div>
-        <p className="mt-3 text-xs text-slate-300">
-          Earn up to {rate.toFixed(2)}% on eligible trades completed by users you directly refer.
-        </p>
-        <p className="mt-2 text-xs text-slate-400">
-          Rewards apply only to eligible completed P2P and WTRON trades. Wallet transfers do not
-          earn referral commission.
-        </p>
-      </div>
-      <MetricGrid
-        items={[
-          ["Direct referrals", String(summary?.invitedUsers?.length ?? 0)],
-          ["Qualified referrals", String(summary?.qualifiedReferrals ?? 0)],
-          ["Eligible volume", money(summary?.eligibleTradeVolume)],
-          ["Pending earnings", money(summary?.pendingEarnings)],
-          ["Paid earnings", money(summary?.paidEarnings)],
-          ["Total earnings", money(summary?.totalReferralEarnings)],
-        ]}
-      />
-      <Section title="Recent Referral Rewards">
-        {summary?.rewards?.length ? (
-          summary.rewards.slice(0, 10).map((reward, index) => (
-            <div
-              key={reward.id ?? index}
-              className="rounded-xl border border-white/10 bg-white/6 p-3"
-            >
-              <MetricGrid
-                items={[
-                  ["Reward", `${money(reward.amount)} ${reward.currency ?? "USDT"}`],
-                  ["Trade amount", money(reward.trade_amount_usdt)],
-                  ["Rate", `${Number(reward.rate_percent ?? rate).toFixed(2)}%`],
-                  ["Status", reward.status],
-                ]}
-              />
-            </div>
-          ))
-        ) : (
-          <EmptyLine>No referral rewards yet.</EmptyLine>
-        )}
-      </Section>
-    </Screen>
-  );
-}
-
-function BankAccountsScreen(props: {
-  vendorMode?: boolean;
-  methods: PaymentMethodRow[];
-  upi: { upiId: string; holderName: string; label: string };
-  setUpi: (value: { upiId: string; holderName: string; label: string }) => void;
-  bank: {
-    accountHolder: string;
-    accountNumber: string;
-    ifsc: string;
-    bankName: string;
-    label: string;
-  };
-  setBank: (value: {
-    accountHolder: string;
-    accountNumber: string;
-    ifsc: string;
-    bankName: string;
-    label: string;
-  }) => void;
-  vendorBankRail: "all" | "imps" | "neft" | "rtgs";
-  setVendorBankRail: (rail: "all" | "imps" | "neft" | "rtgs") => void;
-  vendorLimits: { minInr: string; maxInr: string; dailyLimitInr: string };
-  setVendorLimits: (value: { minInr: string; maxInr: string; dailyLimitInr: string }) => void;
-  busy: boolean;
-  onSaveUpi: (event: FormEvent) => void;
-  onSaveBank: (event: FormEvent) => void;
-  onDefault: (id: string) => void;
-  onDelete: (id: string) => void;
-  onVendorAction?: (
-    id: string,
-    action: "enable" | "disable" | "freeze" | "unfreeze" | "archive" | "default",
-  ) => void;
-}) {
-  const limitFields = props.vendorMode ? (
-    <div className="grid gap-2">
-      {(
-        [
-          ["minInr", "Minimum per transaction (INR)"],
-          ["maxInr", "Maximum per transaction (INR)"],
-          ["dailyLimitInr", "Daily limit (INR)"],
-        ] as const
-      ).map(([key, label]) => (
-        <FormField key={key} label={label}>
-          <Input
-            value={props.vendorLimits[key as keyof typeof props.vendorLimits]}
-            onChange={(event) =>
-              props.setVendorLimits({ ...props.vendorLimits, [key]: event.target.value })
-            }
-            placeholder={label}
-            inputMode="decimal"
-          />
-        </FormField>
-      ))}
-    </div>
-  ) : null;
-
-  return (
-    <Screen
-      title={props.vendorMode ? "Vendor Payout Accounts" : "Payment Methods"}
-      subtitle={
-        props.vendorMode
-          ? "Receiving accounts used for vendor sell listings and Direct Sell payouts"
-          : "UPI and bank accounts for INR settlement"
-      }
-    >
-      <form
-        className="space-y-2 rounded-2xl border border-white/10 bg-white/6 p-3"
-        onSubmit={props.onSaveUpi}
-      >
-        <h2 className="font-semibold">Add UPI</h2>
-        <Input
-          value={props.upi.upiId}
-          onChange={(event) => props.setUpi({ ...props.upi, upiId: event.target.value })}
-          placeholder="UPI ID"
-        />
-        <Input
-          value={props.upi.holderName}
-          onChange={(event) => props.setUpi({ ...props.upi, holderName: event.target.value })}
-          placeholder="Account Holder"
-        />
-        <Input
-          value={props.upi.label}
-          onChange={(event) => props.setUpi({ ...props.upi, label: event.target.value })}
-          placeholder="Label"
-        />
-        {limitFields}
-        <Button
-          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-          disabled={props.busy}
-        >
-          Add UPI
-        </Button>
-      </form>
-      <form
-        className="space-y-2 rounded-2xl border border-white/10 bg-white/6 p-3"
-        onSubmit={props.onSaveBank}
-      >
-        <h2 className="font-semibold">Add Bank Account</h2>
-        {props.vendorMode ? (
-          <select
-            aria-label="Settlement rail"
-            className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none"
-            value={props.vendorBankRail}
-            onChange={(event) =>
-              props.setVendorBankRail(event.target.value as "all" | "imps" | "neft" | "rtgs")
-            }
-          >
-            <option className="bg-slate-950" value="all">
-              ALL - IMPS + NEFT + RTGS
-            </option>
-            <option className="bg-slate-950" value="imps">
-              IMPS
-            </option>
-            <option className="bg-slate-950" value="neft">
-              NEFT
-            </option>
-            <option className="bg-slate-950" value="rtgs">
-              RTGS
-            </option>
-          </select>
-        ) : null}
-        <Input
-          value={props.bank.accountHolder}
-          onChange={(event) => props.setBank({ ...props.bank, accountHolder: event.target.value })}
-          placeholder="Account Holder"
-        />
-        <Input
-          value={props.bank.accountNumber}
-          onChange={(event) => props.setBank({ ...props.bank, accountNumber: event.target.value })}
-          placeholder="Account Number"
-        />
-        <Input
-          value={props.bank.ifsc}
-          onChange={(event) => props.setBank({ ...props.bank, ifsc: event.target.value })}
-          placeholder="IFSC"
-        />
-        <Input
-          value={props.bank.bankName}
-          onChange={(event) => props.setBank({ ...props.bank, bankName: event.target.value })}
-          placeholder="Bank Name"
-        />
-        <Input
-          value={props.bank.label}
-          onChange={(event) => props.setBank({ ...props.bank, label: event.target.value })}
-          placeholder="Label"
-        />
-        {limitFields}
-        <Button
-          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-          disabled={props.busy}
-        >
-          Add Bank
-        </Button>
-      </form>
-      <Section title="Saved Methods">
-        {props.methods.length ? (
-          props.methods.map((method) => (
-            <div key={method.id} className="rounded-xl border border-white/10 bg-white/6 p-3">
-              <PaymentMethodSummary method={method} />
-              {props.vendorMode ? (
-                <MetricGrid
-                  items={[
-                    ["Supported rails", vendorSupportedRails(method).join(", ").toUpperCase()],
-                    ["Min per transaction", money(method.min_inr, "INR")],
-                    ["Max per transaction", money(method.max_inr, "INR")],
-                    ["Daily limit", money(method.daily_limit_inr, "INR")],
-                    ["Used today", money(method.daily_used_inr, "INR")],
-                    ["Remaining", money(method.daily_remaining_inr, "INR")],
-                    ["Status", String(method.status ?? "active")],
-                    ["Default", method.is_default ? "Yes" : "No"],
-                    ["Frozen", method.frozen ? "Yes" : "No"],
-                  ]}
-                />
-              ) : null}
-              <p className="mt-2 text-xs text-slate-500">
-                {method.kind.toUpperCase()} {method.is_default ? "- Default" : ""}
-              </p>
-              <div className="mt-3 flex gap-2">
-                <Button size="sm" variant="secondary" onClick={() => props.onDefault(method.id)}>
-                  Set Default
-                </Button>
-                {props.vendorMode ? (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
-                        props.onVendorAction?.(
-                          method.id,
-                          method.status === "disabled" ? "enable" : "disable",
-                        )
-                      }
-                    >
-                      {method.status === "disabled" ? "Enable" : "Disable"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
-                        props.onVendorAction?.(
-                          method.id,
-                          method.status === "frozen" ? "unfreeze" : "freeze",
-                        )
-                      }
-                    >
-                      {method.status === "frozen" ? "Unfreeze" : "Freeze"}
-                    </Button>
-                  </>
-                ) : null}
-                <Button size="sm" variant="secondary" onClick={() => props.onDelete(method.id)}>
-                  {props.vendorMode ? "Archive" : "Delete"}
-                </Button>
-              </div>
-            </div>
-          ))
-        ) : (
-          <EmptyLine>No UPI or bank account yet.</EmptyLine>
-        )}
-      </Section>
-    </Screen>
-  );
-}
-
 function Screen({
   title,
   subtitle,
@@ -8151,42 +6653,6 @@ function WalletTransactionRows({
     </div>
   );
 }
-function GenericRow({ row }: { row: Record<string, unknown> }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/6 p-3">
-      <p className="mono text-sm">{String(row["order_ref"] ?? row["id"] ?? "Trade")}</p>
-      <MetricGrid
-        items={[
-          ["USDT", money(row["amount_usdt"] ?? row["usdt_amount"])],
-          ["INR", money(row["expected_inr"] ?? row["total_inr"], "INR")],
-          ["Rate", money(row["rate_inr"], "INR")],
-          ["Status", String(row["status"] ?? "created")],
-        ]}
-      />
-    </div>
-  );
-}
-function MiniChart({ rows }: { rows: { date: string; usdt: number }[] }) {
-  const max = Math.max(1, ...rows.map((row) => Number(row.usdt ?? 0)));
-  return (
-    <div className="flex h-32 items-end gap-1 rounded-2xl border border-white/10 bg-white/6 p-3">
-      {rows.length ? (
-        rows
-          .slice(-18)
-          .map((row, index) => (
-            <div
-              key={`${row.date}-${index}`}
-              className="flex-1 rounded-t bg-primary"
-              style={{ height: `${Math.max(4, (Number(row.usdt ?? 0) / max) * 100)}%` }}
-            />
-          ))
-      ) : (
-        <p className="m-auto text-sm text-slate-400">No chart data</p>
-      )}
-    </div>
-  );
-}
-
 function PendingVendorScreen({
   status,
   busy,

@@ -95,6 +95,11 @@ import {
   userOwnsWallet,
   walletDisplayBalance,
 } from "./wallet-state.ts";
+import {
+  miniAppPersonalWalletTotals,
+  selectVisibleMiniAppWallet,
+  visibleMiniAppMainnetWallets,
+} from "./mini-app-wallet-rendering.ts";
 import { chooseImportedWalletNetwork, decideImportedWalletNetwork } from "./wallet-network.ts";
 import { collectPaginatedTronGridRows } from "./tron-pagination.ts";
 import { permissionAllowsContractType, selectAuthorizedTronPermission } from "./tron-permission.ts";
@@ -3082,7 +3087,7 @@ describe("GasFree transfer service safety", () => {
     assert.match(miniApp, /network: "trc20-mainnet"/);
     assert.match(miniApp, /walletType: "standard"/);
     assert.match(miniApp, /networkConfirmed: true/);
-    assert.match(miniApp, /\.filter\(\(wallet\) => wallet\.network === "trc20-mainnet"\)/);
+    assert.match(miniApp, /visibleMiniAppMainnetWallets/);
     assert.doesNotMatch(miniApp, /Create Nile Test Wallet|NetworkPicker|TypeOption/);
     assert.match(telegramServer, /\.eq\("network", "trc20-mainnet" as never\)/);
   });
@@ -3290,9 +3295,17 @@ describe("GasFree transfer service safety", () => {
 
   it("keeps vendor Mini App buy paths hidden and server-denied", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const p2pScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/p2p-screen.tsx"),
+      "utf8",
+    );
+    const homeScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/home-screen.tsx"),
+      "utf8",
+    );
     const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
     assert.match(mini, /VendorPrimaryTab = "home" \| "trade" \| "wallet" \| "orders" \| "more"/);
-    assert.match(mini, /vendorMode && props\.tab === "buy" \? "sell" : props\.tab/);
+    assert.match(p2pScreen, /vendorMode && props\.tab === "buy" \? "sell" : props\.tab/);
     assert.match(mini, /entryState === "vendor_app" && nextScreen === "p2p" \? "trade"/);
     assert.match(p2p, /Vendor accounts use Vendor Trade, not Trader P2P/);
   });
@@ -3347,7 +3360,10 @@ describe("GasFree transfer service safety", () => {
       resolve(process.cwd(), "src/lib/direct-sell.functions.ts"),
       "utf8",
     );
-    const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const bankScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/bank-accounts-screen.tsx"),
+      "utf8",
+    );
     const sql = readFileSync(
       resolve(
         process.cwd(),
@@ -3360,8 +3376,8 @@ describe("GasFree transfer service safety", () => {
     assert.match(sql, /Vendor payment account daily limit exceeded/);
     assert.match(vendor, /daily_remaining_inr/);
     assert.match(directSell, /vendor_payment_account_capacity/);
-    assert.match(mini, /\["Used today", money\(method\.daily_used_inr, "INR"\)\]/);
-    assert.match(mini, /\["Remaining", money\(method\.daily_remaining_inr, "INR"\)\]/);
+    assert.match(bankScreen, /\["Used today", money\(method\.daily_used_inr, "INR"\)\]/);
+    assert.match(bankScreen, /\["Remaining", money\(method\.daily_remaining_inr, "INR"\)\]/);
   });
 
   it("enforces P2P warning acknowledgement and image-only private evidence uploads", () => {
@@ -3425,6 +3441,10 @@ describe("GasFree transfer service safety", () => {
     const functions = readFileSync(resolve(process.cwd(), "src/lib/telegram.functions.ts"), "utf8");
     const server = readFileSync(resolve(process.cwd(), "src/lib/telegram.server.ts"), "utf8");
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const more = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/more-screen.tsx"),
+      "utf8",
+    );
 
     assert.match(functions, /fetchTelegramHomeSummary/);
     assert.match(functions, /fetchTelegramWalletSummary/);
@@ -3444,6 +3464,14 @@ describe("GasFree transfer service safety", () => {
 
   it("uses personal wallet balances for Mini App Home and P2P sell-source selection", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const p2pScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/p2p-screen.tsx"),
+      "utf8",
+    );
+    const homeScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/home-screen.tsx"),
+      "utf8",
+    );
     const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
     const webP2p = readFileSync(
       resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
@@ -3458,10 +3486,20 @@ describe("GasFree transfer service safety", () => {
       "utf8",
     );
 
-    assert.match(mini, /function personalWalletTotals/);
+    const walletRendering = readFileSync(
+      resolve(process.cwd(), "src/lib/mini-app-wallet-rendering.ts"),
+      "utf8",
+    );
+
+    assert.match(mini, /visibleMiniAppMainnetWallets/);
+    assert.match(mini, /screen === "wallet" \?/);
+    assert.doesNotMatch(mini, /screen === "wallet" && !wallets\.length/);
+    assert.match(walletRendering, /export function miniAppPersonalWalletTotals/);
+    assert.match(walletRendering, /wallet\.network === "trc20-mainnet"/);
+    assert.match(walletRendering, /wallet\.is_archived !== true/);
     assert.match(mini, /const totalAssets = personalTotals\.usdt/);
-    assert.match(mini, /Wallet balance/);
-    assert.match(mini, /Source wallet/);
+    assert.match(homeScreen, /Wallet balance/);
+    assert.match(p2pScreen, /Source wallet/);
     assert.match(mini, /sourceWalletId: selectedSellAdWallet\.id/);
     assert.match(p2p, /sourceWalletId: z\.string\(\)\.uuid\(\)\.optional\(\)/);
     assert.match(p2p, /_source_wallet_id: data\.sourceWalletId \?\? null/);
@@ -3474,19 +3512,64 @@ describe("GasFree transfer service safety", () => {
     assert.match(wallet, /wallets\s*\.filter\(\(wallet\) => wallet\.wallet_type !== "gasfree"\)/);
   });
 
+  it("renders visible Mainnet wallet fixtures consistently in the Mini App model", () => {
+    const makeWallet = (
+      id: string,
+      network: "trc20-mainnet" | "trc20-nile",
+      usdt: number,
+      extra: Partial<Parameters<typeof visibleMiniAppMainnetWallets>[0][number]> = {},
+    ) => ({
+      id,
+      network,
+      onchain_balance: usdt,
+      custody: "non_custodial",
+      is_default: id.endsWith("-0"),
+      ...extra,
+    });
+
+    const sixMainnet = Array.from({ length: 6 }, (_, index) =>
+      makeWallet(`six-${index}`, "trc20-mainnet", index + 1),
+    );
+    const mixed = [
+      ...Array.from({ length: 4 }, (_, index) =>
+        makeWallet(`mixed-${index}`, "trc20-mainnet", 10 + index),
+      ),
+      makeWallet("mixed-nile-0", "trc20-nile", 50),
+      makeWallet("mixed-nile-1", "trc20-nile", 60),
+    ];
+    const historicalOnly = [
+      makeWallet("old-nile-0", "trc20-nile", 10),
+      makeWallet("old-nile-1", "trc20-nile", 20),
+    ];
+
+    assert.equal(visibleMiniAppMainnetWallets(sixMainnet).length, 6);
+    assert.equal(visibleMiniAppMainnetWallets(mixed).length, 4);
+    assert.equal(visibleMiniAppMainnetWallets(historicalOnly).length, 0);
+    assert.equal(selectVisibleMiniAppWallet(sixMainnet)?.id, "six-0");
+    assert.equal(selectVisibleMiniAppWallet(mixed, "mixed-2")?.id, "mixed-2");
+    assert.equal(selectVisibleMiniAppWallet(historicalOnly), null);
+    assert.equal(miniAppPersonalWalletTotals(sixMainnet).visibleCount, 6);
+    assert.equal(miniAppPersonalWalletTotals(mixed).visibleCount, 4);
+    assert.equal(miniAppPersonalWalletTotals(historicalOnly).visibleCount, 0);
+  });
+
   it("wires V17 P2P filter chips as real controls", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const p2pScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/p2p-screen.tsx"),
+      "utf8",
+    );
     const webP2p = readFileSync(
       resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
       "utf8",
     );
     assert.match(mini, /type P2pFilters/);
-    assert.match(mini, /function applyP2pFilters/);
-    assert.match(mini, /filters\.verified/);
-    assert.match(mini, /filters\.upi/);
-    assert.match(mini, /filters\.highCompletion/);
-    assert.match(mini, /filters\.bestRate/);
-    assert.match(mini, /onClick=\{\(\) => toggleFilter\(key\)\}/);
+    assert.match(p2pScreen, /function applyP2pFilters/);
+    assert.match(p2pScreen, /filters\.verified/);
+    assert.match(p2pScreen, /filters\.upi/);
+    assert.match(p2pScreen, /filters\.highCompletion/);
+    assert.match(p2pScreen, /filters\.bestRate/);
+    assert.match(p2pScreen, /onClick=\{\(\) => toggleFilter\(key\)\}/);
     assert.match(webP2p, /interface P2pFilters/);
     assert.match(webP2p, /function sortedAndFilteredAds/);
     assert.match(webP2p, /filters\.verified/);
@@ -3623,6 +3706,10 @@ describe("GasFree transfer service safety", () => {
     );
     const p2p = readFileSync(resolve(process.cwd(), "src/lib/p2p.functions.ts"), "utf8");
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const p2pScreen = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/p2p-screen.tsx"),
+      "utf8",
+    );
     const webP2p = readFileSync(
       resolve(process.cwd(), "src/routes/_authenticated/p2p.tsx"),
       "utf8",
@@ -3665,9 +3752,11 @@ describe("GasFree transfer service safety", () => {
       /disputed/,
     );
     assert.match(mini, /const sellingToBuyAd = ad\.side === "buy"/);
+    assert.match(p2pScreen, /Sell into buyer ads/);
+    assert.match(p2pScreen, /SourceWalletPicker/);
     assert.match(mini, /sourceWalletId: sellingToBuyAd \? selectedSellAdWallet\?\.id : undefined/);
-    assert.match(mini, /Sell into buyer ads/);
-    assert.match(mini, /personal_wallet_available_usdt_for_wallet/);
+    assert.match(p2pScreen, /Sell into buyer ads/);
+    assert.match(p2pScreen, /SourceWalletPicker/);
     assert.match(webP2p, /sourceWalletId: side === "sell" \? selectedSourceWalletId : undefined/);
     assert.match(webP2p, /SourceWalletSelect/);
   });
@@ -3718,6 +3807,10 @@ describe("GasFree transfer service safety", () => {
     const functions = readFileSync(resolve(process.cwd(), "src/lib/telegram.functions.ts"), "utf8");
     const server = readFileSync(resolve(process.cwd(), "src/lib/telegram.server.ts"), "utf8");
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
+    const more = readFileSync(
+      resolve(process.cwd(), "src/components/mini-app/screens/more-screen.tsx"),
+      "utf8",
+    );
 
     assert.match(functions, /export const logoutTelegramMiniApp/);
     assert.match(server, /export async function revokeTelegramMiniAppSession/);
@@ -3728,16 +3821,36 @@ describe("GasFree transfer service safety", () => {
     assert.match(mini, /await logoutTelegram\(\{ data: \{ initData \} \}\)/);
     assert.match(mini, /clearBrowserAuthState\(\)/);
     assert.match(mini, /onLogout=\{logoutMiniAppSession\}/);
-    assert.match(mini, /onClick=\{\(\) => void onLogout\(\)\}/);
+    assert.match(more, /onClick=\{\(\) => void onLogout\(\)\}/);
   });
 
   it("keeps Mini App heavy QR work lazy and coalesces screen data requests", () => {
     const mini = readFileSync(resolve(process.cwd(), "src/routes/mini-app.tsx"), "utf8");
     const qr = readFileSync(resolve(process.cwd(), "src/lib/mini-app-qr.ts"), "utf8");
+    const screens = [
+      "p2p-screen",
+      "trade-screen",
+      "wallet-screen",
+      "more-screen",
+      "orders-screen",
+      "analytics-screen",
+      "history-screen",
+      "notifications-screen",
+      "referral-screen",
+      "profile-screen",
+      "security-screen",
+      "bank-accounts-screen",
+      "wallet-create-screen",
+      "wallet-import-screen",
+    ];
 
     assert.doesNotMatch(mini, /import QRCode from "qrcode"/);
     assert.match(mini, /import \{ qrToDataUrl \} from "@\/lib\/mini-app-qr"/);
     assert.match(qr, /await import\("qrcode"\)/);
+    for (const screen of screens) {
+      assert.match(mini, new RegExp(`import\\("@/components/mini-app/screens/${screen}"\\)`));
+    }
+    assert.match(mini, /<Suspense fallback=\{<V17LoadingState/);
     assert.match(mini, /const inFlightDataRef = useRef/);
     assert.match(mini, /function runDatasetLoader/);
     assert.match(mini, /const pending = inFlightDataRef\.current\[key\]/);
